@@ -1,0 +1,23 @@
+name = "housou"
+main = "build/worker/shim.mjs"
+compatibility_date = "2024-02-07"
+
+[build]
+command = "cargo install -q worker-build && worker-build --release --features dev"
+
+[assets]
+directory = "./web/dist"
+
+[vars]
+# Defined in .dev.vars for local development
+# TMDB_TOKEN = ""
+
+[observability]
+enabled = true
+
+[env.production]
+[env.production.vars]
+# Use `wrangler secret put TMDB_TOKEN` for production
+# TMDB_TOKEN = ""
+[env.production.build]
+command = "cargo install -q worker-build && worker-build --release"

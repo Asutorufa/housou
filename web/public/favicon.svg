@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Play button triangle (small, hollow) - Red -->
+  <path d="M80 180 L80 332 L160 256 Z" fill="none" stroke="#EA4335" stroke-width="44" stroke-linejoin="round"/>
+  <!-- Arc 1 - Yellow -->
+  <path d="M200 160 Q280 256 200 352" fill="none" stroke="#FBBC04" stroke-width="44" stroke-linecap="round"/>
+  <!-- Arc 2 - Green -->
+  <path d="M290 100 Q400 256 290 412" fill="none" stroke="#34A853" stroke-width="44" stroke-linecap="round"/>
+  <!-- Arc 3 - Blue -->
+  <path d="M380 50 Q510 256 380 462" fill="none" stroke="#4285F4" stroke-width="44" stroke-linecap="round"/>
+</svg>

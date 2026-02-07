@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: oklch(0.6 0.16 244);
+}
+
+:root {
+  scrollbar-gutter: stable;
+}
+
+/* Masonry layout is now handled in TabbedGrid.tsx using flexbox */
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
