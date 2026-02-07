@@ -40,7 +40,7 @@ export default function Header({
                         value={selectedYear}
                         onValueChange={setSelectedYear}
                         options={config?.years.map(y => ({ value: y.toString(), label: y.toString() })) || []}
-                        placeholder="年份"
+                        placeholder="年"
                     />
 
                     {/* Season Select */}
@@ -54,7 +54,7 @@ export default function Header({
                             { value: 'Summer', label: '夏' },
                             { value: 'Autumn', label: '秋' },
                         ]}
-                        placeholder="季节"
+                        placeholder="シーズン"
                     />
 
                     {/* Site Select */}
@@ -68,7 +68,7 @@ export default function Header({
                                 label: meta.title
                             }))
                         ]}
-                        placeholder="站点"
+                        placeholder="サイト"
                     />
                 </div>
 

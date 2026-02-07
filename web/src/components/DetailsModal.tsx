@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ExternalLink, PlayCircle, Star, X } from 'lucide-react'
+import { Clock, ExternalLink, PlayCircle, Star, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { AnimeItem, SiteMeta } from '../App'
 import { sortSites } from '../utils/siteUtils'
@@ -104,7 +104,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                     </motion.h1>
                                                 </Dialog.Title>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {info?.averageScore && (
+                                                    {!!info?.averageScore && info.averageScore > 0 && (
                                                         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200/50 dark:border-yellow-700/30 text-sm font-bold">
                                                             <Star size={14} className="fill-current" />
                                                             {info.averageScore}%
@@ -113,7 +113,18 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                     {info?.episodes && (
                                                         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200/50 dark:border-purple-700/30 text-sm font-bold">
                                                             <PlayCircle size={14} />
-                                                            {info.episodes}话
+                                                            {info.episodes}話
+                                                        </div>
+                                                    )}
+                                                    {info?.totalSeasons && (
+                                                        <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm font-bold">
+                                                            シーズン{info.currentSeason || 1} / 全{info.totalSeasons}シーズン
+                                                        </div>
+                                                    )}
+                                                    {info?.runtime && (
+                                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 border border-gray-200/50 dark:border-gray-700/30 text-sm font-bold">
+                                                            <Clock size={14} className="stroke-current" />
+                                                            {info.runtime}分
                                                         </div>
                                                     )}
                                                     {info?.genres?.slice(0, 3).map((g: string) => (
@@ -128,26 +139,33 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             <div className="space-y-2 p-4 rounded-2xl bg-gray-50 dark:bg-gray-900/50 text-sm border border-gray-100 dark:border-gray-700/50">
                                                 {info?.title?.native && (
                                                     <div className="flex gap-3">
-                                                        <span className="text-gray-400 font-bold w-14 shrink-0">日本语</span>
+                                                        <span className="text-gray-400 font-bold w-14 shrink-0">日本語</span>
                                                         <span className="text-gray-700 dark:text-gray-200">{info.title.native}</span>
                                                     </div>
                                                 )}
                                                 {/* Local data translations */}
                                                 {originalItem?.titleTranslate && Object.entries(originalItem.titleTranslate).map(([lang, titles]) => (
                                                     <div key={lang} className="flex gap-3">
-                                                        <span className="text-gray-400 font-bold w-14 shrink-0 uppercase">{lang}</span>
+                                                        <span className="text-gray-400 font-bold w-14 shrink-0 uppercase">
+                                                            {{
+                                                                'zh-Hans': '簡体字',
+                                                                'zh-Hant': '繁体字',
+                                                                'en': '英語',
+                                                                'ja': '日本語'
+                                                            }[lang] || lang}
+                                                        </span>
                                                         <span className="text-gray-700 dark:text-gray-200">{titles.join(' / ')}</span>
                                                     </div>
                                                 ))}
                                                 {info?.title?.romaji && (
                                                     <div className="flex gap-3">
-                                                        <span className="text-gray-400 font-bold w-14 shrink-0">Romaji</span>
+                                                        <span className="text-gray-400 font-bold w-14 shrink-0">ローマ字</span>
                                                         <span className="text-gray-700 dark:text-gray-200">{info.title.romaji}</span>
                                                     </div>
                                                 )}
                                                 {info?.title?.english && (
                                                     <div className="flex gap-3">
-                                                        <span className="text-gray-400 font-bold w-14 shrink-0">English</span>
+                                                        <span className="text-gray-400 font-bold w-14 shrink-0">英語</span>
                                                         <span className="text-gray-700 dark:text-gray-200">{info.title.english}</span>
                                                     </div>
                                                 )}
@@ -156,7 +174,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             {/* Links Section */}
                                             {sites.length > 0 && (
                                                 <div>
-                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Streaming</h4>
+                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">配信</h4>
                                                     <div className="flex flex-wrap gap-2">
                                                         {sites.map((site, idx) => {
                                                             const meta = siteMeta?.[site.site]
@@ -183,7 +201,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             {/* Description */}
                                             {info?.description && (
                                                 <div>
-                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Introduction</h4>
+                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">あらすじ</h4>
                                                     <div
                                                         className="text-sm md:text-base text-gray-600 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert"
                                                         dangerouslySetInnerHTML={{ __html: info.description }}
@@ -194,16 +212,21 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             {/* Episodes List */}
                                             {info?.episodesList?.length > 0 && (
                                                 <div>
-                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">Episodes</h4>
+                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">エピソード</h4>
                                                     <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
                                                         {info.episodesList.map((ep: any) => (
                                                             <div key={ep.number} className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 text-sm group/ep hover:bg-white dark:hover:bg-gray-800 transition-colors">
                                                                 <div className="flex gap-3 items-center">
                                                                     <span className="font-black text-blue-600 dark:text-blue-400 w-6 shrink-0 text-center">{ep.number}</span>
                                                                     <span className="text-gray-700 dark:text-gray-200 font-medium truncate group-hover/ep:text-blue-600 dark:group-hover/ep:text-blue-400 transition-colors">{ep.title || `Episode ${ep.number}`}</span>
-                                                                    {ep.airDate && (
-                                                                        <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto self-center shrink-0">{ep.airDate}</span>
-                                                                    )}
+                                                                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                                                                        {ep.runtime && (
+                                                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold self-center bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{ep.runtime}分</span>
+                                                                        )}
+                                                                        {ep.airDate && (
+                                                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 self-center">{ep.airDate}</span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                                 {ep.overview && (
                                                                     <p className="text-xs text-gray-500 dark:text-gray-400 pl-9 line-clamp-2 group-hover/ep:line-clamp-none transition-all">{ep.overview}</p>
@@ -218,7 +241,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                                 {info?.studios?.length > 0 && (
                                                     <div>
-                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Studio</h4>
+                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">スタジオ</h4>
                                                         <div className="text-sm text-gray-700 dark:text-gray-200 font-medium">
                                                             {info.studios.join(', ')}
                                                         </div>
@@ -226,7 +249,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                 )}
                                                 {info?.characters?.length > 0 && (
                                                     <div className="sm:col-span-2">
-                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">Cast</h4>
+                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">キャスト</h4>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                             {info.characters.slice(0, 6).map((char: any, idx: number) => (
                                                                 <div key={idx} className="flex flex-col p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors group">
@@ -248,10 +271,25 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                 )}
                                                 {info?.staff?.length > 0 && (
                                                     <div className="sm:col-span-2">
-                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">Staff</h4>
+                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">スタッフ</h4>
                                                         {(() => {
                                                             const grouped = info.staff.slice(0, 12).reduce((acc: any, member: any) => {
-                                                                const dept = member.department || 'Other';
+                                                                const deptMap: Record<string, string> = {
+                                                                    'Directing': '監督・演出',
+                                                                    'Writing': '脚本',
+                                                                    'Sound': '音響',
+                                                                    'Camera': '撮影',
+                                                                    'Art': '美術',
+                                                                    'Production': '制作',
+                                                                    'Visual Effects': '視覚効果',
+                                                                    'Editing': '編集',
+                                                                    'Lighting': '照明',
+                                                                    'Costume & Make-Up': '衣装・メイク',
+                                                                    'Creator': '原案・原作',
+                                                                    'Crew': 'スタッフ',
+                                                                };
+                                                                const deptEnglish = member.department || 'Other';
+                                                                const dept = deptMap[deptEnglish] || deptEnglish;
                                                                 if (!acc[dept]) acc[dept] = [];
                                                                 acc[dept].push(member);
                                                                 return acc;

@@ -462,6 +462,9 @@ pub struct UnifiedMetadata {
     pub staff: Vec<UniversalStaff>,
     pub episodes_list: Vec<UniversalEpisode>,
     pub is_finished: bool,
+    pub total_seasons: Option<i32>,
+    pub current_season: Option<i32>,
+    pub runtime: Option<i32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -494,6 +497,7 @@ pub struct UniversalEpisode {
     pub title: Option<String>,
     pub air_date: Option<String>,
     pub overview: Option<String>,
+    pub runtime: Option<i32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

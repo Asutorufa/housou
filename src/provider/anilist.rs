@@ -139,5 +139,8 @@ pub fn anilist_to_unified(media: serde_json::Value) -> model::UnifiedMetadata {
             .as_str()
             .map(|s| s == "FINISHED" || s == "CANCELLED")
             .unwrap_or(false),
+        total_seasons: None, // AniList doesn't have seasons concept
+        current_season: None,
+        runtime: None,
     }
 }

@@ -25,35 +25,39 @@ pub struct TmdbMedia {
     pub poster_path: Option<String>,
     pub vote_average: Option<f64>,
     pub number_of_episodes: Option<i32>,
+    pub number_of_seasons: Option<i32>, // Total seasons (from main show)
+    pub season_number: Option<i32>,     // Current season number (from season endpoint)
     pub overview: Option<String>,
+    pub runtime: Option<i32>,
     #[serde(default)]
     pub genres: Vec<TmdbGenre>,
     #[serde(default)]
     pub production_companies: Vec<TmdbCompany>,
     pub credits: Option<TmdbCredits>,
-    pub episodes: Option<Vec<TmdbBriefEpisode>>, // New field for seasons
+    pub episodes: Option<Vec<TmdbBriefEpisode>>,
     pub status: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbBriefEpisode {
     pub episode_number: i32,
     pub name: Option<String>,
     pub air_date: Option<String>,
     pub overview: Option<String>,
+    pub runtime: Option<i32>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbGenre {
     pub name: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbCompany {
     pub name: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbCredits {
     #[serde(default)]
     pub cast: Vec<TmdbCastMember>,
@@ -61,17 +65,25 @@ pub struct TmdbCredits {
     pub crew: Vec<TmdbCrewMember>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbCastMember {
     pub character: String,
     pub name: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TmdbCrewMember {
     pub name: String,
     pub job: String,
     pub department: Option<String>,
+}
+
+/// Parsed TMDb ID components
+enum ParsedId {
+    /// TV show with show_id and season number
+    Tv { show_id: String, season: i32 },
+    /// Movie or other media type
+    Other(String),
 }
 
 pub struct TmdbClient {
@@ -117,59 +129,91 @@ impl TmdbClient {
 
     pub async fn get_media(&self, id: &str) -> Result<TmdbMedia> {
         let trimmed_id = id.trim_start_matches('/');
-        // If it's a season ID like "tv/123/season/1" or "tv/123-slug/season/1", merge with main show
-        if trimmed_id.contains("/season/") {
-            let parts: Vec<&str> = trimmed_id.split('/').collect();
-            if parts.len() >= 2 && parts[0] == "tv" {
-                // TMDb accepts full slugs like "82046-double-decker"
-                let main_id = format!("tv/{}", parts[1]);
 
-                // Fetch both parent and season sequentially to avoid dependency on futures crate
+        // Parse ID into components: (media_type, show_id, season_num)
+        let parsed = Self::parse_tmdb_id(trimmed_id);
+
+        match parsed {
+            // Movie or non-TV: fetch directly
+            ParsedId::Other(id) => self.get_media_raw(&id).await,
+
+            // TV show: fetch season data and merge with parent
+            ParsedId::Tv { show_id, season } => {
+                let main_id = format!("tv/{}", show_id);
+                let season_id = format!("tv/{}/season/{}", show_id, season);
+
                 let main_media = self.get_media_raw(&main_id).await?;
-                let mut season_media = self.get_media_raw(trimmed_id).await?;
+                let mut season_media = self.get_media_raw(&season_id).await?;
 
-                // Merge critical metadata from parent - season endpoints lack most info
-                if season_media.genres.is_empty() {
-                    season_media.genres = main_media.genres;
-                }
-                if season_media.production_companies.is_empty() {
-                    season_media.production_companies = main_media.production_companies;
-                }
-                // Season endpoints often return 0.0 for vote_average instead of null
-                if season_media.vote_average.is_none() || season_media.vote_average == Some(0.0) {
-                    season_media.vote_average = main_media.vote_average;
-                }
-                // Overview/description from parent if season has none
-                if season_media.overview.is_none()
-                    || season_media
-                        .overview
-                        .as_ref()
-                        .map(|s| s.is_empty())
-                        .unwrap_or(false)
-                {
-                    season_media.overview = main_media.overview;
-                }
-                // Credits from parent - season credits are usually empty
-                if season_media.credits.is_none() {
-                    season_media.credits = main_media.credits;
-                }
-                // Status from parent
-                if season_media.status.is_none() {
-                    season_media.status = main_media.status;
-                }
+                // Merge missing fields from parent
+                Self::merge_from_parent(&mut season_media, &main_media);
 
-                // Ensure name consists of both if useful
-                if let (Some(m_name), Some(s_name)) = (&main_media.name, &season_media.name) {
-                    if m_name != s_name {
-                        season_media.name = Some(format!("{}: {}", m_name, s_name));
-                    }
-                }
-
-                return Ok(season_media);
+                Ok(season_media)
             }
         }
+    }
 
-        self.get_media_raw(id).await
+    /// Parse TMDb ID into structured components
+    fn parse_tmdb_id(id: &str) -> ParsedId {
+        // Strip episode part if present (e.g., "tv/123/season/1/episode/5" -> "tv/123/season/1")
+        let id = id.split("/episode/").next().unwrap_or(id);
+
+        let parts: Vec<&str> = id.split('/').collect();
+
+        // Check if it's a TV show
+        if parts.first() == Some(&"tv") && parts.len() >= 2 {
+            let show_id = parts[1].to_string();
+
+            // Extract season number, default to 1 if not specified
+            let season = if parts.len() >= 4 && parts[2] == "season" {
+                parts[3].parse().unwrap_or(1)
+            } else {
+                1 // Default to season 1 for plain TV IDs
+            };
+
+            ParsedId::Tv { show_id, season }
+        } else {
+            ParsedId::Other(id.to_string())
+        }
+    }
+
+    /// Merge missing metadata from parent show into season media
+    fn merge_from_parent(season: &mut TmdbMedia, parent: &TmdbMedia) {
+        if season.genres.is_empty() {
+            season.genres = parent.genres.clone();
+        }
+        if season.production_companies.is_empty() {
+            season.production_companies = parent.production_companies.clone();
+        }
+        if season.vote_average.is_none() || season.vote_average == Some(0.0) {
+            season.vote_average = parent.vote_average;
+        }
+        if season
+            .overview
+            .as_ref()
+            .map(|s| s.is_empty())
+            .unwrap_or(true)
+        {
+            season.overview = parent.overview.clone();
+        }
+        if season.credits.is_none() {
+            season.credits = parent.credits.clone();
+        }
+        if season.status.is_none() {
+            season.status = parent.status.clone();
+        }
+        if season.poster_path.is_none() {
+            season.poster_path = parent.poster_path.clone();
+        }
+        // Always inherit total seasons count from parent
+        season.number_of_seasons = parent.number_of_seasons;
+
+        // Combine names if different
+        if let (Some(p_name), Some(s_name)) = (&parent.name, &season.name) {
+            if p_name != s_name {
+                season.name = Some(format!("{}: {}", p_name, s_name));
+            }
+        }
     }
 
     async fn get_media_raw(&self, id: &str) -> Result<TmdbMedia> {
@@ -318,6 +362,7 @@ pub fn tmdb_to_unified(media: TmdbMedia, id: &str) -> model::UnifiedMetadata {
                     title: e.name,
                     air_date: e.air_date,
                     overview: e.overview,
+                    runtime: e.runtime,
                 })
                 .collect()
         })
@@ -339,5 +384,8 @@ pub fn tmdb_to_unified(media: TmdbMedia, id: &str) -> model::UnifiedMetadata {
             .status
             .map(|s| s == "Ended" || s == "Canceled" || s == "Released")
             .unwrap_or(false),
+        total_seasons: media.number_of_seasons,
+        current_season: media.season_number,
+        runtime: media.runtime,
     }
 }

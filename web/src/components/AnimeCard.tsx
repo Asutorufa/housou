@@ -125,16 +125,22 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
                 {/* Tags */}
                 <div className="flex flex-wrap gap-1.5 items-center">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 ring-1 ring-black/5 dark:ring-white/10 uppercase">
-                        {item.type}
+                        {{
+                            'tv': 'TV',
+                            'movie': '映画',
+                            'ova': 'OVA',
+                            'ona': 'ONA',
+                            'special': '特別篇',
+                        }[item.type] || item.type}
                     </span>
-                    {metadata?.averageScore && (
+                    {!!metadata?.averageScore && metadata.averageScore > 0 && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-500/10">
                             ⭐ {metadata.averageScore}%
                         </span>
                     )}
                     {metadata?.episodes && (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500/10">
-                            {metadata.episodes}话
+                            {metadata.episodes}話
                         </span>
                     )}
                     {metadata?.genres?.slice(0, 2).map((genre: string) => (
