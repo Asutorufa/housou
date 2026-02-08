@@ -44,35 +44,15 @@ const containerVariants = {
     show: {
         x: 0,
         transition: {
-            x: { type: "spring" as const, stiffness: 150, damping: 25 },
-            staggerChildren: 0.03
+            x: { type: "tween" as const, ease: "easeInOut" as const, duration: 0.5 },
         }
     },
-    exit: (direction: number) => ({
+    pageExit: (direction: number) => ({
         x: direction > 0 ? '-100%' : '100%',
         transition: {
-            x: { type: "spring" as const, stiffness: 150, damping: 25 }
+            x: { type: "tween" as const, ease: "easeInOut" as const, duration: 0.5 },
         }
     })
-}
-
-const itemVariants = {
-    hidden: { opacity: 0, y: 20, scale: 0.95 },
-    show: {
-        opacity: 1,
-        y: 0,
-        scale: 1,
-        transition: {
-            type: "spring" as const,
-            stiffness: 300,
-            damping: 24
-        }
-    },
-    exit: {
-        opacity: 0,
-        scale: 0.95,
-        transition: { duration: 0.1 }
-    }
 }
 
 export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal }: TabbedGridProps) {
@@ -154,7 +134,7 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
                         variants={containerVariants}
                         initial="hidden"
                         animate="show"
-                        exit="exit"
+                        exit="pageExit"
                         className="px-2 pb-12"
                         style={{ gridArea: '1 / 1' }}
                     >
@@ -166,10 +146,7 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
                                             {column.map((item) => (
                                                 <motion.div
                                                     key={item.title}
-                                                    variants={itemVariants}
-                                                    initial="hidden"
-                                                    animate="show"
-                                                    exit="exit"
+                                                    layout="position"
                                                     className="p-2"
                                                 >
                                                     <AnimeCard
