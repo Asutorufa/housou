@@ -22,7 +22,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
         }
     }, [anime])
 
-    const { title, info } = displayAnime || { title: '', info: null }
+    const { title, info } = anime || displayAnime || { title: '', info: null }
 
     // Find the original item to get site links
     const originalItem = items.find(i => i.title === title)
@@ -56,8 +56,8 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <Dialog.Close asChild>
-                                        <button className="absolute top-4 right-4 p-2 rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors z-10">
-                                            <X size={20} />
+                                        <button className="absolute top-4 right-4 p-3 rounded-full bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 text-gray-800 dark:text-gray-200 backdrop-blur-sm transition-colors z-50 focus:outline-none focus:ring-2 focus:ring-white/20">
+                                            <X size={24} />
                                         </button>
                                     </Dialog.Close>
 
@@ -121,7 +121,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                             シーズン{info.currentSeason || 1} / 全{info.totalSeasons}シーズン
                                                         </div>
                                                     )}
-                                                    {info?.runtime && (
+                                                    {!!info?.runtime && info.runtime > 0 && (
                                                         <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 border border-gray-200/50 dark:border-gray-700/30 text-sm font-bold">
                                                             <Clock size={14} className="stroke-current" />
                                                             {info.runtime}分
@@ -143,26 +143,30 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                         <span className="text-gray-700 dark:text-gray-200">{info.title.native}</span>
                                                     </div>
                                                 )}
-                                                {/* Local data translations */}
-                                                {originalItem?.titleTranslate && Object.entries(originalItem.titleTranslate).map(([lang, titles]) => (
-                                                    <div key={lang} className="flex gap-3">
-                                                        <span className="text-gray-400 font-bold w-14 shrink-0 uppercase">
-                                                            {{
-                                                                'zh-Hans': '簡体字',
-                                                                'zh-Hant': '繁体字',
-                                                                'en': '英語',
-                                                                'ja': '日本語'
-                                                            }[lang] || lang}
-                                                        </span>
-                                                        <span className="text-gray-700 dark:text-gray-200">{titles.join(' / ')}</span>
-                                                    </div>
-                                                ))}
-                                                {info?.title?.romaji && (
+                                                {info?.title?.native !== info?.title?.romaji && info?.title?.romaji && (
                                                     <div className="flex gap-3">
                                                         <span className="text-gray-400 font-bold w-14 shrink-0">ローマ字</span>
                                                         <span className="text-gray-700 dark:text-gray-200">{info.title.romaji}</span>
                                                     </div>
                                                 )}
+                                                {/* Local data translations */}
+                                                {originalItem?.titleTranslate && Object.entries(originalItem.titleTranslate).map(([lang, titles]) => {
+                                                    if (!titles?.length) return null;
+                                                    return (
+                                                        <div key={lang} className="flex gap-3">
+                                                            <span className="text-gray-400 font-bold w-14 shrink-0 uppercase">
+                                                                {{
+                                                                    'zh-Hans': '簡体字',
+                                                                    'zh-Hant': '繁体字',
+                                                                    'en': '英語',
+                                                                    'ja': '日本語'
+                                                                }[lang] || lang}
+                                                            </span>
+                                                            <span className="text-gray-700 dark:text-gray-200">{titles.join(' / ')}</span>
+                                                        </div>
+                                                    );
+                                                })}
+
                                                 {info?.title?.english && (
                                                     <div className="flex gap-3">
                                                         <span className="text-gray-400 font-bold w-14 shrink-0">英語</span>
@@ -240,10 +244,17 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             {/* Studio & Cast */}
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                                                 {info?.studios?.length > 0 && (
-                                                    <div>
+                                                    <div className="sm:col-span-2">
                                                         <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">スタジオ</h4>
-                                                        <div className="text-sm text-gray-700 dark:text-gray-200 font-medium">
-                                                            {info.studios.join(', ')}
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {info.studios.map((studio: string, idx: number) => (
+                                                                <span
+                                                                    key={idx}
+                                                                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 text-purple-700 dark:text-purple-300 text-sm font-medium border border-purple-200/50 dark:border-purple-700/30"
+                                                                >
+                                                                    {studio}
+                                                                </span>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 )}

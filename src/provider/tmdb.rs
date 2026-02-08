@@ -1,5 +1,6 @@
 use super::MetadataProvider;
 use crate::model;
+use regex::Regex;
 use serde::Deserialize;
 use worker::*;
 
@@ -230,6 +231,23 @@ impl TmdbClient {
     }
 
     pub async fn search(&self, title: &str, year: Option<i32>) -> Result<String> {
+        // Try original title first
+        if let Ok(id) = self.search_single(title, year).await {
+            return Ok(id);
+        }
+
+        // Try normalized title (e.g. adding spaces around dashes)
+        let normalized = Self::normalize_title(title);
+        if normalized != title {
+            if let Ok(id) = self.search_single(&normalized, year).await {
+                return Ok(id);
+            }
+        }
+
+        Err(Error::RustError("No suitable match".into()))
+    }
+
+    async fn search_single(&self, title: &str, year: Option<i32>) -> Result<String> {
         let query = format!(
             "query={}&language=ja-JP&page=1&include_adult=false",
             encode_uri(title)
@@ -243,26 +261,75 @@ impl TmdbClient {
 
         // 1. Try to find an exact year match if year is provided
         if let Some(y) = year {
+            let mut close_match = None;
+
             for res in &body.results {
                 if res.media_type != "tv" && res.media_type != "movie" {
                     continue;
                 }
                 let date = res.first_air_date.as_ref().or(res.release_date.as_ref());
+
                 if let Some(d) = date {
-                    if d.starts_with(&y.to_string()) {
-                        return Ok(format!("{}/{}", res.media_type, res.id));
+                    // Try to parse year from YYYY-MM-DD
+                    if let Ok(res_year) = d.split('-').next().unwrap_or("").parse::<i32>() {
+                        // Exact match
+                        if res_year == y {
+                            return Ok(format!("{}/{}", res.media_type, res.id));
+                        }
+
+                        // Close match (+/- 1 year), save the first one found as fallback
+                        if (res_year - y).abs() <= 1 && close_match.is_none() {
+                            close_match = Some(format!("{}/{}", res.media_type, res.id));
+                        }
                     }
                 }
             }
+
+            // If no exact match, return close match if found
+            if let Some(m) = close_match {
+                return Ok(m);
+            }
+
+            return Err(Error::RustError(format!(
+                "No match found for {} ({})",
+                title, y
+            )));
         }
 
-        // 2. Fallback to first suitable match
+        // 2. Fallback to first suitable match (only if year is None)
         for res in body.results {
             if res.media_type == "tv" || res.media_type == "movie" {
                 return Ok(format!("{}/{}", res.media_type, res.id));
             }
         }
         Err(Error::RustError("No suitable match".into()))
+    }
+
+    fn normalize_title(title: &str) -> String {
+        // 1. Add spaces around dashes: "Text-Text" -> "Text - Text"
+        let mut normalized = title.replace("-", " - ");
+
+        // 2. Remove season suffixes (e.g., "第2期", "Season 2", "2nd Season")
+        // Use a static regex to avoid recompiling on every call (though in worker environment it might recompile per request)
+        // Patterns to match:
+        // - 第\d+期 (e.g., 第2期)
+        // - 第\d+クール (e.g., 第2クール)
+        // - Season \d+ (e.g., Season 2)
+        // - \d+(st|nd|rd|th) Season (e.g., 2nd Season)
+        // - Ⅱ, Ⅲ, Ⅳ, Ⅴ, Ⅵ, Ⅶ, Ⅷ, Ⅸ, Ⅹ (Roman numerals commonly used for seasons)
+        if let Ok(re) = Regex::new(
+            r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$",
+        ) {
+            normalized = re.replace(&normalized, "").to_string();
+        }
+
+        // 3. Remove year in parentheses: (2025)
+        if let Ok(re) = Regex::new(r"\s*\(\d{4}\)\s*$") {
+            normalized = re.replace(&normalized, "").to_string();
+        }
+
+        // 4. Clean up extra spaces
+        normalized.replace("  ", " ").trim().to_string()
     }
 }
 
@@ -313,8 +380,12 @@ pub fn tmdb_to_unified(media: TmdbMedia, id: &str) -> model::UnifiedMetadata {
 
     let title = UniversalTitle {
         romaji: None,
-        english: media.name.clone().or(media.title.clone()),
-        native: media.original_name.or(media.original_title),
+        english: None,
+        native: media
+            .name
+            .or(media.title)
+            .or(media.original_name)
+            .or(media.original_title),
     };
 
     let poster_path = media.poster_path;

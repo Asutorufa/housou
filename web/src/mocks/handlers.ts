@@ -7,6 +7,13 @@ const mockConfig = {
     netflix: { title: 'Netflix', urlTemplate: 'https://www.netflix.com/title/{{id}}' },
     amazon: { title: 'Prime Video', urlTemplate: 'https://www.amazon.co.jp/dp/{{id}}' },
     abema: { title: 'Abema', urlTemplate: 'https://abema.tv/video/title/{{id}}' },
+  },
+  attribution: {
+    tmdb: {
+      logo_square: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ed904132c3096b9736928c38cfe75196763ebd7e9f22e855d9e5.svg",
+      logo_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg",
+      logo_alt_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_long_2-9665a76b1ae401a510ec1e0ca40ddcb3b0cfe45f1d51b77a308fea0845885648.svg"
+    }
   }
 }
 

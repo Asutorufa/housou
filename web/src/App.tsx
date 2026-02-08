@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import AttributionModal from './components/AttributionModal'
 import DetailsModal from './components/DetailsModal'
+import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
 
@@ -31,6 +33,13 @@ export interface SiteMeta {
 export interface Config {
   years: number[]
   site_meta: SiteMeta
+  attribution?: {
+    tmdb: {
+      logo_square: string
+      logo_long: string
+      logo_alt_long: string
+    }
+  }
 }
 
 export default function App() {
@@ -44,12 +53,13 @@ export default function App() {
   const [selectedSite, setSelectedSite] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: any } | null>(null)
+  const [isAttributionOpen, setIsAttributionOpen] = useState(false)
 
   // Initialization
   useEffect(() => {
     async function init() {
       try {
-        const response = await fetch('/api/config')
+        const response = await fetch(`/api/config?v=${new Date().getTime()}`)
         if (!response.ok) throw new Error('Config fetch failed')
         const data: Config = await response.json()
         setConfig(data)
@@ -180,6 +190,7 @@ export default function App() {
             onOpenModal={(title: string, info: any) => setSelectedAnime({ title, info })}
           />
         )}
+        <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
       </main>
 
       <DetailsModal
@@ -188,6 +199,12 @@ export default function App() {
         anime={selectedAnime}
         items={items}
         siteMeta={config?.site_meta}
+      />
+
+      <AttributionModal
+        isOpen={isAttributionOpen}
+        onClose={() => setIsAttributionOpen(false)}
+        config={config}
       />
     </div>
   )

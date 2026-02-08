@@ -81,8 +81,13 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
         <motion.div
             ref={cardRef}
             layoutId={`card-${item.title}`}
-            whileHover={{ y: -4, transition: { duration: 0.2, ease: 'easeOut' } }}
-            className="bg-white dark:bg-gray-800 rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-shadow flex flex-col h-full ring-1 ring-black/5 dark:ring-white/5"
+            initial={{ y: 0, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }}
+            whileHover={{
+                y: -6,
+                boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
+                transition: { duration: 0.3, ease: 'easeOut' }
+            }}
+            className="bg-white dark:bg-gray-800 rounded-2xl flex flex-col h-full ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
         >
             {/* Cover Image */}
             <motion.div
@@ -113,11 +118,11 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
             {/* Content */}
             <motion.div
                 layoutId={`content-${item.title}`}
-                className="p-4 flex flex-col gap-3 flex-1"
+                className="p-3 md:p-4 flex flex-col gap-2 md:gap-3 flex-1"
             >
                 <motion.h3
                     layoutId={`title-${item.title}`}
-                    className="text-base font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight"
+                    className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight"
                 >
                     {item.title}
                 </motion.h3>

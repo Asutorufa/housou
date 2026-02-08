@@ -27,8 +27,7 @@ function useColumnCount() {
             const width = window.innerWidth
             if (width >= 1280) setColumns(4)
             else if (width >= 1024) setColumns(3)
-            else if (width >= 640) setColumns(2)
-            else setColumns(1)
+            else setColumns(2)
         }
         updateColumns()
         window.addEventListener('resize', updateColumns)
@@ -38,10 +37,56 @@ function useColumnCount() {
     return columns
 }
 
+const containerVariants = {
+    hidden: (direction: number) => ({
+        x: direction > 0 ? '100%' : '-100%',
+    }),
+    show: {
+        x: 0,
+        transition: {
+            x: { type: "spring" as const, stiffness: 150, damping: 25 },
+            staggerChildren: 0.03
+        }
+    },
+    exit: (direction: number) => ({
+        x: direction > 0 ? '-100%' : '100%',
+        transition: {
+            x: { type: "spring" as const, stiffness: 150, damping: 25 }
+        }
+    })
+}
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 20, scale: 0.95 },
+    show: {
+        opacity: 1,
+        y: 0,
+        scale: 1,
+        transition: {
+            type: "spring" as const,
+            stiffness: 300,
+            damping: 24
+        }
+    },
+    exit: {
+        opacity: 0,
+        scale: 0.95,
+        transition: { duration: 0.1 }
+    }
+}
+
 export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal }: TabbedGridProps) {
     const currentDay = new Date().getDay().toString()
     const [activeTab, setActiveTab] = useState(currentDay)
+    const [direction, setDirection] = useState(0)
     const columnCount = useColumnCount()
+
+    const handleTabChange = (newTab: string) => {
+        const prevIndex = parseInt(activeTab)
+        const nextIndex = parseInt(newTab)
+        setDirection(nextIndex > prevIndex ? 1 : -1)
+        setActiveTab(newTab)
+    }
 
     const groupedItems = useMemo(() => {
         const groups: AnimeItem[][] = Array.from({ length: 8 }, () => [])
@@ -77,49 +122,55 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
     })
 
     return (
-        <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-6">
-            <Tabs.List className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide no-scrollbar ring-offset-background">
+        <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex flex-col gap-6">
+            <Tabs.List className="flex gap-2 overflow-x-auto pb-6 scrollbar-hide no-scrollbar ring-offset-background">
                 {WEEKDAYS.map((label, index) => (
                     <Tabs.Trigger
                         key={index}
                         value={index.toString()}
                         className={cn(
-                            "px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all outline-none",
-                            "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700",
-                            "data-[state=active]:bg-blue-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-blue-500/30"
+                            "relative px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors outline-none",
+                            "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
+                            "data-[state=active]:text-white z-10"
                         )}
                     >
+                        {activeTab === index.toString() && (
+                            <motion.div
+                                layoutId="activeTab"
+                                className="absolute inset-0 bg-blue-500 rounded-full shadow-lg shadow-blue-500/30 -z-10"
+                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                            />
+                        )}
                         {label}
                     </Tabs.Trigger>
                 ))}
             </Tabs.List>
 
-            <div className="relative min-h-[400px]">
-                <AnimatePresence mode="wait">
+            <div className="relative overflow-hidden -mx-2" style={{ display: 'grid' }}>
+                <AnimatePresence mode="sync" initial={false} custom={direction}>
                     <motion.div
                         key={activeTab}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -10 }}
-                        transition={{ duration: 0.2, ease: "easeInOut" }}
-                        className="outline-none"
+                        custom={direction}
+                        variants={containerVariants}
+                        initial="hidden"
+                        animate="show"
+                        exit="exit"
+                        className="px-2 pb-12"
+                        style={{ gridArea: '1 / 1' }}
                     >
                         {dayItems.length > 0 ? (
-                            <div className="flex gap-6 items-start">
+                            <div className="flex gap-1 sm:gap-2 md:gap-4 items-start">
                                 {columns.map((column, colIdx) => (
-                                    <div key={colIdx} className="flex-1 flex flex-col gap-6">
+                                    <div key={colIdx} className="flex-1 flex flex-col gap-1 sm:gap-2 md:gap-4">
                                         <AnimatePresence mode="popLayout" initial={false}>
                                             {column.map((item) => (
                                                 <motion.div
                                                     key={item.title}
-                                                    layout
-                                                    initial={{ opacity: 0, scale: 0.9 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.9 }}
-                                                    transition={{
-                                                        opacity: { duration: 0.2 },
-                                                        layout: { type: "spring", stiffness: 300, damping: 30 }
-                                                    }}
+                                                    variants={itemVariants}
+                                                    initial="hidden"
+                                                    animate="show"
+                                                    exit="exit"
+                                                    className="p-2"
                                                 >
                                                     <AnimeCard
                                                         item={item}
@@ -134,9 +185,13 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-20 text-gray-500 dark:text-gray-400">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="text-center py-20 text-gray-500 dark:text-gray-400"
+                            >
                                 この日の放送はありません
-                            </div>
+                            </motion.div>
                         )}
                     </motion.div>
                 </AnimatePresence>

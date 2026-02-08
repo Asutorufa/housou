@@ -11,6 +11,9 @@ const DATA_URL: &str =
 #[cfg(not(feature = "dev"))]
 const CACHE_TTL_SECONDS: i32 = 86400; // 1 day cache
 
+// Cache version - bump this to invalidate all cached data
+pub const CACHE_VERSION: &str = "v2";
+
 // Embed local data for dev mode
 #[cfg(feature = "dev")]
 const LOCAL_DATA: &str = include_str!("../data.json");
@@ -19,11 +22,24 @@ const LOCAL_DATA: &str = include_str!("../data.json");
 struct ConfigResponse<'a> {
     site_meta: &'a SiteMeta,
     years: Vec<i32>,
+    attribution: Attribution,
+}
+
+#[derive(Serialize)]
+struct Attribution {
+    tmdb: TmdbAttribution,
+}
+
+#[derive(Serialize)]
+struct TmdbAttribution {
+    logo_square: String,
+    logo_long: String,
+    logo_alt_long: String,
 }
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let cache = Cache::default();
+    let cache = Cache::open(format!("housou-cache-{}", CACHE_VERSION)).await;
     let url = req.url()?;
 
     // 1. Only cache GET requests
@@ -113,12 +129,22 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             let config = ConfigResponse {
                 site_meta: &data.site_meta,
                 years,
+                attribution: Attribution {
+                    tmdb: TmdbAttribution {
+                        logo_square: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ed904132c3096b9736928c38cfe75196763ebd7e9f22e855d9e5.svg".to_string(),
+                        logo_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg".to_string(),
+                        logo_alt_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_long_2-9665a76b1ae401a510ec1e0ca40ddcb3b0cfe45f1d51b77a308fea0845885648.svg".to_string()
+                    },
+                },
             };
 
             let mut response = Response::from_json(&config)?;
             response
                 .headers_mut()
                 .set("Access-Control-Allow-Origin", "*")?;
+            response
+                .headers_mut()
+                .set("Cache-Control", "public, max-age=60")?; // Short cache for config
             Ok(response)
         }
         (Method::Get, "/api/items") => {
