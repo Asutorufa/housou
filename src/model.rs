@@ -465,6 +465,7 @@ pub struct UnifiedMetadata {
     pub total_seasons: Option<i32>,
     pub current_season: Option<i32>,
     pub runtime: Option<i32>,
+    pub content_rating: Option<String>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

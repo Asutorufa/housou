@@ -84,5 +84,38 @@ export const handlers = [
         }
       }
     })
+  }),
+
+  http.get('/api/metadata', ({ request }) => {
+    const url = new URL(request.url)
+    const title = url.searchParams.get('title')
+
+    return HttpResponse.json({
+      id: '12345',
+      title: {
+        native: title,
+        romaji: 'Frieren: Beyond Journey\'s End',
+        english: 'Frieren: Beyond Journey\'s End'
+      },
+      coverImage: {
+        extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-nBySp9Yp93Xz.jpg',
+        large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-nBySp9Yp93Xz.jpg'
+      },
+      description: 'The adventure is over but life goes on for an elf mage beginning to learn what love means to the people who are long dead.',
+      averageScore: 92,
+      episodes: 28,
+      genres: ['Adventure', 'Drama', 'Fantasy'],
+      studios: ['Madhouse'],
+      characters: [
+          { name: 'Frieren', voiceActor: 'Atsumi Tanezaki', role: 'Main' }
+      ],
+      staff: [],
+      episodesList: [],
+      isFinished: true,
+      totalSeasons: 1,
+      currentSeason: 1,
+      runtime: 24,
+      contentRating: 'TV-14'
+    })
   })
 ]

@@ -142,5 +142,6 @@ pub fn anilist_to_unified(media: serde_json::Value) -> model::UnifiedMetadata {
         total_seasons: None, // AniList doesn't have seasons concept
         current_season: None,
         runtime: None,
+        content_rating: None,
     }
 }

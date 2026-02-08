@@ -21,8 +21,10 @@ pub async fn get_metadata(
 ) -> Result<Response> {
     // 1. Try TMDb first if configured
     let tmdb = tmdb::TmdbProvider::new(env);
-    if let Ok(unified) = tmdb.fetch(tmdb_id, title, year).await {
-        return create_response(&unified);
+
+    match tmdb.fetch(tmdb_id, title, year).await {
+        Ok(unified) => return create_response(&unified),
+        Err(e) => console_log!("TMDb fetch failed {:?}", e),
     }
 
     // 2. Fallback to AniList

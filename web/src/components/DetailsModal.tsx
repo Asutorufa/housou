@@ -127,6 +127,11 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                             {info.runtime}分
                                                         </div>
                                                     )}
+                                                    {info?.contentRating && (
+                                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 border border-gray-200/50 dark:border-gray-700/30 text-sm font-bold">
+                                                            {info.contentRating}
+                                                        </div>
+                                                    )}
                                                     {info?.genres?.slice(0, 3).map((g: string) => (
                                                         <span key={g} className="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 text-sm font-medium">
                                                             {g}
