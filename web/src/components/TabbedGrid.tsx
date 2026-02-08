@@ -3,7 +3,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import type { AnimeItem, SiteMeta } from '../App'
+import type { AnimeItem, SiteMeta, UnifiedMetadata } from '../types'
 import AnimeCard from './AnimeCard'
 
 function cn(...inputs: ClassValue[]) {
@@ -16,7 +16,7 @@ interface TabbedGridProps {
     items: AnimeItem[]
     siteMeta?: SiteMeta
     selectedSite?: string
-    onOpenModal: (title: string, info: any) => void
+    onOpenModal: (title: string, info: UnifiedMetadata | null) => void
 }
 
 function useColumnCount() {

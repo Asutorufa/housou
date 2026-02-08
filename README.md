@@ -12,6 +12,12 @@ Anime broadcast schedule viewer based on [bangumi-data](https://github.com/bangu
 - ⚡ Cloudflare Workers edge deployment
 - 🗄️ Dynamic caching (7 days for airing, 30 days for finished)
 
+## Screenshots
+
+| Home Page | Details Modal |
+| :---: | :---: |
+| ![Home](docs/images/home.png) | ![Details](docs/images/details.png) |
+
 ## Deploy
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Asutorufa/housou)

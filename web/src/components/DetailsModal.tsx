@@ -2,13 +2,13 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Clock, ExternalLink, PlayCircle, Star, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { AnimeItem, SiteMeta } from '../App'
+import type { AnimeItem, SiteMeta, UnifiedMetadata, UniversalEpisode } from '../types'
 import { sortSites } from '../utils/siteUtils'
 
 interface DetailsModalProps {
     isOpen: boolean
     onClose: () => void
-    anime: { title: string; info: any } | null
+    anime: { title: string; info: UnifiedMetadata | null } | null
     items: AnimeItem[]
     siteMeta?: SiteMeta
 }
@@ -26,7 +26,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
 
     // Find the original item to get site links
     const originalItem = items.find(i => i.title === title)
-    const sites = sortSites(originalItem?.sites || [])
+    const sites = sortSites(originalItem?.sites || [], siteMeta)
 
     return (
         <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -181,31 +181,54 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             </div>
 
                                             {/* Links Section */}
-                                            {sites.length > 0 && (
-                                                <div>
-                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">配信</h4>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {sites.map((site, idx) => {
-                                                            const meta = siteMeta?.[site.site]
-                                                            const url = site.url || (meta?.urlTemplate?.replace('{{id}}', site.id || ''))
-                                                            if (!url) return null
-
-                                                            return (
-                                                                <a
-                                                                    key={`${site.site}-${idx}`}
-                                                                    href={url}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-bold border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-                                                                >
-                                                                    {meta?.title || site.site}
-                                                                    <ExternalLink size={12} />
-                                                                </a>
-                                                            )
-                                                        })}
-                                                    </div>
+                                            {originalItem?.officialSite && (
+                                                <div className="mb-4">
+                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">公式サイト</h4>
+                                                    <a
+                                                        href={originalItem.officialSite}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 text-sm font-bold border border-purple-100 dark:border-purple-800/50 hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                                                    >
+                                                        公式サイト
+                                                        <ExternalLink size={12} />
+                                                    </a>
                                                 </div>
                                             )}
+                                            {Object.entries({
+                                                onair: { label: '配信', sites: sites.filter(s => siteMeta?.[s.site]?.type === 'onair') },
+                                                info: { label: '情報', sites: sites.filter(s => siteMeta?.[s.site]?.type === 'info') },
+                                                resource: { label: 'リソース', sites: sites.filter(s => siteMeta?.[s.site]?.type === 'resource') },
+                                                other: { label: 'その他', sites: sites.filter(s => !siteMeta?.[s.site]?.type || !['onair', 'info', 'resource'].includes(siteMeta[s.site]!.type)) }
+                                            }).map(([key, group]) => {
+                                                if (group.sites.length === 0) return null;
+
+                                                return (
+                                                    <div key={key}>
+                                                        <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">{group.label}</h4>
+                                                        <div className="flex flex-wrap gap-2 mb-4">
+                                                            {group.sites.map((site, idx) => {
+                                                                const meta = siteMeta?.[site.site]
+                                                                const url = site.url || (meta?.urlTemplate?.replace('{{id}}', site.id || ''))
+                                                                if (!url) return null
+
+                                                                return (
+                                                                    <a
+                                                                        key={`${site.site}-${idx}`}
+                                                                        href={url}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-sm font-bold border border-blue-100 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                                                    >
+                                                                        {meta?.title || site.site}
+                                                                        <ExternalLink size={12} />
+                                                                    </a>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
 
                                             {/* Description */}
                                             {info?.description && (
@@ -219,11 +242,11 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             )}
 
                                             {/* Episodes List */}
-                                            {info?.episodesList?.length > 0 && (
+                                            {!!info?.episodesList && info.episodesList.length > 0 && (
                                                 <div>
                                                     <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">エピソード</h4>
                                                     <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                                                        {info.episodesList.map((ep: any) => (
+                                                        {info.episodesList.map((ep: UniversalEpisode) => (
                                                             <div key={ep.number} className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 text-sm group/ep hover:bg-white dark:hover:bg-gray-800 transition-colors">
                                                                 <div className="flex gap-3 items-center">
                                                                     <span className="font-black text-blue-600 dark:text-blue-400 w-6 shrink-0 text-center">{ep.number}</span>
@@ -248,7 +271,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
 
                                             {/* Studio & Cast */}
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                                {info?.studios?.length > 0 && (
+                                                {!!info?.studios && info.studios.length > 0 && (
                                                     <div className="sm:col-span-2">
                                                         <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">スタジオ</h4>
                                                         <div className="flex flex-wrap gap-2">
@@ -263,11 +286,11 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                         </div>
                                                     </div>
                                                 )}
-                                                {info?.characters?.length > 0 && (
+                                                {!!info?.characters && info.characters.length > 0 && (
                                                     <div className="sm:col-span-2">
                                                         <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">キャスト</h4>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                            {info.characters.slice(0, 6).map((char: any, idx: number) => (
+                                                            {info.characters.slice(0, 6).map((char, idx: number) => (
                                                                 <div key={idx} className="flex flex-col p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors group">
                                                                     <div className="font-bold text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                                                                         {char.name}
@@ -285,7 +308,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                         </div>
                                                     </div>
                                                 )}
-                                                {info?.staff?.length > 0 && (
+                                                {!!info?.staff && info.staff.length > 0 && (
                                                     <div className="sm:col-span-2">
                                                         <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">スタッフ</h4>
                                                         {(() => {

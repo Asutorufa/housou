@@ -3,20 +3,14 @@ use worker::*;
 
 mod model;
 mod provider;
-use model::{Root, SiteMeta};
+use model::{Item, SiteMeta, SiteMetadata, SiteType};
 
-#[cfg(not(feature = "dev"))]
-const DATA_URL: &str =
-    "https://raw.githubusercontent.com/bangumi-data/bangumi-data/refs/heads/master/dist/data.json";
-#[cfg(not(feature = "dev"))]
-const CACHE_TTL_SECONDS: i32 = 86400; // 1 day cache
+const BASE_DATA_URL: &str =
+    "https://raw.githubusercontent.com/bangumi-data/bangumi-data/master/data/";
+const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
 
 // Cache version - bump this to invalidate all cached data
-pub const CACHE_VERSION: &str = "v2";
-
-// Embed local data for dev mode
-#[cfg(feature = "dev")]
-const LOCAL_DATA: &str = include_str!("../data.json");
+pub const CACHE_VERSION: &str = "v3";
 
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
@@ -68,44 +62,85 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Ok(resp)
 }
 
-async fn fetch_data_cached() -> Result<Root> {
-    // In dev mode, use embedded local data
-    #[cfg(feature = "dev")]
-    {
-        let data: Root = serde_json::from_str(LOCAL_DATA)
-            .map_err(|e| Error::RustError(format!("JSON parse error: {}", e)))?;
-        return Ok(data);
+async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T> {
+    let mut init = RequestInit::new();
+    init.with_method(Method::Get);
+
+    let mut cf = CfProperties::new();
+    let mut ttl_by_status = std::collections::HashMap::new();
+    ttl_by_status.insert("200".to_string(), CACHE_TTL_SECONDS);
+    ttl_by_status.insert("404".to_string(), 3600); // Cache 404s for 1 hour
+    cf.cache_ttl_by_status = Some(ttl_by_status);
+    init.with_cf_properties(cf);
+
+    let request = Request::new_with_init(url, &init)?;
+    let mut response = Fetch::Request(request).send().await?;
+
+    if response.status_code() != 200 {
+        return Err(Error::RustError(format!(
+            "Failed to fetch {}: status {}",
+            url,
+            response.status_code()
+        )));
     }
 
-    // In production mode, fetch from GitHub with caching
-    #[cfg(not(feature = "dev"))]
-    {
-        let mut init = RequestInit::new();
-        init.with_method(Method::Get);
+    response.json().await
+}
 
-        // Set cf cache properties - only cache 200 responses
-        let mut cf = CfProperties::new();
-        let mut ttl_by_status = std::collections::HashMap::new();
-        ttl_by_status.insert("200".to_string(), CACHE_TTL_SECONDS);
-        cf.cache_ttl_by_status = Some(ttl_by_status);
-        init.with_cf_properties(cf);
+async fn fetch_site_meta() -> Result<SiteMeta> {
+    let mut sites: SiteMeta = std::collections::HashMap::new();
+    let types = [
+        ("info", SiteType::Info),
+        ("onair", SiteType::Onair),
+        ("resource", SiteType::Resource),
+    ];
 
-        let request = Request::new_with_init(DATA_URL, &init)?;
-        let mut response = Fetch::Request(request).send().await?;
-
-        if response.status_code() != 200 {
-            return Err(Error::RustError(format!(
-                "Failed to fetch data: status {}",
-                response.status_code()
-            )));
+    for (name, stype) in types {
+        let url = format!("{}sites/{}.json", BASE_DATA_URL, name);
+        let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
+        for meta in data.values_mut() {
+            meta.type_field = Some(stype.clone());
         }
-
-        let text = response.text().await?;
-        let data: Root = serde_json::from_str(&text)
-            .map_err(|e| Error::RustError(format!("JSON parse error: {}", e)))?;
-
-        Ok(data)
+        sites.extend(data);
     }
+    Ok(sites)
+}
+
+async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
+    let months = match season {
+        Some("Winter") => vec![1, 2, 3],
+        Some("Spring") => vec![4, 5, 6],
+        Some("Summer") => vec![7, 8, 9],
+        Some("Autumn") => vec![10, 11, 12],
+        _ => (1..=12).collect(),
+    };
+
+    let mut all_items = Vec::new();
+    let mut futures = Vec::new();
+
+    for &month in &months {
+        let url = format!("{}items/{}/{:02}.json", BASE_DATA_URL, year, month);
+        futures.push(async move {
+            match fetch_json::<Vec<Item>>(&url).await {
+                Ok(items) => Ok(items),
+                Err(e) => {
+                    let msg = e.to_string();
+                    if msg.contains("status 404") {
+                        console_log!("Month data not found (404), skipping: {}", url);
+                        Ok(Vec::new())
+                    } else {
+                        Err(e)
+                    }
+                }
+            }
+        });
+    }
+
+    let results = futures::future::join_all(futures).await;
+    for result in results {
+        all_items.extend(result?);
+    }
+    Ok(all_items)
 }
 
 async fn router(req: Request, env: Env) -> Result<Response> {
@@ -116,18 +151,14 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
     match (method, path.as_str()) {
         (Method::Get, "/api/config") => {
-            let data = fetch_data_cached().await?;
-            let mut years: Vec<i32> = data
-                .items
-                .iter()
-                .filter_map(|i| i.begin.get(0..4).and_then(|y| y.parse().ok()))
-                .collect();
-            years.sort_unstable();
-            years.dedup();
-            years.reverse(); // Newest first
+            let site_meta = fetch_site_meta().await?;
+
+            // Fixed range of years to avoid fetching all month files just to get the list
+            let current_year = js_sys::Date::new_0().get_full_year() as i32;
+            let years: Vec<i32> = (1943..=current_year).rev().collect();
 
             let config = ConfigResponse {
-                site_meta: &data.site_meta,
+                site_meta: &site_meta,
                 years,
                 attribution: Attribution {
                     tmdb: TmdbAttribution {
@@ -148,7 +179,6 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             Ok(response)
         }
         (Method::Get, "/api/items") => {
-            let data = fetch_data_cached().await?;
             let year_param = query.get("year").and_then(|y| y.parse::<i32>().ok());
             let season_param = query.get("season").map(|s| s.as_str());
 
@@ -157,43 +187,12 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             }
             let target_year = year_param.unwrap();
 
-            let items: Vec<_> = data
-                .items
-                .iter()
-                .filter(|i| {
-                    // Filter Year
-                    if let Ok(y) = i.begin.get(0..4).unwrap_or("").parse::<i32>() {
-                        if y != target_year {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
+            let target_season = match season_param {
+                Some("all") | None | Some("") => None,
+                Some(s) => Some(s),
+            };
 
-                    // Filter Season
-                    if let Some(target_season) = season_param {
-                        if target_season.is_empty() {
-                            return true;
-                        } // "All Seasons"
-                        if let Ok(month) = i.begin.get(5..7).unwrap_or("").parse::<u32>() {
-                            let season = match month {
-                                4..=6 => "Spring",
-                                7..=9 => "Summer",
-                                10..=12 => "Autumn",
-                                1..=3 => "Winter",
-                                _ => "Unknown",
-                            };
-                            if season != target_season {
-                                return false;
-                            }
-                        } else {
-                            return false;
-                        }
-                    }
-
-                    true
-                })
-                .collect();
+            let items = fetch_items_for_season(target_year, target_season).await?;
 
             let mut response = Response::from_json(&items)?;
             response

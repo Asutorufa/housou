@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from 'lucide-react'
-import type { Config } from '../App'
+import type { Config } from '../types'
 
 interface AttributionModalProps {
     isOpen: boolean

@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import type { AnimeItem, SiteMeta } from '../App'
+import type { AnimeItem, SiteMeta, UnifiedMetadata } from '../types'
 import { sortSites } from '../utils/siteUtils'
 
 function cn(...inputs: ClassValue[]) {
@@ -13,11 +13,11 @@ interface AnimeCardProps {
     item: AnimeItem
     siteMeta?: SiteMeta
     selectedSite?: string
-    onOpenModal: (title: string, info: any) => void
+    onOpenModal: (title: string, info: UnifiedMetadata | null) => void
 }
 
 export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }: AnimeCardProps) {
-    const [metadata, setMetadata] = useState<any>(null)
+    const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null)
     const [loading, setLoading] = useState(false)
     const cardRef = useRef<HTMLDivElement>(null)
     const loadedRef = useRef(false)
@@ -72,8 +72,11 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
             sites = sites.filter(s => s.site === selectedSite)
         }
 
-        return sortSites(sites)
-    }, [item.sites, selectedSite])
+        // Only show 'onair' sites on cards
+        sites = sites.filter(s => siteMeta?.[s.site]?.type === 'onair')
+
+        return sortSites(sites, siteMeta)
+    }, [item.sites, selectedSite, siteMeta])
 
     const coverUrl = metadata?.coverImage?.extraLarge || metadata?.coverImage?.large
 

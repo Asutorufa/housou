@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, Search, X } from 'lucide-react'
 import { useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import type { Config } from '../App'
+import type { Config } from '../types'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -78,7 +78,7 @@ export default function Header({
                                     { value: 'all', label: '全て' },
                                     ...Object.entries(config?.site_meta || {}).map(([key, meta]) => ({
                                         value: key,
-                                        label: meta.title
+                                        label: meta?.title || key
                                     }))
                                 ]}
                                 placeholder="サイト"

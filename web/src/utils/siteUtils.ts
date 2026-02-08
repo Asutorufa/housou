@@ -1,23 +1,31 @@
-export const INTERNATIONAL_SITES = ['netflix', 'amazon', 'primevideo','prime', 'disney', 'hulu', 'crunchyroll', 'funimation', 'apple', 'google', 'itunes'];
-export const JAPANESE_SITES = ['abema', 'unext', 'dazn', 'nicovideo', 'danime', 'bandaichannel', 'dmm', 'fod', 'paravi', 'telasa', 'wowow', 'videomarket', 'musicjp'];
-export const CHINESE_SITES = ['bilibili', 'bilibili_hk_mo_tw', 'bilibili_hk_mo', 'bilibili_tw', 'iqiyi', 'qq', 'youku', 'letv', 'pptv', 'mgtv', 'acfun', 'sohu', 'tudou'];
+import type { SiteMeta } from "../types";
 
-export function getSiteRank(site: string): number {
-    const s = site.toLowerCase();
-    if (JAPANESE_SITES.some(p => s.includes(p))) return 1;
-    if (INTERNATIONAL_SITES.some(p => s.includes(p))) return 2;
-    if (CHINESE_SITES.some(p => s.includes(p))) return 4;
-    return 3; // Default for others
+
+export function getRegionRank(site: { site: string, regions?: string[] }, siteMeta?: SiteMeta): number {
+    const regions = site.regions || siteMeta?.[site.site]?.regions || [];
+    
+    if (regions.includes('JP')) return 1;
+    if (regions.length === 0) return 2;
+    if (regions.some(r => ['CN', 'TW', 'HK', 'MO'].includes(r))) return 3;
+    
+    return 2; // Default to middle for other regions
 }
 
-export function sortSites<T extends { site: string }>(sites: T[]): T[] {
+export function sortSites<T extends { site: string, regions?: string[] }>(sites: T[], siteMeta?: SiteMeta): T[] {
     return [...sites].sort((a, b) => {
-        const rankA = getSiteRank(a.site);
-        const rankB = getSiteRank(b.site);
+        // 1. Sort by region rank
+        const regionRankA = getRegionRank(a, siteMeta);
+        const regionRankB = getRegionRank(b, siteMeta);
+        if (regionRankA !== regionRankB) return regionRankA - regionRankB;
+
+        // 2. Special case: bangumi always last within its group
+        if (a.site === 'bangumi' && b.site !== 'bangumi') return 1;
+        if (a.site !== 'bangumi' && b.site === 'bangumi') return -1;
+
+        // 3. Sort by display title (if available) or site key
+        const titleA = siteMeta?.[a.site]?.title || a.site;
+        const titleB = siteMeta?.[b.site]?.title || b.site;
         
-        if (rankA !== rankB) return rankA - rankB;
-        
-        // Secondary sort by site name if ranks are equal
-        return a.site.localeCompare(b.site);
+        return titleA.localeCompare(titleB);
     });
 }

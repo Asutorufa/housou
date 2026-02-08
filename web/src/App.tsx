@@ -4,43 +4,7 @@ import DetailsModal from './components/DetailsModal'
 import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
-
-export interface Site {
-  site: string
-  id?: string
-  url?: string
-}
-
-export interface TitleTranslate {
-  [key: string]: string[]
-}
-
-export interface AnimeItem {
-  title: string
-  type: string
-  begin?: string
-  sites?: Site[]
-  titleTranslate?: TitleTranslate
-}
-
-export interface SiteMeta {
-  [key: string]: {
-    title: string
-    urlTemplate?: string
-  }
-}
-
-export interface Config {
-  years: number[]
-  site_meta: SiteMeta
-  attribution?: {
-    tmdb: {
-      logo_square: string
-      logo_long: string
-      logo_alt_long: string
-    }
-  }
-}
+import type { AnimeItem, Config, UnifiedMetadata } from './types'
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
@@ -52,7 +16,7 @@ export default function App() {
   const [selectedSeason, setSelectedSeason] = useState<string>('all')
   const [selectedSite, setSelectedSite] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: any } | null>(null)
+  const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
 
   // Initialization
@@ -142,7 +106,7 @@ export default function App() {
         if (item.title.toLowerCase().includes(query)) return true
         if (item.titleTranslate) {
           return Object.values(item.titleTranslate).some(ts =>
-            ts.some(t => t.toLowerCase().includes(query))
+            ts?.some(t => t.toLowerCase().includes(query))
           )
         }
         return false
@@ -187,7 +151,7 @@ export default function App() {
             items={filteredItems}
             siteMeta={config?.site_meta}
             selectedSite={selectedSite}
-            onOpenModal={(title: string, info: any) => setSelectedAnime({ title, info })}
+            onOpenModal={(title: string, info: UnifiedMetadata | null) => setSelectedAnime({ title, info })}
           />
         )}
         <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
