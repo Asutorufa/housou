@@ -1,16 +1,19 @@
 # Housou (放送)
 
-Anime broadcast schedule viewer based on [bangumi-data](https://github.com/bangumi-data/bangumi-data).
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Asutorufa/housou)
+
+**Housou (放送)** is a high-performance, modern web application for tracking anime broadcast schedules. Built with a **Rust-based backend** deployed on **Cloudflare Workers** and a fluid **React frontend**, it provides a seamless experience for discovering what's airing now and where to watch it.
+
+Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bangumi-data), Housou automatically enriches schedules with high-quality metadata from **TMDb** and **AniList**, ensuring you always have access to the latest cast, staff, and episode details.
 
 ## Features
 
-- 📅 Weekly schedule view with day-of-week tabs
-- 🔍 Filter by year, season, and streaming site
-- � Details modal with cast, staff, episodes, streaming links
-- 📊 Metadata from TMDb and AniList (auto-selected)
-- �🌙 Automatic dark mode
-- ⚡ Cloudflare Workers edge deployment
-- 🗄️ Dynamic caching (7 days for airing, 30 days for finished)
+- 📅 **Weekly Schedule**: Fluid day-of-week navigation with grid view.
+- 🔍 **Smart Filtering**: Filter by year, season, and streaming platform.
+- 🎭 **Rich Metadata**: Automatically fetches cast, staff, and episodes from TMDb or AniList.
+- ⚡ **Edge-Optimized**: Serverless architecture using Cloudflare Workers and Rust (Wasm).
+- 🗄️ **Intelligent Caching**: Adaptive caching logic (7 days for ongoing, 30 days for finished titles).
+- 🌙 **Modern Design**: Responsive UI with automatic dark mode and smooth animations.
 
 ## Screenshots
 
@@ -18,19 +21,15 @@ Anime broadcast schedule viewer based on [bangumi-data](https://github.com/bangu
 | :---: | :---: |
 | ![Home](docs/images/home.png) | ![Details](docs/images/details.png) |
 
-## Deploy
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Asutorufa/housou)
-
 ## Environment Variables
 
 Create `.dev.vars` for local development:
 
-```
+```bash
 TMDB_TOKEN=your_tmdb_api_token
 ```
 
-For production, set the secret via:
+For production, set the secret via Wrangler:
 
 ```bash
 npx wrangler secret put TMDB_TOKEN
@@ -49,38 +48,52 @@ npx wrangler dev
 ## Manual Deploy
 
 ```bash
+# Build the frontend
 cd web && npm run build && cd ..
+
+# Deploy to Cloudflare
 npx wrangler deploy
 ```
 
 ## Project Structure
 
-```
+```text
 ├── src/
-│   ├── lib.rs           # Worker entry + API routes
-│   ├── model.rs         # Data models
-│   ├── provider.rs      # Provider router
+│   ├── lib.rs           # Worker entry + Router
+│   ├── model.rs         # Shared data models
+│   ├── provider.rs      # Metadata provider orchestration
 │   └── provider/
-│       ├── tmdb.rs      # TMDb metadata provider
-│       └── anilist.rs   # AniList metadata provider
+│       ├── tmdb.rs      # TMDb (Movie Database) integration
+│       └── anilist.rs   # AniList GraphQL integration
 ├── web/
 │   ├── src/
-│   │   ├── App.tsx              # Main app
+│   │   ├── App.tsx              # Main entry point
 │   │   └── components/
-│   │       ├── AnimeCard.tsx    # Anime card with poster
-│   │       ├── DetailsModal.tsx # Details popup
-│   │       ├── Header.tsx       # Header with filters
-│   │       └── TabbedGrid.tsx   # Day-of-week tabs + grid
-│   └── public/
-│       └── favicon.svg          # Rainbow broadcast icon
-├── wrangler.toml        # Cloudflare config
-└── Cargo.toml           # Rust dependencies
+│   │       ├── AnimeCard.tsx    # Card component with layout animations
+│   │       ├── DetailsModal.tsx # Comprehensive info popup
+│   │       ├── Header.tsx       # Navigation and filters
+│   │       ├── TabbedGrid.tsx   # Schedule tabs and layout
+│   │       ├── Footer.tsx       # Site-wide footer
+│   │       └── AttributionModal.tsx # Data source attribution
+├── wrangler.toml        # Cloudflare Workers configuration
+└── Cargo.toml           # Rust/Wasm dependencies
 ```
 
-## API
+## API Endpoints
 
-- `GET /api/items` - Get anime list from bangumi-data
-- `GET /api/metadata?id=xxx&title=xxx&year=2025` - Get metadata (auto-selects TMDb or AniList)
+### `GET /api/config`
+Retrieve site metadata (streaming platforms), available years, and attribution info.
+
+### `GET /api/items`
+Fetch anime list for a specific season.
+- `year` (required): The year (e.g., `2025`).
+- `season` (optional): `Winter`, `Spring`, `Summer`, `Autumn`.
+
+### `GET /api/metadata`
+Fetch detailed metadata for a specific title.
+- `tmdb_id` (optional): TMDb ID for direct lookup.
+- `title` (optional): Anime title for search fallback.
+- `begin` (optional): Start date (ISO format) to refine search.
 
 ## License
 
