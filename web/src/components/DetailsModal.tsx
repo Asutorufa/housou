@@ -105,16 +105,22 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                 </Dialog.Title>
                                                 <div className="flex flex-wrap gap-2">
                                                     {!!info?.averageScore && info.averageScore > 0 && (
-                                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200/50 dark:border-yellow-700/30 text-sm font-bold">
+                                                        <motion.div
+                                                            layoutId={`score-${title}`}
+                                                            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200/50 dark:border-yellow-700/30 text-sm font-bold"
+                                                        >
                                                             <Star size={14} className="fill-current" />
                                                             {info.averageScore}%
-                                                        </div>
+                                                        </motion.div>
                                                     )}
                                                     {info?.episodes && (
-                                                        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200/50 dark:border-purple-700/30 text-sm font-bold">
+                                                        <motion.div
+                                                            layoutId={`episodes-${title}`}
+                                                            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200/50 dark:border-purple-700/30 text-sm font-bold"
+                                                        >
                                                             <PlayCircle size={14} />
                                                             {info.episodes}話
-                                                        </div>
+                                                        </motion.div>
                                                     )}
                                                     {info?.totalSeasons && (
                                                         <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm font-bold">
@@ -132,10 +138,14 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                             {info.contentRating}
                                                         </div>
                                                     )}
-                                                    {info?.genres?.slice(0, 3).map((g: string) => (
-                                                        <span key={g} className="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 text-sm font-medium">
+                                                    {info?.genres?.map((g: string) => (
+                                                        <motion.span
+                                                            key={g}
+                                                            layoutId={`genre-${title}-${g}`}
+                                                            className="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 text-sm font-medium"
+                                                        >
                                                             {g}
-                                                        </span>
+                                                        </motion.span>
                                                     ))}
                                                 </div>
                                             </div>
@@ -213,8 +223,9 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                                 if (!url) return null
 
                                                                 return (
-                                                                    <a
+                                                                    <motion.a
                                                                         key={`${site.site}-${idx}`}
+                                                                        layoutId={`site-${title}-${site.site}`}
                                                                         href={url}
                                                                         target="_blank"
                                                                         rel="noopener noreferrer"
@@ -222,7 +233,7 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                                     >
                                                                         {meta?.title || site.site}
                                                                         <ExternalLink size={12} />
-                                                                    </a>
+                                                                    </motion.a>
                                                                 )
                                                             })}
                                                         </div>
@@ -243,29 +254,68 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
 
                                             {/* Episodes List */}
                                             {!!info?.episodesList && info.episodesList.length > 0 && (
-                                                <div>
-                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">エピソード</h4>
-                                                    <div className="grid grid-cols-1 gap-2 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                                                <div className="space-y-4">
+                                                    <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">
+                                                        エピソード
+                                                    </h4>
+                                                    <motion.div
+                                                        className="grid grid-cols-1 gap-1 max-h-[28rem] overflow-y-auto pr-2 custom-scrollbar pb-4"
+                                                        variants={{
+                                                            hidden: { opacity: 0 },
+                                                            show: {
+                                                                opacity: 1,
+                                                                transition: {
+                                                                    staggerChildren: 0.05
+                                                                }
+                                                            }
+                                                        }}
+                                                        initial="hidden"
+                                                        animate="show"
+                                                    >
                                                         {info.episodesList.map((ep: UniversalEpisode) => (
-                                                            <div key={ep.number} className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 text-sm group/ep hover:bg-white dark:hover:bg-gray-800 transition-colors">
-                                                                <div className="flex gap-3 items-center">
-                                                                    <span className="font-black text-blue-600 dark:text-blue-400 w-6 shrink-0 text-center">{ep.number}</span>
-                                                                    <span className="text-gray-700 dark:text-gray-200 font-medium truncate group-hover/ep:text-blue-600 dark:group-hover/ep:text-blue-400 transition-colors">{ep.title || `Episode ${ep.number}`}</span>
-                                                                    <div className="ml-auto flex items-center gap-2 shrink-0">
-                                                                        {ep.runtime && (
-                                                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold self-center bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{ep.runtime}分</span>
-                                                                        )}
-                                                                        {ep.airDate && (
-                                                                            <span className="text-[10px] text-gray-400 dark:text-gray-500 self-center">{ep.airDate}</span>
-                                                                        )}
-                                                                    </div>
+                                                            <motion.div
+                                                                key={ep.number}
+                                                                variants={{
+                                                                    hidden: { opacity: 0, y: 10 },
+                                                                    show: { opacity: 1, y: 0 }
+                                                                }}
+                                                                className="group/ep relative flex items-start gap-4 p-4 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-all duration-200 border border-transparent hover:border-gray-100 dark:hover:border-gray-700/50"
+                                                            >
+                                                                <div className="shrink-0 flex flex-col items-center justify-center w-12 pt-1">
+                                                                    <span className="text-2xl font-black text-gray-200 dark:text-gray-700 group-hover/ep:text-blue-500/20 dark:group-hover/ep:text-blue-400/20 transition-colors">
+                                                                        {String(ep.number).padStart(2, '0')}
+                                                                    </span>
                                                                 </div>
-                                                                {ep.overview && (
-                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 pl-9 line-clamp-2 group-hover/ep:line-clamp-none transition-all">{ep.overview}</p>
-                                                                )}
-                                                            </div>
+
+                                                                <div className="flex-1 min-w-0 space-y-1">
+                                                                    <div className="flex items-baseline justify-between gap-4">
+                                                                        <h5 className="font-bold text-gray-900 dark:text-gray-100 group-hover/ep:text-blue-600 dark:group-hover/ep:text-blue-400 transition-colors">
+                                                                            {ep.title || `Episode ${ep.number}`}
+                                                                        </h5>
+                                                                        <div className="flex items-center gap-3 text-xs shrink-0 self-center">
+                                                                            {ep.runtime && (
+                                                                                <span className="font-medium text-gray-400 dark:text-gray-500 flex items-center gap-1">
+                                                                                    <Clock size={12} strokeWidth={2.5} />
+                                                                                    {ep.runtime}m
+                                                                                </span>
+                                                                            )}
+                                                                            {ep.airDate && (
+                                                                                <span className="font-medium text-gray-400 dark:text-gray-500">
+                                                                                    {ep.airDate}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {ep.overview && (
+                                                                        <p className="text-sm text-gray-500 dark:text-gray-400 group-hover/ep:text-gray-600 dark:group-hover/ep:text-gray-300 transition-colors leading-relaxed">
+                                                                            {ep.overview}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </motion.div>
                                                         ))}
-                                                    </div>
+                                                    </motion.div>
                                                 </div>
                                             )}
 
@@ -291,19 +341,23 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                         <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">キャスト</h4>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                                                             {info.characters.slice(0, 6).map((char, idx: number) => (
-                                                                <div key={idx} className="flex flex-col p-3 rounded-2xl bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-900/50 transition-colors group">
-                                                                    <div className="font-bold text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                                                                <motion.div
+                                                                    whileHover={{ scale: 1.02 }}
+                                                                    key={idx}
+                                                                    className="flex flex-col p-4 rounded-2xl bg-gray-50/50 dark:bg-gray-900/20 border border-transparent hover:border-gray-200 dark:hover:border-gray-700/50 hover:shadow-lg hover:bg-white dark:hover:bg-gray-800 transition-all duration-300 group"
+                                                                >
+                                                                    <div className="font-bold text-gray-800 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors text-sm">
                                                                         {char.name}
                                                                     </div>
                                                                     {char.voiceActor && (
-                                                                        <div className="flex items-center gap-1.5 mt-1">
-                                                                            <span className="text-[9px] font-black px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase tracking-tighter">CV</span>
-                                                                            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                                        <div className="flex items-center gap-2 mt-2">
+                                                                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-gray-200/50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 uppercase tracking-wider">CV</span>
+                                                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">
                                                                                 {char.voiceActor}
                                                                             </span>
                                                                         </div>
                                                                     )}
-                                                                </div>
+                                                                </motion.div>
                                                             ))}
                                                         </div>
                                                     </div>
@@ -334,14 +388,18 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                                                 return acc;
                                                             }, {});
                                                             return Object.entries(grouped).map(([dept, members]: [string, any]) => (
-                                                                <div key={dept} className="mb-3">
-                                                                    <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">{dept}</div>
+                                                                <div key={dept} className="mb-4 last:mb-0">
+                                                                    <div className="text-[10px] font-black text-gray-400 dark:text-gray-600 uppercase tracking-wider mb-2 pl-1">{dept}</div>
                                                                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                                                         {members.map((member: any, idx: number) => (
-                                                                            <div key={idx} className="flex flex-col p-2 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 text-sm">
-                                                                                <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-tight truncate">{member.role}</span>
-                                                                                <span className="text-gray-700 dark:text-gray-200 font-medium truncate mt-0.5">{member.name}</span>
-                                                                            </div>
+                                                                            <motion.div
+                                                                                whileHover={{ y: -2 }}
+                                                                                key={idx}
+                                                                                className="flex flex-col p-2.5 rounded-xl bg-gray-50/50 dark:bg-gray-900/20 border border-transparent hover:border-gray-200 dark:hover:border-gray-700/50 hover:bg-white dark:hover:bg-gray-800 transition-all duration-200"
+                                                                            >
+                                                                                <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-tight opacity-80">{member.role}</span>
+                                                                                <span className="text-gray-700 dark:text-gray-200 font-medium text-xs mt-1">{member.name}</span>
+                                                                            </motion.div>
                                                                         ))}
                                                                     </div>
                                                                 </div>

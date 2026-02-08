@@ -6,6 +6,7 @@ export interface Site {
     broadcast?: string
     comment?: string
     regions?: string[]
+    type?: string
 }
 
 export interface TitleTranslate {

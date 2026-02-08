@@ -19,6 +19,25 @@ export default function App() {
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
 
+  // Tabs state (Lifted from TabbedGrid)
+  const [activeTab, setActiveTab] = useState(new Date().getDay().toString())
+  const [direction, setDirection] = useState(0)
+
+  const handleTabChange = (newTab: string) => {
+    const prevIndex = parseInt(activeTab)
+    const nextIndex = parseInt(newTab)
+    const total = 8 // WEEKDAYS.length
+
+    // Calculate shortest direction with wrap-around
+    let diff = nextIndex - prevIndex
+    if (Math.abs(diff) > total / 2) {
+      diff = diff > 0 ? diff - total : diff + total
+    }
+
+    setDirection(diff > 0 ? 1 : -1)
+    setActiveTab(newTab)
+  }
+
   // Initialization
   useEffect(() => {
     async function init() {
@@ -139,6 +158,8 @@ export default function App() {
         setSelectedSite={setSelectedSite}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
       />
 
       <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
@@ -152,6 +173,9 @@ export default function App() {
             siteMeta={config?.site_meta}
             selectedSite={selectedSite}
             onOpenModal={(title: string, info: UnifiedMetadata | null) => setSelectedAnime({ title, info })}
+            activeTab={activeTab}
+            direction={direction}
+            onTabChange={handleTabChange}
           />
         )}
         <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />

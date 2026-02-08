@@ -7,6 +7,7 @@ const mockConfig = {
     netflix: { title: 'Netflix', urlTemplate: 'https://www.netflix.com/title/{{id}}' },
     amazon: { title: 'Prime Video', urlTemplate: 'https://www.amazon.co.jp/dp/{{id}}' },
     abema: { title: 'Abema', urlTemplate: 'https://abema.tv/video/title/{{id}}' },
+    crunchyroll: { title: 'Crunchyroll', urlTemplate: 'https://www.crunchyroll.com/series/{{id}}' },
   },
   attribution: {
     tmdb: {
@@ -18,25 +19,144 @@ const mockConfig = {
 }
 
 const mockItems = [
+  // Sunday (0)
+  {
+    title: 'One Piece',
+    begin: '2023-10-01T09:30:00Z', // Sunday
+    sites: [
+      { site: 'crunchyroll', id: 'op', type: 'onair' },
+      { site: 'netflix', id: 'op-n', type: 'onair' }
+    ],
+    titleTranslate: { 'en': ['One Piece'] }
+  },
+  {
+    title: 'Shangri-La Frontier',
+    begin: '2023-10-01T17:00:00Z', // Sunday
+    sites: [
+        { site: 'crunchyroll', id: 'slf', type: 'onair' },
+        { site: 'bilibili', id: 'slf-b', type: 'onair' }
+    ],
+    titleTranslate: { 'en': ['Shangri-La Frontier'] }
+  },
+  
+  // Monday (1)
+  {
+    title: 'Ron Kamonohashi\'s Forbidden Deductions',
+    begin: '2023-10-02T23:00:00Z', // Monday
+    sites: [
+        { site: 'crunchyroll', id: 'ron', type: 'onair' },
+        { site: 'netflix', id: 'ron-n', type: 'onair' }
+    ]
+  },
+  
+  // Tuesday (2)
+  {
+    title: 'Paradox Live THE ANIMATION',
+    begin: '2023-10-03T23:00:00Z', // Tuesday
+    sites: [
+        { site: 'abema', id: 'para', type: 'onair' }
+    ]
+  },
+
+  // Wednesday (3)
+  {
+    title: 'Kage no Jitsuryokusha ni Naritakute! 2nd Season',
+    begin: '2023-10-04T22:30:00Z', // Wednesday
+    sites: [
+        { site: 'hidive', id: 'shadow', type: 'onair' },
+        { site: 'bilibili', id: 'shadow-b', type: 'onair' }
+    ]
+  },
+
+  // Thursday (4)
+  {
+    title: 'Dr. STONE NEW WORLD Part 2',
+    begin: '2023-10-12T22:30:00Z', // Thursday
+    sites: [
+        { site: 'crunchyroll', id: 'stone', type: 'onair' },
+        { site: 'netflix', id: 'stone-n', type: 'onair' }
+    ]
+  },
+  
+  // Friday (5)
   {
     title: '葬送のフリーレン',
-    begin: '2023-09-29T12:00:00Z',
+    begin: '2023-09-29T23:00:00Z', // Friday
     sites: [
-      { site: 'bilibili', id: '123' },
-      { site: 'netflix', id: '456' }
+      { site: 'bilibili', id: '123', type: "onair" },
+      { site: 'netflix', id: '456', type: "onair" },
+      { site: 'amazon', id: '789', type: "onair" },
+      { site: 'abema', id: '101', type: "onair" },
+      { site: 'crunchyroll', id: 'CR1', type: "onair" }
     ],
     titleTranslate: {
       'zh-Hans': ['葬送的芙莉莲']
     }
   },
   {
-    title: '薬屋のひとりごと',
-    begin: '2023-10-21T16:00:00Z',
+    title: 'Undead Unluck',
+    begin: '2023-10-06T01:28:00Z', // Friday
     sites: [
-      { site: 'netflix', id: '789' }
+        { site: 'hulu', id: 'uu', type: 'onair' }
+    ]
+  },
+  {
+    title: 'Goblin Slayer II',
+    begin: '2023-10-06T22:00:00Z', // Friday
+    sites: [
+        { site: 'crunchyroll', id: 'gs', type: 'onair' },
+        { site: 'amazon', id: 'gs-a', type: 'onair' }
+    ]
+  },
+
+  // Saturday (6)
+  {
+    title: '薬屋のひとりごと',
+    begin: '2023-10-21T01:05:00Z', // Saturday
+    sites: [
+      { site: 'netflix', id: '789', type: "tv" },
+      { site: 'bilibili', id: '2233', type: "onair" },
+      { site: 'amazon', id: '999', type: "onair" }
     ],
     titleTranslate: {
       'zh-Hans': ['药屋少女的呢喃']
+    }
+  },
+  {
+    title: 'SPY x FAMILY Season 2',
+    begin: '2023-10-07T23:00:00Z', // Saturday
+    sites: [
+        { site: 'crunchyroll', id: 'spy', type: 'onair' },
+        { site: 'netflix', id: 'spy-n', type: 'onair' },
+        { site: 'bilibili', id: 'spy-b', type: 'onair' }
+    ]
+  },
+  {
+    title: 'Ragna Crimson',
+    begin: '2023-09-30T01:00:00Z', // Saturday
+    sites: [
+        { site: 'hidive', id: 'ragna', type: 'onair' }
+    ]
+  },
+  {
+    title: 'Kikansha no Mahou wa Tokubetsu desu',
+    begin: '2023-10-07T00:00:00Z', // Saturday
+    sites: [
+        { site: 'crunchyroll', id: 'magic', type: 'onair' }
+    ]
+  },
+
+  // Others/Old
+  {
+    title: '呪術廻戦 懐玉・玉折',
+    begin: '2023-07-06T23:56:00Z', // Thursday
+    sites: [
+      { site: 'bilibili', id: 'jjk', type: "onair" },
+      { site: 'netflix', id: 'jjk-n', type: "onair" },
+      { site: 'abema', id: 'jjk-a', type: "onair" }
+    ],
+    titleTranslate: {
+        'zh-Hans': ['咒术回战 第二季']
     }
   }
 ]
@@ -63,8 +183,8 @@ export const handlers = [
             english: 'Frieren: Beyond Journey\'s End'
           },
           coverImage: {
-            extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-nBySp9Yp93Xz.jpg',
-            large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-nBySp9Yp93Xz.jpg'
+            extraLarge: 'https://image.tmdb.org/t/p/original/dhzbCznEzU67RXWYb53fyPe9Keb.jpg',
+            large: 'https://image.tmdb.org/t/p/original/dhzbCznEzU67RXWYb53fyPe9Keb.jpg'
           },
           description: 'The adventure is over but life goes on for an elf mage beginning to learn what love means to the people who are long dead.',
           averageScore: 92,
@@ -98,8 +218,8 @@ export const handlers = [
         english: 'Frieren: Beyond Journey\'s End'
       },
       coverImage: {
-        extraLarge: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-nBySp9Yp93Xz.jpg',
-        large: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx154587-nBySp9Yp93Xz.jpg'
+        extraLarge: 'https://image.tmdb.org/t/p/original/dhzbCznEzU67RXWYb53fyPe9Keb.jpg',
+        large: 'https://image.tmdb.org/t/p/original/dhzbCznEzU67RXWYb53fyPe9Keb.jpg'
       },
       description: 'The adventure is over but life goes on for an elf mage beginning to learn what love means to the people who are long dead.',
       averageScore: 92,
@@ -107,10 +227,26 @@ export const handlers = [
       genres: ['Adventure', 'Drama', 'Fantasy'],
       studios: ['Madhouse'],
       characters: [
-          { name: 'Frieren', voiceActor: 'Atsumi Tanezaki', role: 'Main' }
+          { name: 'Frieren', voiceActor: 'Atsumi Tanezaki', role: 'Main' },
+          { name: 'Fern', voiceActor: 'Kana Ichinose', role: 'Main' },
+          { name: 'Stark', voiceActor: 'Chiaki Kobayashi', role: 'Main' },
+          { name: 'Himmel', voiceActor: 'Nobuhiko Okamoto', role: 'Supporting' },
+          { name: 'Heiter', voiceActor: 'Hiroki Touchi', role: 'Supporting' },
+          { name: 'Eisen', voiceActor: 'Yoji Ueda', role: 'Supporting' }
       ],
-      staff: [],
-      episodesList: [],
+      staff: [
+          { name: 'Keiichirou Saitou', role: 'Director', department: 'Directing' },
+          { name: 'Tomohiro Suzuki', role: 'Series Composition', department: 'Writing' },
+          { name: 'Evan Call', role: 'Music', department: 'Sound' },
+          { name: 'Reiko Nagasawa', role: 'Character Design', department: 'Art' }
+      ],
+      episodesList: Array.from({ length: 24 }, (_, i) => ({
+          number: i + 1,
+          title: `Episode ${i + 1}: The Journey Begins`,
+          airDate: '2023-09-29',
+          runtime: 24,
+          overview: 'After defeating the Demon King, the hero party returns to the capital essentially disbanding. Frieren, an elf mage, begins a new journey to learn about humans.'
+      })),
       isFinished: true,
       totalSeasons: 1,
       currentSeason: 1,

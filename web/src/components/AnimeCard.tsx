@@ -2,8 +2,7 @@ import { clsx, type ClassValue } from 'clsx'
 import { motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import type { AnimeItem, SiteMeta, UnifiedMetadata } from '../types'
-import { sortSites } from '../utils/siteUtils'
+import type { AnimeItem, Site, SiteMeta, UnifiedMetadata } from '../types'
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -16,11 +15,18 @@ interface AnimeCardProps {
     onOpenModal: (title: string, info: UnifiedMetadata | null) => void
 }
 
+import { sortSites } from '../utils/siteUtils'
+
+// ... existing imports ...
+
 export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }: AnimeCardProps) {
+    // ... existing state ...
     const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null)
     const [loading, setLoading] = useState(false)
     const cardRef = useRef<HTMLDivElement>(null)
     const loadedRef = useRef(false)
+
+    // ... existing useEffect ... (keep it same)
 
     useEffect(() => {
         const observer = new IntersectionObserver(
@@ -42,6 +48,7 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
     }, [item.title])
 
     async function fetchMetadata() {
+        // ... (keep same)
         setLoading(true)
         try {
             const tmdbSite = item.sites?.find(s => s.site === 'tmdb')
@@ -73,7 +80,10 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
         }
 
         // Only show 'onair' sites on cards
-        sites = sites.filter(s => siteMeta?.[s.site]?.type === 'onair')
+        sites = sites.filter(s => {
+            const type = s.type || siteMeta?.[s.site]?.type
+            return type === 'onair'
+        })
 
         return sortSites(sites, siteMeta)
     }, [item.sites, selectedSite, siteMeta])
@@ -84,19 +94,20 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
         <motion.div
             ref={cardRef}
             layoutId={`card-${item.title}`}
-            initial={{ y: 0, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px" }}
             whileHover={{
-                y: -6,
-                boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
-                transition: { duration: 0.3, ease: 'easeOut' }
+                y: -5,
+                transition: { duration: 0.2, ease: 'easeOut' }
             }}
-            className="bg-white dark:bg-gray-800 rounded-2xl flex flex-col h-full ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
+            className="group relative flex flex-col h-full rounded-xl overflow-hidden cursor-pointer bg-transparent"
         >
-            {/* Cover Image */}
+            {/* Image Container */}
             <motion.div
                 layoutId={`image-${item.title}`}
                 className={cn(
-                    "aspect-[3/4] relative overflow-hidden bg-gray-200 dark:bg-gray-700 cursor-pointer group",
+                    "aspect-[3/4] relative overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-xl shadow-sm transition-shadow duration-300 group-hover:shadow-lg dark:shadow-black/40 mb-3",
                     !coverUrl && loading && "animate-pulse"
                 )}
                 onClick={() => onOpenModal(item.title, metadata)}
@@ -109,83 +120,97 @@ export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }:
                         loading="lazy"
                     />
                 ) : !loading && (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm italic">
-                        No image
+                    <div className="w-full h-full flex items-center justify-center text-gray-300 dark:text-gray-600">
+                        <span className="text-4xl">?</span>
                     </div>
                 )}
 
-                {/* Hover Overlay */}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-            </motion.div>
+                {/* Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
 
-            {/* Content */}
-            <motion.div
-                layoutId={`content-${item.title}`}
-                className="p-3 md:p-4 flex flex-col gap-2 md:gap-3 flex-1"
-            >
-                <motion.h3
-                    layoutId={`title-${item.title}`}
-                    className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight"
-                >
-                    {item.title}
-                </motion.h3>
+                {/* Overlay for Type/Score (Top) */}
+                <div className="absolute top-0 left-0 p-2 w-full flex justify-between items-start pointer-events-none">
+                    {item.type && (
+                        <span className="px-2 py-1 rounded-md bg-black/40 backdrop-blur-md border border-white/10 text-[10px] font-bold text-white uppercase tracking-wider shadow-sm">
+                            {{
+                                'tv': 'TV',
+                                'movie': 'Movie',
+                                'ova': 'OVA',
+                                'ona': 'ONA',
+                                'special': 'Special',
+                            }[item.type] || item.type}
+                        </span>
+                    )}
+                    {!item.type && <span />} {/* Spacer if needed, or just nothing */}
 
-                {/* Tags */}
-                <div className="flex flex-wrap gap-1.5 items-center">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 ring-1 ring-black/5 dark:ring-white/10 uppercase">
-                        {{
-                            'tv': 'TV',
-                            'movie': '映画',
-                            'ova': 'OVA',
-                            'ona': 'ONA',
-                            'special': '特別篇',
-                        }[item.type] || item.type}
-                    </span>
                     {!!metadata?.averageScore && metadata.averageScore > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-500/10">
-                            ⭐ {metadata.averageScore}%
-                        </span>
-                    )}
-                    {metadata?.episodes && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500/10">
-                            {metadata.episodes}話
-                        </span>
-                    )}
-                    {metadata?.genres?.slice(0, 2).map((genre: string) => (
-                        <span key={genre} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 ring-1 ring-teal-500/10">
-                            {genre}
-                        </span>
-                    ))}
-                    {item.begin && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/10">
-                            {new Date(item.begin).toISOString().split('T')[0]}
-                        </span>
+                        <motion.span
+                            layoutId={`score-${item.title}`}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-yellow-500/90 text-[10px] font-bold text-white shadow-sm"
+                        >
+                            ⭐ {metadata.averageScore}
+                        </motion.span>
                     )}
                 </div>
 
-                {/* Links */}
-                {sitesToShow.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-3 mt-auto border-t border-gray-100 dark:border-gray-700/50">
-                        {sitesToShow.map((site, idx) => {
-                            const meta = siteMeta?.[site.site]
-                            const url = site.url || (meta?.urlTemplate?.replace('{{id}}', site.id || ''))
-                            if (!url) return null
+                {/* Bottom Overlay Content: Title and Meta */}
+                <div className="absolute bottom-0 left-0 w-full p-3 flex flex-col justify-end gap-1 pointer-events-none">
+                    <motion.h3
+                        layoutId={`title-${item.title}`}
+                        className="font-bold text-white text-sm md:text-base leading-tight line-clamp-2 drop-shadow-md"
+                    >
+                        {item.title}
+                    </motion.h3>
 
-                            return (
-                                <a
-                                    key={`${site.site}-${idx}`}
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 px-2 py-1 rounded-md transition-all active:scale-95"
-                                >
-                                    {meta?.title || site.site}
-                                </a>
-                            )
-                        })}
+                    <div className="flex flex-wrap gap-1 items-center text-white/80 text-[10px]">
+                        {metadata?.episodes && (
+                            <motion.span
+                                layoutId={`episodes-${item.title}`}
+                                className="font-bold text-white mr-1"
+                            >
+                                {metadata.episodes}話
+                            </motion.span>
+                        )}
+                        {metadata?.genres?.slice(0, 2).map(genre => (
+                            <motion.span
+                                key={genre}
+                                layoutId={`genre-${item.title}-${genre}`}
+                                className="px-1.5 py-0.5 rounded-md bg-white/20 backdrop-blur-sm border border-white/10 shadow-sm"
+                            >
+                                {genre}
+                            </motion.span>
+                        ))}
                     </div>
-                )}
+                </div>
             </motion.div>
-        </motion.div>
+
+            {/* Content Below Image: Just Links */}
+            <div className="flex flex-col gap-1.5 px-0.5">
+                {/* Links are now the only thing here */}
+
+                {/* External Links */}
+                <div className="flex flex-wrap gap-1.5 min-h-[1.5rem] content-start">
+                    {sitesToShow.map((site: Site, idx: number) => {
+                        const meta = siteMeta?.[site.site]
+                        const url = site.url || (meta?.urlTemplate?.replace('{{id}}', site.id || ''))
+                        if (!url) return null
+
+                        return (
+                            <motion.a
+                                key={`${site.site}-${idx}`}
+                                layoutId={`site-${item.title}-${site.site}`}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 px-2 py-1 rounded-md transition-colors"
+                            >
+                                {meta?.title || site.site}
+                            </motion.a>
+                        )
+                    })}
+                </div>
+            </div>
+        </motion.div >
     )
 }
