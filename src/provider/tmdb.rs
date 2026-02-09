@@ -37,7 +37,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
 
         // 1. Resolve ID (Search if needed)
         let (media_id, media_type) = if let Some(id) = id {
-            parse_tmdb_id(id)
+            parse_tmdb_id(id)?
         } else if let Some(search_title) = title {
             search_media(&client, search_title, year).await?
         } else {
@@ -58,24 +58,47 @@ enum MediaType {
     Tv { show_id: i32, season: i32 },
 }
 
-fn parse_tmdb_id(id: &str) -> (i32, MediaType) {
+fn parse_tmdb_id(id: &str) -> Result<(i32, MediaType)> {
     let id = id.trim_start_matches('/');
     // Strip episode part if present
     let id = id.split("/episode/").next().unwrap_or(id);
     let parts: Vec<&str> = id.split('/').collect();
 
-    if parts.first() == Some(&"tv") && parts.len() >= 2 {
-        let show_id = parts[1].parse().unwrap_or(0);
+    if parts.is_empty() || (parts.len() == 1 && parts[0].is_empty()) {
+        return Err(Error::RustError("Empty ID".into()));
+    }
+
+    if parts.first() == Some(&"tv") {
+        if parts.len() < 2 {
+            return Err(Error::RustError("Invalid TV ID format: missing ID".into()));
+        }
+        let show_id = parts[1]
+            .parse()
+            .map_err(|_| Error::RustError("Invalid show ID".into()))?;
         let season = if parts.len() >= 4 && parts[2] == "season" {
-            parts[3].parse().unwrap_or(1) // Default to season 1
+            parts[3]
+                .parse()
+                .map_err(|_| Error::RustError("Invalid season number".into()))?
         } else {
             1
         };
-        (show_id, MediaType::Tv { show_id, season })
+        Ok((show_id, MediaType::Tv { show_id, season }))
+    } else if parts.first() == Some(&"movie") {
+        if parts.len() < 2 {
+            return Err(Error::RustError("Invalid Movie ID format: missing ID".into()));
+        }
+        let movie_id = parts[1]
+            .parse()
+            .map_err(|_| Error::RustError("Invalid movie ID".into()))?;
+        Ok((movie_id, MediaType::Movie))
+    } else if parts.len() == 1 {
+        // Assume movie if ID is just a number
+        let movie_id = parts[0]
+            .parse()
+            .map_err(|_| Error::RustError("Invalid ID format".into()))?;
+        Ok((movie_id, MediaType::Movie))
     } else {
-        // Assume movie if not TV, or if ID is just a number
-        let movie_id = parts.last().unwrap_or(&"0").parse().unwrap_or(0);
-        (movie_id, MediaType::Movie)
+        Err(Error::RustError("Unknown media type or format".into()))
     }
 }
 
@@ -463,52 +486,41 @@ mod tests {
     fn test_parse_tmdb_id() {
         // TV Show Cases
         assert_eq!(
-            parse_tmdb_id("tv/123"),
+            parse_tmdb_id("tv/123").unwrap(),
             (123, MediaType::Tv { show_id: 123, season: 1 })
         );
         assert_eq!(
-            parse_tmdb_id("tv/123/season/2"),
+            parse_tmdb_id("tv/123/season/2").unwrap(),
             (123, MediaType::Tv { show_id: 123, season: 2 })
         );
         assert_eq!(
-            parse_tmdb_id("/tv/123/season/2"),
+            parse_tmdb_id("/tv/123/season/2").unwrap(),
             (123, MediaType::Tv { show_id: 123, season: 2 })
         );
         assert_eq!(
-            parse_tmdb_id("tv/123/season/2/episode/5"),
+            parse_tmdb_id("tv/123/season/2/episode/5").unwrap(),
             (123, MediaType::Tv { show_id: 123, season: 2 })
         );
 
         // Movie Cases
         assert_eq!(
-            parse_tmdb_id("movie/456"),
+            parse_tmdb_id("movie/456").unwrap(),
             (456, MediaType::Movie)
         );
         assert_eq!(
-            parse_tmdb_id("456"),
+            parse_tmdb_id("456").unwrap(),
             (456, MediaType::Movie)
         );
         assert_eq!(
-            parse_tmdb_id("/movie/456"),
+            parse_tmdb_id("/movie/456").unwrap(),
             (456, MediaType::Movie)
         );
 
         // Edge Cases
-        assert_eq!(
-            parse_tmdb_id("tv"),
-            (0, MediaType::Movie)
-        );
-         assert_eq!(
-            parse_tmdb_id("tv/abc"),
-            (0, MediaType::Tv { show_id: 0, season: 1 })
-        );
-        assert_eq!(
-            parse_tmdb_id("tv/123/season/abc"),
-            (123, MediaType::Tv { show_id: 123, season: 1 })
-        );
-        assert_eq!(
-            parse_tmdb_id(""),
-            (0, MediaType::Movie)
-        );
+        assert!(parse_tmdb_id("tv").is_err());
+        assert!(parse_tmdb_id("tv/abc").is_err());
+        assert!(parse_tmdb_id("tv/123/season/abc").is_err());
+        assert!(parse_tmdb_id("").is_err());
+        assert!(parse_tmdb_id("foo/bar").is_err());
     }
 }
