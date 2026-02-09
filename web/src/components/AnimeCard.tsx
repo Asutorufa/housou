@@ -1,191 +1,209 @@
-import { clsx, type ClassValue } from 'clsx'
-import { motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { twMerge } from 'tailwind-merge'
-import type { AnimeItem, SiteMeta, UnifiedMetadata } from '../types'
-import { sortSites } from '../utils/siteUtils'
+import { clsx, type ClassValue } from "clsx";
+import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { twMerge } from "tailwind-merge";
+import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import { sortSites } from "../utils/siteUtils";
 
 function cn(...inputs: ClassValue[]) {
-    return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 interface AnimeCardProps {
-    item: AnimeItem
-    siteMeta?: SiteMeta
-    selectedSite?: string
-    onOpenModal: (title: string, info: UnifiedMetadata | null) => void
+  item: AnimeItem;
+  siteMeta?: SiteMeta;
+  selectedSite?: string;
+  onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
 }
 
-export default function AnimeCard({ item, siteMeta, selectedSite, onOpenModal }: AnimeCardProps) {
-    const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null)
-    const [loading, setLoading] = useState(false)
-    const cardRef = useRef<HTMLDivElement>(null)
-    const loadedRef = useRef(false)
+export default function AnimeCard({
+  item,
+  siteMeta,
+  selectedSite,
+  onOpenModal,
+}: AnimeCardProps) {
+  const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null);
+  const [loading, setLoading] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const loadedRef = useRef(false);
 
-    useEffect(() => {
-        const observer = new IntersectionObserver(
-            (entries) => {
-                if (entries[0].isIntersecting && !loadedRef.current) {
-                    loadedRef.current = true
-                    fetchMetadata()
-                    observer.disconnect()
-                }
-            },
-            { rootMargin: '200px' }
-        )
-
-        if (cardRef.current) {
-            observer.observe(cardRef.current)
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !loadedRef.current) {
+          loadedRef.current = true;
+          fetchMetadata();
+          observer.disconnect();
         }
+      },
+      { rootMargin: "200px" },
+    );
 
-        return () => observer.disconnect()
-    }, [item.title])
-
-    async function fetchMetadata() {
-        setLoading(true)
-        try {
-            const tmdbSite = item.sites?.find(s => s.site === 'tmdb')
-            let url = `/api/metadata?title=${encodeURIComponent(item.title)}`
-
-            if (tmdbSite?.id) {
-                url += `&tmdb_id=${encodeURIComponent(tmdbSite.id)}`
-            }
-
-            if (item.begin) {
-                url += `&begin=${encodeURIComponent(item.begin)}`
-            }
-
-            const response = await fetch(url)
-            if (!response.ok) throw new Error('Metadata fetch failed')
-            const data = await response.json()
-            setMetadata(data || null)
-        } catch (err) {
-            console.error('Metadata error:', err)
-        } finally {
-            setLoading(false)
-        }
+    if (cardRef.current) {
+      observer.observe(cardRef.current);
     }
 
-    const sitesToShow = useMemo(() => {
-        let sites = item.sites || []
-        if (selectedSite && selectedSite !== 'all') {
-            sites = sites.filter(s => s.site === selectedSite)
-        }
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.title]);
 
-        // Only show 'onair' sites on cards
-        sites = sites.filter(s => siteMeta?.[s.site]?.type === 'onair')
+  async function fetchMetadata() {
+    setLoading(true);
+    try {
+      const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
+      let url = `/api/metadata?title=${encodeURIComponent(item.title)}`;
 
-        return sortSites(sites, siteMeta)
-    }, [item.sites, selectedSite, siteMeta])
+      if (tmdbSite?.id) {
+        url += `&tmdb_id=${encodeURIComponent(tmdbSite.id)}`;
+      }
 
-    const coverUrl = metadata?.coverImage?.extraLarge || metadata?.coverImage?.large
+      if (item.begin) {
+        url += `&begin=${encodeURIComponent(item.begin)}`;
+      }
 
-    return (
-        <motion.div
-            ref={cardRef}
-            layoutId={`card-${item.title}`}
-            initial={{ y: 0, boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }}
-            whileHover={{
-                y: -6,
-                boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
-                transition: { duration: 0.3, ease: 'easeOut' }
-            }}
-            className="bg-white dark:bg-gray-800 rounded-2xl flex flex-col h-full ring-1 ring-black/5 dark:ring-white/5 overflow-hidden"
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Metadata fetch failed");
+      const data = await response.json();
+      setMetadata(data || null);
+    } catch (err) {
+      console.error("Metadata error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const sitesToShow = useMemo(() => {
+    let sites = item.sites || [];
+    if (selectedSite && selectedSite !== "all") {
+      sites = sites.filter((s) => s.site === selectedSite);
+    }
+
+    // Only show 'onair' sites on cards
+    sites = sites.filter((s) => siteMeta?.[s.site]?.type === "onair");
+
+    return sortSites(sites, siteMeta);
+  }, [item.sites, selectedSite, siteMeta]);
+
+  const coverUrl =
+    metadata?.coverImage?.extraLarge || metadata?.coverImage?.large;
+
+  return (
+    <motion.div
+      ref={cardRef}
+      layoutId={`card-${item.title}`}
+      initial={{
+        y: 0,
+        boxShadow:
+          "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+      }}
+      whileHover={{
+        y: -6,
+        boxShadow:
+          "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
+        transition: { duration: 0.3, ease: "easeOut" },
+      }}
+      className="flex h-full flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/5"
+    >
+      {/* Cover Image */}
+      <motion.div
+        layoutId={`image-${item.title}`}
+        className={cn(
+          "group relative aspect-[3/4] cursor-pointer overflow-hidden bg-gray-200 dark:bg-gray-700",
+          !coverUrl && loading && "animate-pulse",
+        )}
+        onClick={() => onOpenModal(item.title, metadata)}
+      >
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={item.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+          />
+        ) : (
+          !loading && (
+            <div className="flex h-full w-full items-center justify-center text-sm text-gray-400 italic">
+              No image
+            </div>
+          )
+        )}
+
+        {/* Hover Overlay */}
+        <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
+      </motion.div>
+
+      {/* Content */}
+      <motion.div
+        layoutId={`content-${item.title}`}
+        className="flex flex-1 flex-col gap-2 p-3 md:gap-3 md:p-4"
+      >
+        <motion.h3
+          layoutId={`title-${item.title}`}
+          className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
         >
-            {/* Cover Image */}
-            <motion.div
-                layoutId={`image-${item.title}`}
-                className={cn(
-                    "aspect-[3/4] relative overflow-hidden bg-gray-200 dark:bg-gray-700 cursor-pointer group",
-                    !coverUrl && loading && "animate-pulse"
-                )}
-                onClick={() => onOpenModal(item.title, metadata)}
-            >
-                {coverUrl ? (
-                    <img
-                        src={coverUrl}
-                        alt={item.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        loading="lazy"
-                    />
-                ) : !loading && (
-                    <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm italic">
-                        No image
-                    </div>
-                )}
+          {item.title}
+        </motion.h3>
 
-                {/* Hover Overlay */}
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-            </motion.div>
-
-            {/* Content */}
-            <motion.div
-                layoutId={`content-${item.title}`}
-                className="p-3 md:p-4 flex flex-col gap-2 md:gap-3 flex-1"
+        {/* Tags */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-700 uppercase ring-1 ring-black/5 dark:bg-gray-700/50 dark:text-gray-300 dark:ring-white/10">
+            {{
+              tv: "TV",
+              movie: "映画",
+              ova: "OVA",
+              ona: "ONA",
+              special: "特別篇",
+            }[item.type] || item.type}
+          </span>
+          {!!metadata?.averageScore && metadata.averageScore > 0 && (
+            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 ring-1 ring-yellow-500/10 dark:bg-yellow-900/30 dark:text-yellow-300">
+              ⭐ {metadata.averageScore}%
+            </span>
+          )}
+          {metadata?.episodes && (
+            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-700 ring-1 ring-purple-500/10 dark:bg-purple-900/30 dark:text-purple-300">
+              {metadata.episodes}話
+            </span>
+          )}
+          {metadata?.genres?.slice(0, 2).map((genre: string) => (
+            <span
+              key={genre}
+              className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-500/10 dark:bg-teal-900/30 dark:text-teal-300"
             >
-                <motion.h3
-                    layoutId={`title-${item.title}`}
-                    className="text-sm md:text-base font-bold text-gray-900 dark:text-gray-100 line-clamp-2 leading-tight"
+              {genre}
+            </span>
+          ))}
+          {item.begin && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 ring-1 ring-blue-500/10 dark:bg-blue-900/30 dark:text-blue-300">
+              {new Date(item.begin).toISOString().split("T")[0]}
+            </span>
+          )}
+        </div>
+
+        {/* Links */}
+        {sitesToShow.length > 0 && (
+          <div className="mt-auto flex flex-wrap gap-1.5 border-t border-gray-100 pt-3 dark:border-gray-700/50">
+            {sitesToShow.map((site, idx) => {
+              const meta = siteMeta?.[site.site];
+              const url =
+                site.url || meta?.urlTemplate?.replace("{{id}}", site.id || "");
+              if (!url) return null;
+
+              return (
+                <a
+                  key={`${site.site}-${idx}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md px-2 py-1 text-[11px] font-semibold text-blue-600 transition-all hover:bg-blue-50 hover:text-blue-700 active:scale-95 dark:text-blue-400 dark:hover:bg-blue-900/40 dark:hover:text-blue-300"
                 >
-                    {item.title}
-                </motion.h3>
-
-                {/* Tags */}
-                <div className="flex flex-wrap gap-1.5 items-center">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 dark:bg-gray-700/50 text-gray-700 dark:text-gray-300 ring-1 ring-black/5 dark:ring-white/10 uppercase">
-                        {{
-                            'tv': 'TV',
-                            'movie': '映画',
-                            'ova': 'OVA',
-                            'ona': 'ONA',
-                            'special': '特別篇',
-                        }[item.type] || item.type}
-                    </span>
-                    {!!metadata?.averageScore && metadata.averageScore > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-500/10">
-                            ⭐ {metadata.averageScore}%
-                        </span>
-                    )}
-                    {metadata?.episodes && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 ring-1 ring-purple-500/10">
-                            {metadata.episodes}話
-                        </span>
-                    )}
-                    {metadata?.genres?.slice(0, 2).map((genre: string) => (
-                        <span key={genre} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 ring-1 ring-teal-500/10">
-                            {genre}
-                        </span>
-                    ))}
-                    {item.begin && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/10">
-                            {new Date(item.begin).toISOString().split('T')[0]}
-                        </span>
-                    )}
-                </div>
-
-                {/* Links */}
-                {sitesToShow.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-3 mt-auto border-t border-gray-100 dark:border-gray-700/50">
-                        {sitesToShow.map((site, idx) => {
-                            const meta = siteMeta?.[site.site]
-                            const url = site.url || (meta?.urlTemplate?.replace('{{id}}', site.id || ''))
-                            if (!url) return null
-
-                            return (
-                                <a
-                                    key={`${site.site}-${idx}`}
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 px-2 py-1 rounded-md transition-all active:scale-95"
-                                >
-                                    {meta?.title || site.site}
-                                </a>
-                            )
-                        })}
-                    </div>
-                )}
-            </motion.div>
-        </motion.div>
-    )
+                  {meta?.title || site.site}
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
 }

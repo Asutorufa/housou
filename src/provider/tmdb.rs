@@ -71,7 +71,6 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
     }
 }
 
-
 #[derive(Debug, PartialEq)]
 enum MediaType {
     Movie,
@@ -146,10 +145,10 @@ async fn search_media(
                         let id_str = id.to_string();
                         // Check year if provided
                         if let Some(y) = year {
-                            if let Some(date_str) = release_date {
-                                if date_str.starts_with(&y.to_string()) {
-                                    return Ok((id_str, MediaType::Movie));
-                                }
+                            if let Some(date_str) = release_date
+                                && date_str.starts_with(&y.to_string())
+                            {
+                                return Ok((id_str, MediaType::Movie));
                             }
                         } else {
                             return Ok((id_str, MediaType::Movie));
@@ -164,16 +163,16 @@ async fn search_media(
                         let id_str = id.to_string();
                         // Check year if provided
                         if let Some(y) = year {
-                            if let Some(date_str) = first_air_date {
-                                if date_str.starts_with(&y.to_string()) {
-                                    return Ok((
-                                        id_str.clone(),
-                                        MediaType::Tv {
-                                            show_id: id_str,
-                                            season: 1,
-                                        },
-                                    ));
-                                }
+                            if let Some(date_str) = first_air_date
+                                && date_str.starts_with(&y.to_string())
+                            {
+                                return Ok((
+                                    id_str.clone(),
+                                    MediaType::Tv {
+                                        show_id: id_str,
+                                        season: 1,
+                                    },
+                                ));
                             }
                         } else {
                             return Ok((
@@ -336,14 +335,14 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
                 &results,
                 |r| r.iso_3166_1.as_deref(),
                 |r| {
-                     r.release_dates
+                    r.release_dates
                         .as_ref()
                         .and_then(|d| {
                             d.iter()
                                 .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
                         })
                         .and_then(|x| x.certification.clone())
-                }
+                },
             )
         })
     });
@@ -363,7 +362,7 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
         is_finished: movie.status.as_deref() == Some("Released"),
         total_seasons: None,
         current_season: None,
-        runtime: movie.runtime.map(|r| r as i32),
+        runtime: movie.runtime,
         content_rating: content_rating.or_else(|| {
             if movie.adult == Some(true) {
                 Some("R18".to_string())
@@ -442,7 +441,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         .unwrap_or_default()
         .into_iter()
         .map(|e| UniversalEpisode {
-            number: e.episode_number.unwrap_or(0) as i32,
+            number: e.episode_number.unwrap_or(0),
             title: e.name,
             air_date: e.air_date,
             overview: e.overview,
@@ -456,7 +455,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
             find_best_rating(
                 &results,
                 |r| r.iso_3166_1.as_deref(),
-                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned()
+                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned(),
             )
         })
     });
@@ -493,7 +492,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         episodes_list,
         is_finished,
         total_seasons: show.number_of_seasons,
-        current_season: Some(season_num_val as i32),
+        current_season: Some(season_num_val),
         runtime: final_runtime,
         content_rating: content_rating.or_else(|| {
             if show.adult == Some(true) {
@@ -765,9 +764,7 @@ mod tests {
             },
             cover_image: model::UniversalCoverImage {
                 large: Some("https://image.tmdb.org/t/p/w500/path/to/poster.jpg".into()),
-                extra_large: Some(
-                    "https://image.tmdb.org/t/p/original/path/to/poster.jpg".into(),
-                ),
+                extra_large: Some("https://image.tmdb.org/t/p/original/path/to/poster.jpg".into()),
             },
             average_score: Some(85),
             genres: vec!["Action".into(), "Adventure".into()],
@@ -791,7 +788,7 @@ mod tests {
         };
 
         assert_eq!(unified, expected);
-  }
+    }
 
     #[test]
     fn test_find_best_rating() {
@@ -944,7 +941,10 @@ mod tests_tv_transformation {
             }]),
             season_number: Some(1),
             overview: Some("Season Overview".to_string()),
-            credits: Some(create_credits(Some("Season Actor"), Some("Season Director"))),
+            credits: Some(create_credits(
+                Some("Season Actor"),
+                Some("Season Director"),
+            )),
             ..Default::default()
         };
 
@@ -956,11 +956,13 @@ mod tests_tv_transformation {
             Some("Show Title : Season 1".to_string())
         );
         // Season poster should take precedence
-        assert!(result
-            .cover_image
-            .large
-            .unwrap()
-            .contains("/season_poster.jpg"));
+        assert!(
+            result
+                .cover_image
+                .large
+                .unwrap()
+                .contains("/season_poster.jpg")
+        );
         assert_eq!(result.genres, vec!["Action".to_string()]);
         assert_eq!(result.studios, vec!["Studio A".to_string()]);
         // Season credits should be used

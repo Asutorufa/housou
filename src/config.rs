@@ -1,4 +1,3 @@
-
 // Base URL for Bangumi Data
 pub const BASE_DATA_URL: &str =
     "https://raw.githubusercontent.com/bangumi-data/bangumi-data/master/data/";
