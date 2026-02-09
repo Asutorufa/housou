@@ -10,7 +10,12 @@ pub struct TmdbProvider<'a> {
     env: &'a Env,
 }
 
-static TMDB_CLIENT: OnceLock<Option<AsyncAPIClient>> = OnceLock::new();
+struct SyncApiClient(AsyncAPIClient);
+
+unsafe impl Send for SyncApiClient {}
+unsafe impl Sync for SyncApiClient {}
+
+static TMDB_CLIENT: OnceLock<Option<SyncApiClient>> = OnceLock::new();
 
 impl<'a> TmdbProvider<'a> {
     pub fn new(env: &'a Env) -> Self {
@@ -26,11 +31,12 @@ impl<'a> TmdbProvider<'a> {
                 .or_else(|_| self.env.var("TMDB_TOKEN").map(|s| s.to_string()))
                 .ok();
 
-            api_token.map(|t| AsyncAPIClient::new_with_api_key(&t))
+            api_token.map(|t| SyncApiClient(AsyncAPIClient::new_with_api_key(t)))
         });
 
         client_opt
             .as_ref()
+            .map(|w| &w.0)
             .ok_or_else(|| Error::RustError("TMDB_TOKEN not set".into()))
     }
 }
