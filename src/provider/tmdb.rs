@@ -163,14 +163,14 @@ fn normalize_title(title: &str) -> String {
         Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$")
             .expect("Invalid Season Regex")
     });
-    normalized = season_re.replace(&normalized, "").to_string();
+    normalized = season_re.replace(&normalized, "").into_owned();
 
     let year_re = YEAR_REGEX.get_or_init(|| {
         Regex::new(r"\s*\(\d{4}\)\s*$").expect("Invalid Year Regex")
     });
-    normalized = year_re.replace(&normalized, "").to_string();
+    normalized = year_re.replace(&normalized, "").into_owned();
 
-    normalized.replace("  ", " ").trim().to_string()
+    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 async fn get_movie_details(
@@ -477,6 +477,7 @@ mod tests {
             ("Sword Art Online Ⅱ", "Sword Art Online"),
             ("Demon Slayer: Kimetsu no Yaiba Season 2", "Demon Slayer: Kimetsu no Yaiba"),
             ("  Test  Title  ", "Test Title"),
+            ("Title   With    Many   Spaces", "Title With Many Spaces"),
         ];
 
         for (input, expected) in cases {
