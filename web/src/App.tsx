@@ -26,6 +26,7 @@ const fetcher = async (url: string) => {
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
   const [initError, setInitError] = useState<string | null>(null)
+  const [initLoading, setInitLoading] = useState(true)
 
   const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
     year: '',
@@ -58,7 +59,7 @@ export default function App() {
   const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
 
   const items = useMemo(() => fetchedItems || [], [fetchedItems])
-  const loading = itemsLoading
+  const loading = initLoading || itemsLoading
 
   const error = initError || (itemsError ? (itemsError instanceof Error ? itemsError.message : String(itemsError)) : null)
 
@@ -97,6 +98,8 @@ export default function App() {
         })
       } catch (err) {
         setInitError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setInitLoading(false)
       }
     }
     init()
