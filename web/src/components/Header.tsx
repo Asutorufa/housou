@@ -141,7 +141,7 @@ export default function Header({
               setIsSearchFocused(false);
               setActiveDropdown(null); // Close dropdowns on blur just in case
             }}
-            className="w-full border-none bg-transparent py-2 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
+            className="w-full border-none bg-transparent py-2.5 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
           />
           <AnimatePresence>
             {searchQuery && (
