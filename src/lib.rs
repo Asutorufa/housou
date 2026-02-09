@@ -90,7 +90,7 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
             let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
                 .await?
                 .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
-          
+
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
             }
@@ -164,10 +164,11 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 },
             };
 
-            let mut response = Response::from_json(&config)?.add_cors(&env)?;
-            response
-                .headers_mut()
-                .set("Cache-Control", "public, max-age=60")?; // Short cache for config
+            let mut response = Response::from_json(&config_resp)?.add_cors(&env)?;
+            response.headers_mut().set(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
+            )?;
             Ok(response)
         }
         (Method::Get, "/api/items") => {
