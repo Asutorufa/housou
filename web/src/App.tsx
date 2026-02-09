@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocalStorage } from 'usehooks-ts'
 import AttributionModal from './components/AttributionModal'
 import DetailsModal from './components/DetailsModal'
 import Footer from './components/Footer'
@@ -6,15 +7,33 @@ import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
 import type { AnimeItem, Config, UnifiedMetadata } from './types'
 
+interface Selections {
+  year: string
+  season: string
+  site: string
+}
+
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
   const [items, setItems] = useState<AnimeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [selectedYear, setSelectedYear] = useState<string>('')
-  const [selectedSeason, setSelectedSeason] = useState<string>('all')
-  const [selectedSite, setSelectedSite] = useState<string>('all')
+  const [selections, setSelections] = useLocalStorage<Selections>('housou_selections', {
+    year: '',
+    season: 'all',
+    site: 'all'
+  })
+
+  const selectedYear = selections.year
+  const setSelectedYear = (year: string) => setSelections(prev => ({ ...prev, year }))
+
+  const selectedSeason = selections.season
+  const setSelectedSeason = (season: string) => setSelections(prev => ({ ...prev, season }))
+
+  const selectedSite = selections.site
+  const setSelectedSite = (site: string) => setSelections(prev => ({ ...prev, site }))
+
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
@@ -28,45 +47,36 @@ export default function App() {
         const data: Config = await response.json()
         setConfig(data)
 
-        // Load saved selections
-        const saved = localStorage.getItem('housou_selections')
-        if (saved) {
-          const { year, season, site } = JSON.parse(saved)
-          if (data.years.includes(parseInt(year))) setSelectedYear(year)
-          setSelectedSeason(season || 'all')
-          setSelectedSite(site || 'all')
-        } else {
-          const currentYear = new Date().getFullYear().toString()
-          if (data.years.includes(parseInt(currentYear))) {
-            setSelectedYear(currentYear)
-          } else if (data.years.length > 0) {
-            setSelectedYear(data.years[data.years.length - 1].toString())
+        // Validate or set defaults
+        setSelections(prev => {
+          let { year, season } = prev
+          const { site } = prev
+          const isYearValid = year && data.years.includes(parseInt(year))
+
+          if (!isYearValid) {
+            // Apply defaults
+            const currentYear = new Date().getFullYear().toString()
+            if (data.years.includes(parseInt(currentYear))) {
+              year = currentYear
+            } else if (data.years.length > 0) {
+              year = data.years[data.years.length - 1].toString()
+            } else {
+              year = ''
+            }
+
+            // Get current season
+            const seasons = ['Winter', 'Spring', 'Summer', 'Autumn']
+            season = seasons[Math.floor(new Date().getMonth() / 3)]
           }
 
-          // Get current season
-          const month = new Date().getMonth() + 1
-          if (month >= 1 && month <= 3) setSelectedSeason('Winter')
-          else if (month >= 4 && month <= 6) setSelectedSeason('Spring')
-          else if (month >= 7 && month <= 9) setSelectedSeason('Summer')
-          else setSelectedSeason('Autumn')
-        }
-      } catch (err: any) {
-        setError(err.message)
+          return { year, season, site }
+        })
+      } catch (err) {
+        if (err instanceof Error) setError(err.message)
       }
     }
     init()
-  }, [])
-
-  // Save selections
-  useEffect(() => {
-    if (selectedYear) {
-      localStorage.setItem('housou_selections', JSON.stringify({
-        year: selectedYear,
-        season: selectedSeason,
-        site: selectedSite
-      }))
-    }
-  }, [selectedYear, selectedSeason, selectedSite])
+  }, [setSelections])
 
   // Fetch items
   useEffect(() => {
@@ -81,8 +91,8 @@ export default function App() {
         if (!response.ok) throw new Error('Items fetch failed')
         const data = await response.json()
         setItems(data)
-      } catch (err: any) {
-        setError(err.message)
+      } catch (err) {
+        if (err instanceof Error) setError(err.message)
       } finally {
         setLoading(false)
       }
