@@ -73,7 +73,7 @@ export default function App() {
           return { year, season, site }
         })
       } catch (err) {
-        if (err instanceof Error) setError(err.message)
+        setError(err instanceof Error ? err.message : String(err))
       }
     }
     init()
@@ -93,7 +93,7 @@ export default function App() {
         const data = await response.json()
         setItems(data)
       } catch (err) {
-        if (err instanceof Error) setError(err.message)
+        setError(err instanceof Error ? err.message : String(err))
       } finally {
         setLoading(false)
       }
