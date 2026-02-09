@@ -3,6 +3,10 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2024-02-07"
 
 [build]
+command = "npm install --prefix web && npm run build --prefix web && cargo install -q worker-build && worker-build --release"
+
+[env.dev]
+[env.dev.build]
 command = "cargo install -q worker-build && worker-build --release --features dev"
 
 [assets]
