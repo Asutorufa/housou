@@ -414,7 +414,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let mut staff = Vec::new();
 
     // Prefer season credits, fall back to show credits
-    let credits = show.credits;
+    let credits = season.credits.or(show.credits);
 
     if let Some(credits) = credits {
         if let Some(cast) = credits.cast {
@@ -771,5 +771,177 @@ mod tests {
             let result = find_best_rating(&input, |r| r.country.as_deref(), |r| r.rating.clone());
             assert_eq!(result, expected);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_tv_transformation {
+    use super::*;
+    use tmdb_client::models;
+
+    fn create_credits(cast_name: Option<&str>, crew_name: Option<&str>) -> models::Credits {
+        models::Credits {
+            cast: cast_name.map(|n| {
+                vec![models::Cast {
+                    name: Some(n.to_string()),
+                    character: Some("Character".to_string()),
+                    ..Default::default()
+                }]
+            }),
+            crew: crew_name.map(|n| {
+                vec![models::Crew {
+                    name: Some(n.to_string()),
+                    job: Some("Director".to_string()),
+                    department: Some("Directing".to_string()),
+                    ..Default::default()
+                }]
+            }),
+            guest_stars: None,
+            id: None,
+        }
+    }
+
+    #[test]
+    fn test_tv_to_unified_full_data() {
+        let show = models::TvDetails {
+            name: Some("Show Title".to_string()),
+            poster_path: Some("/show_poster.jpg".to_string()),
+            genres: Some(vec![models::Genre {
+                id: Some(1),
+                name: Some("Action".to_string()),
+            }]),
+            production_companies: Some(vec![models::CompanyObject {
+                id: Some(1),
+                name: Some("Studio A".to_string()),
+                logo_path: None,
+            }]),
+            credits: Some(create_credits(Some("Show Actor"), Some("Show Director"))),
+            content_ratings: None,
+            status: Some("Ended".to_string()),
+            episode_run_time: Some(vec![24]),
+            id: Some(100),
+            overview: Some("Show Overview".to_string()),
+            number_of_seasons: Some(2),
+            adult: Some(false),
+            ..Default::default()
+        };
+
+        let season = models::SeasonDetails {
+            name: Some("Season 1".to_string()),
+            poster_path: Some("/season_poster.jpg".to_string()),
+            episodes: Some(vec![models::EpisodeDetails {
+                episode_number: Some(1),
+                name: Some("Ep 1".to_string()),
+                air_date: Some("2023-01-01".to_string()),
+                overview: Some("Ep Overview".to_string()),
+                ..Default::default()
+            }]),
+            season_number: Some(1),
+            overview: Some("Season Overview".to_string()),
+            credits: Some(create_credits(Some("Season Actor"), Some("Season Director"))),
+            ..Default::default()
+        };
+
+        let result = tv_to_unified(show, season);
+
+        assert_eq!(result.id, "tv/100/season/1");
+        assert_eq!(
+            result.title.native,
+            Some("Show Title : Season 1".to_string())
+        );
+        // Season poster should take precedence
+        assert!(result
+            .cover_image
+            .large
+            .unwrap()
+            .contains("/season_poster.jpg"));
+        assert_eq!(result.genres, vec!["Action".to_string()]);
+        assert_eq!(result.studios, vec!["Studio A".to_string()]);
+        // Season credits should be used
+        assert_eq!(
+            result.characters[0].voice_actor,
+            Some("Season Actor".to_string())
+        );
+        assert_eq!(result.staff[0].name, "Season Director".to_string());
+        assert_eq!(result.description, Some("Season Overview".to_string()));
+        assert_eq!(result.runtime, Some(24)); // Show runtime
+        assert!(result.is_finished);
+    }
+
+    #[test]
+    fn test_tv_to_unified_credits_fallback() {
+        // Case 1: Season has credits -> expect Season credits
+        let show_with_credits = models::TvDetails {
+            credits: Some(create_credits(Some("Show Actor"), None)),
+            ..Default::default()
+        };
+        let season_with_credits = models::SeasonDetails {
+            credits: Some(create_credits(Some("Season Actor"), None)),
+            ..Default::default()
+        };
+        let result1 = tv_to_unified(show_with_credits.clone(), season_with_credits);
+        assert_eq!(
+            result1.characters[0].voice_actor,
+            Some("Season Actor".to_string())
+        );
+
+        // Case 2: Season has NO credits -> expect Show credits
+        let season_no_credits = models::SeasonDetails {
+            credits: None,
+            ..Default::default()
+        };
+        let result2 = tv_to_unified(show_with_credits, season_no_credits);
+        assert_eq!(
+            result2.characters[0].voice_actor,
+            Some("Show Actor".to_string())
+        );
+    }
+
+    #[test]
+    fn test_tv_to_unified_poster_fallback() {
+        // Case 1: Season has poster -> expect Season poster
+        let show = models::TvDetails {
+            poster_path: Some("/show.jpg".to_string()),
+            ..Default::default()
+        };
+        let season = models::SeasonDetails {
+            poster_path: Some("/season.jpg".to_string()),
+            ..Default::default()
+        };
+        let result = tv_to_unified(show.clone(), season);
+        assert!(result.cover_image.large.unwrap().contains("/season.jpg"));
+
+        // Case 2: Season has NO poster -> expect Show poster
+        let season_no_poster = models::SeasonDetails {
+            poster_path: None,
+            ..Default::default()
+        };
+        let result2 = tv_to_unified(show, season_no_poster);
+        assert!(result2.cover_image.large.unwrap().contains("/show.jpg"));
+    }
+
+    #[test]
+    fn test_tv_to_unified_runtime_logic() {
+        // Case 1: Show has runtime -> use it
+        let show = models::TvDetails {
+            episode_run_time: Some(vec![30]),
+            ..Default::default()
+        };
+        let season = models::SeasonDetails {
+            episodes: Some(vec![models::EpisodeDetails {
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let result = tv_to_unified(show.clone(), season.clone());
+        assert_eq!(result.runtime, Some(30));
+
+        // Case 2: Show has NO runtime -> None
+        let show_no_runtime = models::TvDetails {
+            episode_run_time: None,
+            ..Default::default()
+        };
+        let result2 = tv_to_unified(show_no_runtime, season);
+        assert_eq!(result2.runtime, None);
     }
 }
