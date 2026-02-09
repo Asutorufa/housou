@@ -79,10 +79,8 @@ describe('DetailsModal', () => {
       <DetailsModal
         isOpen={true}
         onClose={() => {}}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        anime={mockAnime as any}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        items={mockItems as any}
+        anime={mockAnime}
+        items={mockItems}
       />
     )
 
