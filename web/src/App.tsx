@@ -32,10 +32,15 @@ export default function App() {
         // Load saved selections
         const saved = localStorage.getItem(STORAGE_KEY_SELECTIONS)
         if (saved) {
-          const { year, season, site } = JSON.parse(saved)
-          if (data.years.includes(parseInt(year))) setSelectedYear(year)
-          setSelectedSeason(season || 'all')
-          setSelectedSite(site || 'all')
+          try {
+            const { year, season, site } = JSON.parse(saved)
+            if (data.years.includes(parseInt(year))) setSelectedYear(year)
+            setSelectedSeason(season || 'all')
+            setSelectedSite(site || 'all')
+          } catch (e) {
+            console.error('Failed to parse selections from localStorage:', e)
+            localStorage.removeItem(STORAGE_KEY_SELECTIONS)
+          }
         } else {
           const currentYear = new Date().getFullYear().toString()
           if (data.years.includes(parseInt(currentYear))) {
