@@ -1,6 +1,7 @@
 use super::MetadataProvider;
 use crate::model;
 use regex::Regex;
+use std::sync::OnceLock;
 use tmdb_client::async_apis::AsyncAPIClient;
 use tmdb_client::models;
 use worker::*;
@@ -152,16 +153,22 @@ async fn search_media(
     Err(Error::RustError("No suitable match found".into()))
 }
 
+static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
+
 fn normalize_title(title: &str) -> String {
     let mut normalized = title.replace("-", " - ");
-    if let Ok(re) = Regex::new(
-        r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*|\s*\(\d{4}\)\s*)+$",
-    ) {
-        normalized = re.replace(&normalized, "").to_string();
-    }
-    normalized = normalized.replace("  ", " ");
+
+    let re = TITLE_NORMALIZE_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*|\s*\(\d{4}\)\s*)+$")
+            .expect("Invalid Title Normalize Regex")
+    });
+
+    normalized = re.replace(&normalized, "").into_owned();
+
     normalized
-        .trim()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
         .trim_end_matches(|c: char| c.is_whitespace() || c == '-')
         .to_string()
 }
