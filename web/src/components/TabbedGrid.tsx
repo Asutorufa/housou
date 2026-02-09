@@ -84,10 +84,7 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
             groups[dayIndex].push({ item, time })
         })
 
-        return groups.map(group => {
-            group.sort((a, b) => a.time - b.time)
-            return group.map(g => g.item)
-        })
+        return groups.map(group => group.sort((a, b) => a.time - b.time).map(g => g.item))
     }, [items])
 
     const dayIndex = parseInt(activeTab)
