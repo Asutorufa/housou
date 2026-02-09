@@ -69,27 +69,22 @@ export default function TabbedGrid({ items, siteMeta, selectedSite, onOpenModal 
     }
 
     const groupedItems = useMemo(() => {
-        const groups: AnimeItem[][] = Array.from({ length: 8 }, () => [])
+        const groups: { item: AnimeItem; time: number }[][] = Array.from({ length: 8 }, () => [])
         items.forEach(item => {
             let dayIndex = 7
+            let time = 0
             if (item.begin) {
                 const date = new Date(item.begin)
-                if (!isNaN(date.getTime())) {
+                const t = date.getTime()
+                if (!isNaN(t)) {
                     dayIndex = date.getDay()
+                    time = t
                 }
             }
-            groups[dayIndex].push(item)
+            groups[dayIndex].push({ item, time })
         })
 
-        groups.forEach(group => {
-            group.sort((a, b) => {
-                const timeA = a.begin ? new Date(a.begin).getTime() : 0
-                const timeB = b.begin ? new Date(b.begin).getTime() : 0
-                return timeA - timeB
-            })
-        })
-
-        return groups
+        return groups.map(group => group.sort((a, b) => a.time - b.time).map(g => g.item))
     }, [items])
 
     const dayIndex = parseInt(activeTab)
