@@ -273,7 +273,7 @@ mod tests {
                     {
                         "role": null,
                         "node": null, // malformed node
-                         "voiceActors": [ { "name": { "full": "Actor 3" } } ]
+                        "voiceActors": [ { "name": { "full": "Actor 3" } } ]
                     }
                 ]
             }
