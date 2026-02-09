@@ -303,4 +303,23 @@ mod tests {
         assert_eq!(unified.characters[2].role, None);
         assert_eq!(unified.characters[2].voice_actor, Some("Actor 3".to_string()));
     }
+
+    #[test]
+    fn test_anilist_to_unified_invalid_id() {
+        // Case 1: ID is missing completely
+        let media_no_id = json!({
+            "title": { "romaji": "No ID Anime" },
+            "status": "RELEASING"
+        });
+        assert_eq!(anilist_to_unified(media_no_id).id, "0");
+
+        // Case 2: ID is not a number (e.g. string)
+        // Note: The implementation uses `as_i64()`, which returns None if the value is not a number.
+        let media_bad_id = json!({
+            "id": "not-a-number",
+            "title": { "romaji": "Bad ID Anime" },
+            "status": "RELEASING"
+        });
+        assert_eq!(anilist_to_unified(media_bad_id).id, "0");
+    }
 }
