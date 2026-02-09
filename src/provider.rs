@@ -1,7 +1,7 @@
 pub mod anilist;
 pub mod tmdb;
 
-use crate::model;
+use crate::{model, ResponseExt};
 use worker::*;
 
 pub trait MetadataProvider {
@@ -39,10 +39,7 @@ pub async fn get_metadata(
 }
 
 fn create_response(unified: &model::UnifiedMetadata) -> Result<Response> {
-    let mut response = Response::from_json(unified)?;
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Origin", "*")?;
+    let mut response = Response::from_json(unified)?.add_cors()?;
 
     let ttl = if unified.is_finished {
         2592000 // 30 days for finished titles
