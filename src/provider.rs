@@ -23,7 +23,7 @@ pub async fn get_metadata(
     let tmdb = tmdb::TmdbProvider::new(env);
 
     match tmdb.fetch(tmdb_id, title, year).await {
-        Ok(unified) => return create_response(&unified),
+        Ok(unified) => return create_response(&unified, env),
         Err(e) => console_log!("TMDb fetch failed {:?}", e),
     }
 
@@ -33,13 +33,13 @@ pub async fn get_metadata(
         title.ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
 
     match anilist.fetch(None, Some(fallback_title), year).await {
-        Ok(unified) => create_response(&unified),
+        Ok(unified) => create_response(&unified, env),
         Err(e) => Err(e),
     }
 }
 
-fn create_response(unified: &model::UnifiedMetadata) -> Result<Response> {
-    let mut response = Response::from_json(unified)?.add_cors()?;
+fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
+    let mut response = Response::from_json(unified)?.add_cors(env)?;
 
     let ttl = if unified.is_finished {
         2592000 // 30 days for finished titles
