@@ -18,7 +18,7 @@ interface Selections {
 const fetcher = async (url: string) => {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error('Items fetch failed')
+    throw new Error(`Items fetch failed: ${response.status} ${response.statusText}`)
   }
   return response.json()
 }
