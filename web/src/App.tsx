@@ -65,11 +65,8 @@ export default function App() {
             }
 
             // Get current season
-            const month = new Date().getMonth() + 1
-            if (month >= 1 && month <= 3) season = 'Winter'
-            else if (month >= 4 && month <= 6) season = 'Spring'
-            else if (month >= 7 && month <= 9) season = 'Summer'
-            else season = 'Autumn'
+            const seasons = ['Winter', 'Spring', 'Summer', 'Autumn']
+            season = seasons[Math.floor(new Date().getMonth() / 3)]
           }
 
           return { year, season, site }
