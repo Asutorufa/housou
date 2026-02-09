@@ -45,7 +45,7 @@ impl MetadataProvider for AnilistProvider {
 
         let mut cf = CfProperties::new();
         let mut ttl_by_status = std::collections::HashMap::new();
-        ttl_by_status.insert("200".to_string(), 604800); // 1 week default edge cache
+        ttl_by_status.insert("200".to_string(), crate::config::CACHE_TTL_ONGOING);
         cf.cache_ttl_by_status = Some(ttl_by_status);
         init.with_cf_properties(cf);
 

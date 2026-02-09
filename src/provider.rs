@@ -42,9 +42,9 @@ fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Respon
     let mut response = Response::from_json(unified)?.add_cors(env)?;
 
     let ttl = if unified.is_finished {
-        2592000 // 30 days for finished titles
+        crate::config::CACHE_TTL_FINISHED
     } else {
-        604800 // 1 week for ongoing titles
+        crate::config::CACHE_TTL_ONGOING
     };
 
     response

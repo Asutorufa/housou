@@ -562,7 +562,7 @@ mod tests {
         // foo/bar returns Unknown media type
         assert!(parse_tmdb_id("foo/bar").is_err());
   }
-  
+
     #[test]
     fn test_normalize_title() {
         let cases = vec![
