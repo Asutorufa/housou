@@ -4,6 +4,7 @@ import DetailsModal from './components/DetailsModal'
 import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
+import { STORAGE_KEY_SELECTIONS } from './constants'
 import type { AnimeItem, Config, UnifiedMetadata } from './types'
 
 export default function App() {
@@ -29,7 +30,7 @@ export default function App() {
         setConfig(data)
 
         // Load saved selections
-        const saved = localStorage.getItem('housou_selections')
+        const saved = localStorage.getItem(STORAGE_KEY_SELECTIONS)
         if (saved) {
           const { year, season, site } = JSON.parse(saved)
           if (data.years.includes(parseInt(year))) setSelectedYear(year)
@@ -60,7 +61,7 @@ export default function App() {
   // Save selections
   useEffect(() => {
     if (selectedYear) {
-      localStorage.setItem('housou_selections', JSON.stringify({
+      localStorage.setItem(STORAGE_KEY_SELECTIONS, JSON.stringify({
         year: selectedYear,
         season: selectedSeason,
         site: selectedSite
