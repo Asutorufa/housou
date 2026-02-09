@@ -3,11 +3,23 @@ main = "build/worker/shim.mjs"
 compatibility_date = "2024-02-07"
 
 [build]
-command = "npm install --prefix web && npm run build --prefix web && cargo install -q worker-build && worker-build --release"
+command = """
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+. $HOME/.cargo/env && \
+rustup target add wasm32-unknown-unknown && \
+npm install --prefix web && \
+npm run build --prefix web && \
+cargo install -q worker-build && \
+worker-build --release"""
 
 [env.dev]
 [env.dev.build]
-command = "cargo install -q worker-build && worker-build --release --features dev"
+command = """
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+. $HOME/.cargo/env && \
+rustup target add wasm32-unknown-unknown && \
+cargo install -q worker-build && \
+worker-build --release --features dev"""
 
 [assets]
 directory = "./web/dist"
@@ -24,4 +36,11 @@ enabled = true
 # Use `wrangler secret put TMDB_TOKEN` for production
 # TMDB_TOKEN = ""
 [env.production.build]
-command = "npm install --prefix web && npm run build --prefix web && cargo install -q worker-build && worker-build --release"
+command = """
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+. $HOME/.cargo/env && \
+rustup target add wasm32-unknown-unknown && \
+npm install --prefix web && \
+npm run build --prefix web && \
+cargo install -q worker-build && \
+worker-build --release"""
