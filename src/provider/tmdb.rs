@@ -666,4 +666,107 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_movie_to_unified() {
+        // We need to import the models from the tmdb_client crate to construct the input
+        use tmdb_client::models::{
+            Cast, Credits, Crew, Genre, MovieDetails, ReleaseDate, ReleaseDatesList,
+            ReleasedateslistResults,
+        };
+
+        let movie = MovieDetails {
+            id: Some(12345),
+            title: Some("Test Movie".to_string()),
+            poster_path: Some("/path/to/poster.jpg".to_string()),
+            genres: Some(vec![
+                Genre {
+                    id: Some(1),
+                    name: Some("Action".to_string()),
+                    ..Default::default()
+                },
+                Genre {
+                    id: Some(2),
+                    name: Some("Adventure".to_string()),
+                    ..Default::default()
+                },
+            ]),
+            overview: Some("This is a test movie description.".to_string()),
+            release_dates: Some(ReleaseDatesList {
+                results: Some(vec![
+                    ReleasedateslistResults {
+                        iso_3166_1: Some("US".to_string()),
+                        release_dates: Some(vec![ReleaseDate {
+                            certification: Some("PG-13".to_string()),
+                            ..Default::default()
+                        }]),
+                        ..Default::default()
+                    },
+                    ReleasedateslistResults {
+                        iso_3166_1: Some("JP".to_string()),
+                        release_dates: Some(vec![ReleaseDate {
+                            certification: Some("G".to_string()),
+                            ..Default::default()
+                        }]),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }),
+            credits: Some(Credits {
+                cast: Some(vec![Cast {
+                    name: Some("Actor 1".to_string()),
+                    character: Some("Character 1".to_string()),
+                    ..Default::default()
+                }]),
+                crew: Some(vec![Crew {
+                    name: Some("Director 1".to_string()),
+                    job: Some("Director".to_string()),
+                    department: Some("Directing".to_string()),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            }),
+            production_companies: None,
+            vote_average: Some(8.5),
+            status: Some("Released".to_string()),
+            runtime: Some(120),
+            adult: Some(false),
+            ..Default::default()
+        };
+
+        let unified = movie_to_unified(movie);
+
+        assert_eq!(unified.id, "movie/12345");
+        assert_eq!(unified.title.native, Some("Test Movie".to_string()));
+        assert_eq!(
+            unified.cover_image.large,
+            Some("https://image.tmdb.org/t/p/w500/path/to/poster.jpg".to_string())
+        );
+        assert_eq!(
+            unified.cover_image.extra_large,
+            Some("https://image.tmdb.org/t/p/original/path/to/poster.jpg".to_string())
+        );
+        assert_eq!(unified.genres, vec!["Action", "Adventure"]);
+        assert_eq!(
+            unified.description,
+            Some("This is a test movie description.".to_string())
+        );
+        assert_eq!(unified.studios, Vec::<String>::new());
+        assert_eq!(unified.is_finished, true);
+        assert_eq!(unified.average_score, Some(85));
+        assert_eq!(unified.runtime, Some(120));
+        // Content rating should prioritize JP, then US, then first available
+        assert_eq!(unified.content_rating, Some("G".to_string()));
+
+        // Check characters
+        assert_eq!(unified.characters.len(), 1);
+        assert_eq!(unified.characters[0].name, "Character 1");
+        assert_eq!(unified.characters[0].voice_actor, Some("Actor 1".to_string()));
+
+        // Check staff
+        assert_eq!(unified.staff.len(), 1);
+        assert_eq!(unified.staff[0].name, "Director 1");
+        assert_eq!(unified.staff[0].role, "Director");
+    }
 }
