@@ -15,10 +15,5 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  },
-  test: {
-    environment: 'jsdom',
-    setupFiles: ['./vitest.setup.ts'],
-    globals: true,
-  },
+  }
 })

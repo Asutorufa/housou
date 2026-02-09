@@ -49,7 +49,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     // 1. Handle caching and routing
     let mut resp = if req.method() == Method::Get {
-        if let Ok(Some(cached_resp)) = cache.get(url.as_str(), true).await {
+        if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()?
         } else {
@@ -60,9 +60,9 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             if url.path().get(0..4).unwrap_or("") == "/api" && fresh_resp.status_code() == 200 {
                 if !fresh_resp.headers().has("Cache-Control")? {
                     fresh_resp.headers_mut().set(
-                "Cache-Control",
-                &format!("public, max-age={}", config::CACHE_TTL_API),
-            )?;
+                        "Cache-Control",
+                        &format!("public, max-age={}", config::CACHE_TTL_API),
+                    )?;
                 }
                 let _ = cache.put(url.as_str(), fresh_resp.cloned()?).await;
             }
