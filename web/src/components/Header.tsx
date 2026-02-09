@@ -34,10 +34,17 @@ export default function Header({
   setSearchQuery,
 }: HeaderProps) {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  // Helper to handle dropdown state
+  const handleDropdownChange = (key: string, isOpen: boolean) => {
+    setActiveDropdown(isOpen ? key : null);
+  };
 
   return (
-    <header className="group/header sticky top-2 z-50 mx-2 rounded-4xl border border-gray-200/50 bg-white/80 p-2 shadow-md backdrop-blur-md transition-all md:mx-4 dark:border-gray-700/50 dark:bg-gray-800/80">
-      <div className="mx-auto flex max-w-7xl items-center gap-3">
+    <header className="group/header pointer-events-none sticky top-2 z-50 w-full px-2 md:px-4">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+        {/* Filter Group (Left) */}
         <AnimatePresence mode="popLayout" initial={false}>
           {!isSearchFocused && (
             <motion.div
@@ -46,7 +53,7 @@ export default function Header({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
-              className="scrollbar-hide flex flex-1 items-center gap-2 overflow-x-auto md:flex"
+              className="pointer-events-auto flex items-center rounded-full border border-gray-200/50 bg-white/80 p-1 shadow-md backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/80"
             >
               {/* Year Select */}
               <CustomSelect
@@ -59,7 +66,11 @@ export default function Header({
                   })) || []
                 }
                 placeholder="年"
+                isOpen={activeDropdown === "year"}
+                onOpenChange={(open) => handleDropdownChange("year", open)}
               />
+
+              <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
 
               {/* Season Select */}
               <CustomSelect
@@ -73,7 +84,11 @@ export default function Header({
                   { value: "Autumn", label: "秋" },
                 ]}
                 placeholder="シーズン"
+                isOpen={activeDropdown === "season"}
+                onOpenChange={(open) => handleDropdownChange("season", open)}
               />
+
+              <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
 
               {/* Site Select */}
               <CustomSelect
@@ -89,20 +104,22 @@ export default function Header({
                   ),
                 ]}
                 placeholder="サイト"
+                isOpen={activeDropdown === "site"}
+                onOpenChange={(open) => handleDropdownChange("site", open)}
               />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Search Input */}
+        {/* Search Input (Right) */}
         <motion.div
           layout
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className={cn(
-            "group relative shrink-0 overflow-hidden rounded-full border-2 border-transparent bg-gray-100/50 hover:border-blue-500/50 dark:bg-gray-700/50",
+            "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md transition-all hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
             isSearchFocused
               ? "w-full border-blue-500 ring-2 ring-blue-500/20"
-              : "w-10 md:w-64",
+              : "ml-auto w-10 md:w-64" // ml-auto keeps it right-aligned even if filters are gone
           )}
         >
           <div
@@ -120,8 +137,11 @@ export default function Header({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setIsSearchFocused(false)}
-            className="w-full border-none bg-transparent py-1.5 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
+            onBlur={() => {
+              setIsSearchFocused(false);
+              setActiveDropdown(null); // Close dropdowns on blur just in case
+            }}
+            className="w-full border-none bg-transparent py-2 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
           />
           <AnimatePresence>
             {searchQuery && (
@@ -150,6 +170,8 @@ interface CustomSelectProps {
   onValueChange: (value: string) => void;
   options: { value: string; label: string }[];
   placeholder: string;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }
 
 function CustomSelect({
@@ -157,34 +179,32 @@ function CustomSelect({
   onValueChange,
   options,
   placeholder,
+  isOpen,
+  onOpenChange,
 }: CustomSelectProps) {
-  const [isOpen, setIsOpen] = useState(false);
-
   return (
     <Select.Root
       value={value}
       onValueChange={onValueChange}
       open={isOpen}
-      onOpenChange={setIsOpen}
+      onOpenChange={onOpenChange}
     >
       <Select.Trigger asChild>
         <motion.button
           className={cn(
-            "inline-flex min-w-[80px] cursor-pointer items-center justify-between rounded-full border-2 bg-gray-100 px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-900 transition-all duration-200 sm:min-w-[100px] sm:text-sm dark:bg-gray-700 dark:text-gray-100",
+            "inline-flex min-w-[80px] cursor-pointer items-center justify-between rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-700 transition-colors duration-200 sm:min-w-[90px] sm:text-sm dark:text-gray-200",
             "ring-0 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none",
-            "active:brightness-95",
-            isOpen
-              ? "border-blue-500"
-              : "border-transparent hover:border-blue-500",
+            "hover:bg-gray-100 dark:hover:bg-gray-700/50", // Subtle hover bg instead of border
+            isOpen && "text-blue-600 dark:text-blue-400",
           )}
         >
           <Select.Value placeholder={placeholder} />
-          <Select.Icon className="ml-2 text-gray-400">
+          <Select.Icon className="ml-1 text-gray-400">
             <motion.div
               animate={{ rotate: isOpen ? 180 : 0 }}
               transition={{ duration: 0.2 }}
             >
-              <ChevronDown size={16} />
+              <ChevronDown size={14} />
             </motion.div>
           </Select.Icon>
         </motion.button>
@@ -192,35 +212,34 @@ function CustomSelect({
 
       <Select.Portal>
         <Select.Content
-          sideOffset={4}
+          sideOffset={8}
           position="popper"
-          align="center"
-          className="select-content z-[60] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-2xl shadow-black/10 backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30"
+          align="start" // Align to start of trigger inside the pill
+          className="select-content z-[60] min-w-[120px] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-xl shadow-black/10 backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30"
         >
-          <Select.ScrollUpButton className="flex h-8 cursor-default items-center justify-center bg-white text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            <ChevronDown className="rotate-180" size={16} />
+          <Select.ScrollUpButton className="flex h-6 cursor-default items-center justify-center bg-white/50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
+            <ChevronDown className="rotate-180" size={14} />
           </Select.ScrollUpButton>
-          <Select.Viewport className="max-h-[300px] overflow-y-auto p-1.5">
+          <Select.Viewport className="max-h-[300px] overflow-y-auto p-1">
             {options.map((opt) => (
               <Select.Item
                 key={opt.value}
                 value={opt.value}
                 className={cn(
-                  "relative flex cursor-pointer items-center rounded-2xl px-8 py-2.5 text-sm text-gray-700 transition-all duration-150 outline-none select-none dark:text-gray-300",
-                  "hover:bg-blue-50 dark:hover:bg-blue-900/30",
-                  "data-[highlighted]:bg-blue-50 data-[highlighted]:text-blue-700 dark:data-[highlighted]:bg-blue-900/30 dark:data-[highlighted]:text-blue-200",
-                  "data-[state=checked]:font-bold data-[state=checked]:text-blue-600 dark:data-[state=checked]:text-blue-400",
+                  "relative flex cursor-pointer items-center rounded-xl px-2 py-2 pl-8 text-sm text-gray-700 transition-colors outline-none select-none dark:text-gray-200",
+                  "focus:bg-blue-50 focus:text-blue-700 dark:focus:bg-blue-900/30 dark:focus:text-blue-200",
+                  "data-[state=checked]:font-semibold data-[state=checked]:text-blue-600 dark:data-[state=checked]:text-blue-400",
                 )}
               >
                 <Select.ItemText>{opt.label}</Select.ItemText>
-                <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center justify-center">
-                  <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center justify-center text-blue-500">
+                  <div className="h-1.5 w-1.5 rounded-full bg-current" />
                 </Select.ItemIndicator>
               </Select.Item>
             ))}
           </Select.Viewport>
-          <Select.ScrollDownButton className="flex h-8 cursor-default items-center justify-center bg-white text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            <ChevronDown size={16} />
+          <Select.ScrollDownButton className="flex h-6 cursor-default items-center justify-center bg-white/50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
+            <ChevronDown size={14} />
           </Select.ScrollDownButton>
         </Select.Content>
       </Select.Portal>
