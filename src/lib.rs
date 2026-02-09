@@ -3,11 +3,11 @@ use worker::*;
 
 mod model;
 mod provider;
+mod utils;
 use model::{Item, SiteMeta, SiteMetadata, SiteType};
 
 const BASE_DATA_URL: &str =
     "https://raw.githubusercontent.com/bangumi-data/bangumi-data/master/data/";
-const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
 
 // Cache version - bump this to invalidate all cached data
 pub const CACHE_VERSION: &str = "v3";
@@ -78,31 +78,6 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Ok(resp)
 }
 
-async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T> {
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-
-    let mut cf = CfProperties::new();
-    let mut ttl_by_status = std::collections::HashMap::new();
-    ttl_by_status.insert("200".to_string(), CACHE_TTL_SECONDS);
-    ttl_by_status.insert("404".to_string(), 3600); // Cache 404s for 1 hour
-    cf.cache_ttl_by_status = Some(ttl_by_status);
-    init.with_cf_properties(cf);
-
-    let request = Request::new_with_init(url, &init)?;
-    let mut response = Fetch::Request(request).send().await?;
-
-    if response.status_code() != 200 {
-        return Err(Error::RustError(format!(
-            "Failed to fetch {}: status {}",
-            url,
-            response.status_code()
-        )));
-    }
-
-    response.json().await
-}
-
 async fn fetch_site_meta() -> Result<SiteMeta> {
     let mut sites: SiteMeta = std::collections::HashMap::new();
     let types = [
@@ -115,7 +90,9 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
         let url = format!("{}sites/{}.json", BASE_DATA_URL, name);
         let stype = stype.clone();
         async move {
-            let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
+            let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
+                .await?
+                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
             }
@@ -145,17 +122,13 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     for &month in &months {
         let url = format!("{}items/{}/{:02}.json", BASE_DATA_URL, year, month);
         futures.push(async move {
-            match fetch_json::<Vec<Item>>(&url).await {
-                Ok(items) => Ok(items),
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("status 404") {
-                        console_log!("Month data not found (404), skipping: {}", url);
-                        Ok(Vec::new())
-                    } else {
-                        Err(e)
-                    }
+            match utils::fetch_json::<Vec<Item>>(&url).await {
+                Ok(Some(items)) => Ok(items),
+                Ok(None) => {
+                    console_log!("Month data not found (404), skipping: {}", url);
+                    Ok(Vec::new())
                 }
+                Err(e) => Err(e),
             }
         });
     }
