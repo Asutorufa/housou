@@ -48,13 +48,16 @@ export default function App() {
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
 
   // Use SWR directly for fetching items
-  let itemsUrl: string | null = null
-  if (selectedYear) {
-    itemsUrl = `/api/items?year=${selectedYear}`
+  const itemsUrl = useMemo(() => {
+    if (!selectedYear) return null
+
+    const params = new URLSearchParams({ year: selectedYear })
     if (selectedSeason && selectedSeason !== 'all') {
-      itemsUrl += `&season=${selectedSeason}`
+      params.append('season', selectedSeason)
     }
-  }
+
+    return `/api/items?${params.toString()}`
+  }, [selectedYear, selectedSeason])
 
   const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
 
