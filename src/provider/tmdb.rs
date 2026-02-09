@@ -314,27 +314,19 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
     // Content Ratings (Release Dates for Movies)
     let content_rating = movie.release_dates.and_then(|dates| {
         dates.results.and_then(|results| {
-            let get_cert = |r: &models::ReleasedateslistResults| {
-                r.release_dates
-                    .as_ref()
-                    .and_then(|d| {
-                        d.iter()
-                            .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
-                    })
-                    .and_then(|x| x.certification.clone())
-            };
-
-            results
-                .iter()
-                .find(|r| r.iso_3166_1.as_deref() == Some("JP"))
-                .and_then(get_cert)
-                .or_else(|| {
-                    results
-                        .iter()
-                        .find(|r| r.iso_3166_1.as_deref() == Some("US"))
-                        .and_then(get_cert)
-                })
-                .or_else(|| results.iter().filter_map(get_cert).next())
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| {
+                     r.release_dates
+                        .as_ref()
+                        .and_then(|d| {
+                            d.iter()
+                                .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
+                        })
+                        .and_then(|x| x.certification.clone())
+                }
+            )
         })
     });
 
@@ -443,21 +435,11 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     // Content Ratings
     let content_rating = show.content_ratings.and_then(|ratings| {
         ratings.results.and_then(|results| {
-            let get_rating = |r: &models::RatingslistResults| {
-                r.rating.as_ref().filter(|s| !s.is_empty()).cloned()
-            };
-
-            results
-                .iter()
-                .find(|r| r.iso_3166_1.as_deref() == Some("JP"))
-                .and_then(get_rating)
-                .or_else(|| {
-                    results
-                        .iter()
-                        .find(|r| r.iso_3166_1.as_deref() == Some("US"))
-                        .and_then(get_rating)
-                })
-                .or_else(|| results.iter().filter_map(get_rating).next())
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned()
+            )
         })
     });
 
@@ -505,6 +487,26 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     }
 }
 
+fn find_best_rating<T, FCountry, FRating>(
+    results: &[T],
+    get_country: FCountry,
+    get_rating: FRating,
+) -> Option<String>
+where
+    FCountry: Fn(&T) -> Option<&str>,
+    FRating: Fn(&T) -> Option<String>,
+{
+    let find_by_country = |country: &str| {
+        results
+            .iter()
+            .find(|r| get_country(r) == Some(country))
+            .and_then(&get_rating)
+    };
+
+    find_by_country("JP")
+        .or_else(|| find_by_country("US"))
+        .or_else(|| results.iter().filter_map(&get_rating).next())
+}
 
 #[cfg(test)]
 mod tests {
@@ -664,6 +666,92 @@ mod tests {
                 "Failed for input: {}",
                 input
             );
+        }
+    }
+
+    #[test]
+    fn test_find_best_rating() {
+        struct MockRating {
+            country: Option<String>,
+            rating: Option<String>,
+        }
+
+        let cases = vec![
+            (
+                vec![
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("PG".into()),
+                    },
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: Some("G".into()),
+                    },
+                ],
+                Some("G".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("12".into()),
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("PG-13".into()),
+                    },
+                ],
+                Some("PG-13".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("15".into()),
+                    },
+                    MockRating {
+                        country: Some("FR".into()),
+                        rating: Some("12".into()),
+                    },
+                ],
+                Some("15".to_string()),
+            ),
+            (vec![], None),
+            (
+                vec![
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("R".into()),
+                    },
+                ],
+                Some("R".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("18".into()),
+                    },
+                ],
+                Some("18".to_string()),
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let result = find_best_rating(&input, |r| r.country.as_deref(), |r| r.rating.clone());
+            assert_eq!(result, expected);
         }
     }
 }
