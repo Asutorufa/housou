@@ -109,7 +109,10 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
 
     let results = futures::future::join_all(tasks).await;
     for result in results {
-        sites.extend(result?);
+        match result {
+            Ok(data) => sites.extend(data),
+            Err(e) => console_log!("Failed to fetch site metadata: {}", e),
+        }
     }
     Ok(sites)
 }
