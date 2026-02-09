@@ -28,9 +28,11 @@ export default function DetailsModal({
 }: DetailsModalProps) {
   const [displayAnime, setDisplayAnime] = useState(anime);
 
-  if (anime && anime !== displayAnime) {
-    setDisplayAnime(anime);
-  }
+  useEffect(() => {
+    if (anime) {
+      setDisplayAnime(anime);
+    }
+  }, [anime]);
 
   const { title, info } = displayAnime || { title: "", info: null };
 
