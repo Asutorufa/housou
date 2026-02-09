@@ -1,4 +1,5 @@
 use serde_derive::Serialize;
+use std::sync::OnceLock;
 use worker::*;
 
 mod config;
@@ -11,14 +12,17 @@ pub trait ResponseExt {
     fn add_cors(self, env: &Env) -> Result<Response>;
 }
 
+static CORS_ALLOWED_ORIGIN: OnceLock<String> = OnceLock::new();
+
 impl ResponseExt for Response {
     fn add_cors(mut self, env: &Env) -> Result<Response> {
-        let allowed_origin = env
-            .var("CORS_ALLOWED_ORIGIN")
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| "*".to_string());
+        let allowed_origin = CORS_ALLOWED_ORIGIN.get_or_init(|| {
+            env.var("CORS_ALLOWED_ORIGIN")
+                .map(|s| s.to_string())
+                .unwrap_or_else(|_| "*".to_string())
+        });
         self.headers_mut()
-            .set("Access-Control-Allow-Origin", &allowed_origin)?;
+            .set("Access-Control-Allow-Origin", allowed_origin)?;
         Ok(self)
     }
 }

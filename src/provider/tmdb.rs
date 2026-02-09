@@ -10,20 +10,28 @@ pub struct TmdbProvider<'a> {
     env: &'a Env,
 }
 
+static TMDB_CLIENT: OnceLock<Option<AsyncAPIClient>> = OnceLock::new();
+
 impl<'a> TmdbProvider<'a> {
     pub fn new(env: &'a Env) -> Self {
         Self { env }
     }
 
-    fn get_client(&self) -> Result<AsyncAPIClient> {
-        let api_token = self
-            .env
-            .secret("TMDB_TOKEN")
-            .map(|s| s.to_string())
-            .or_else(|_| self.env.var("TMDB_TOKEN").map(|s| s.to_string()))
-            .map_err(|_| Error::RustError("TMDB_TOKEN not set".into()))?;
+    fn get_client(&self) -> Result<&AsyncAPIClient> {
+        let client_opt = TMDB_CLIENT.get_or_init(|| {
+            let api_token = self
+                .env
+                .secret("TMDB_TOKEN")
+                .map(|s| s.to_string())
+                .or_else(|_| self.env.var("TMDB_TOKEN").map(|s| s.to_string()))
+                .ok();
 
-        Ok(AsyncAPIClient::new_with_api_key(&api_token))
+            api_token.map(|t| AsyncAPIClient::new_with_api_key(&t))
+        });
+
+        client_opt
+            .as_ref()
+            .ok_or_else(|| Error::RustError("TMDB_TOKEN not set".into()))
     }
 }
 
@@ -40,15 +48,15 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
         let (media_id, media_type) = if let Some(id) = id {
             parse_tmdb_id(id)?
         } else if let Some(search_title) = title {
-            search_media(&client, search_title, year).await?
+            search_media(client, search_title, year).await?
         } else {
             return Err(Error::RustError("ID or Title required".into()));
         };
 
         // 2. Fetch Details based on type
         match media_type {
-            MediaType::Movie => get_movie_details(&client, media_id).await,
-            MediaType::Tv { show_id, season } => get_tv_details(&client, show_id, season).await,
+            MediaType::Movie => get_movie_details(client, media_id).await,
+            MediaType::Tv { show_id, season } => get_tv_details(client, show_id, season).await,
         }
     }
 }
