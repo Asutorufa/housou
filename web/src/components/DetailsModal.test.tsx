@@ -91,8 +91,6 @@ describe('DetailsModal', () => {
     const descriptionContainer = titleElement.nextElementSibling
     expect(descriptionContainer).toBeTruthy()
 
-    console.log('innerHTML:', descriptionContainer?.innerHTML)
-
     expect(descriptionContainer?.innerHTML).not.toContain('<script>')
     expect(descriptionContainer?.textContent).toContain('<script>alert("xss")</script>')
   })
