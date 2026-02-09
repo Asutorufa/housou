@@ -4,12 +4,12 @@ pub const BASE_DATA_URL: &str =
     "https://raw.githubusercontent.com/bangumi-data/bangumi-data/master/data/";
 
 // Cache TTLs
-pub const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
-pub const CACHE_TTL_404: i32 = 3600; // 1 hour for 404s
+pub const CACHE_TTL_SECONDS: i32 = 6 * 60 * 60; // 6 hours cache
+pub const CACHE_TTL_404: i32 = 60 * 60; // 1 hour for 404s
 pub const CACHE_TTL_CONFIG: i32 = 60; // 1 minute for config
-pub const CACHE_TTL_API: i32 = 86400; // 24 hours for API responses
-pub const CACHE_TTL_FINISHED: i32 = 2592000; // 30 days for finished titles
-pub const CACHE_TTL_ONGOING: i32 = 604800; // 1 week for ongoing titles
+pub const CACHE_TTL_API: i32 = 24 * 60 * 60; // 24 hours for API responses
+pub const CACHE_TTL_FINISHED: i32 = 30 * 24 * 60 * 60; // 30 days for finished titles
+pub const CACHE_TTL_ONGOING: i32 = 7 * 24 * 60 * 60; // 1 week for ongoing titles
 
 // Cache Version
 pub const CACHE_VERSION: &str = "v3";
