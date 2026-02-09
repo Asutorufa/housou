@@ -20,4 +20,4 @@ enabled = true
 # Use `wrangler secret put TMDB_TOKEN` for production
 # TMDB_TOKEN = ""
 [env.production.build]
-command = "cargo install -q worker-build && worker-build --release"
+command = "npm install --prefix web && npm run build --prefix web && cargo install -q worker-build && worker-build --release"
