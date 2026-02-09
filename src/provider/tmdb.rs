@@ -155,14 +155,15 @@ async fn search_media(
 fn normalize_title(title: &str) -> String {
     let mut normalized = title.replace("-", " - ");
     if let Ok(re) = Regex::new(
-        r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$",
+        r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*|\s*\(\d{4}\)\s*)+$",
     ) {
         normalized = re.replace(&normalized, "").to_string();
     }
-    if let Ok(re) = Regex::new(r"\s*\(\d{4}\)\s*$") {
-        normalized = re.replace(&normalized, "").to_string();
-    }
-    normalized.replace("  ", " ").trim().to_string()
+    normalized = normalized.replace("  ", " ");
+    normalized
+        .trim()
+        .trim_end_matches(|c: char| c.is_whitespace() || c == '-')
+        .to_string()
 }
 
 async fn get_movie_details(
@@ -451,5 +452,28 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
                 None
             }
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_title() {
+        assert_eq!(normalize_title("One Piece"), "One Piece");
+        assert_eq!(normalize_title("Title-Something"), "Title - Something");
+        assert_eq!(normalize_title("Title 第1期"), "Title");
+        assert_eq!(normalize_title("Title 第2クール"), "Title");
+        assert_eq!(normalize_title("Title Season 1"), "Title");
+        assert_eq!(normalize_title("Title 2nd Season"), "Title");
+        assert_eq!(normalize_title("Title Ⅱ"), "Title");
+        assert_eq!(normalize_title("Title (2023)"), "Title");
+        assert_eq!(normalize_title("Title (2023) Season 1"), "Title");
+        assert_eq!(normalize_title("Title  Season  1"), "Title");
+
+        // Known cases that might fail current implementation
+        assert_eq!(normalize_title("Title Season 1 (2023)"), "Title");
+        assert_eq!(normalize_title("Title - Season 1"), "Title");
     }
 }
