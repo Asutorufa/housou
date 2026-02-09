@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import useSWR from 'swr'
 import { useLocalStorage } from 'usehooks-ts'
 import AttributionModal from './components/AttributionModal'
 import DetailsModal from './components/DetailsModal'
@@ -14,11 +15,18 @@ interface Selections {
   site: string
 }
 
+const fetcher = async (url: string) => {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Items fetch failed: ${response.status} ${response.statusText}`)
+  }
+  return response.json()
+}
+
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
-  const [items, setItems] = useState<AnimeItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [initError, setInitError] = useState<string | null>(null)
+  const [initLoading, setInitLoading] = useState(true)
 
   const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
     year: '',
@@ -38,6 +46,25 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
+
+  // Use SWR directly for fetching items
+  const itemsUrl = useMemo(() => {
+    if (!selectedYear) return null
+
+    const params = new URLSearchParams({ year: selectedYear })
+    if (selectedSeason && selectedSeason !== 'all') {
+      params.append('season', selectedSeason)
+    }
+
+    return `/api/items?${params.toString()}`
+  }, [selectedYear, selectedSeason])
+
+  const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
+
+  const items = useMemo(() => fetchedItems || [], [fetchedItems])
+  const loading = initLoading || itemsLoading
+
+  const error = initError || (itemsError ? (itemsError instanceof Error ? itemsError.message : String(itemsError)) : null)
 
   // Initialization
   useEffect(() => {
@@ -73,33 +100,13 @@ export default function App() {
           return { year, season, site }
         })
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        setInitError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setInitLoading(false)
       }
     }
     init()
   }, [setSelections])
-
-  // Fetch items
-  useEffect(() => {
-    if (!selectedYear) return
-
-    async function fetchItems() {
-      setLoading(true)
-      try {
-        let url = `/api/items?year=${selectedYear}`
-        if (selectedSeason && selectedSeason !== 'all') url += `&season=${selectedSeason}`
-        const response = await fetch(url)
-        if (!response.ok) throw new Error('Items fetch failed')
-        const data = await response.json()
-        setItems(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchItems()
-  }, [selectedYear, selectedSeason])
 
   // Filter items
   const filteredItems = useMemo(() => {
