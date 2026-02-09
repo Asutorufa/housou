@@ -4,7 +4,24 @@ use worker::*;
 mod config;
 mod model;
 mod provider;
+mod utils;
 use model::{Item, SiteMeta, SiteMetadata, SiteType};
+
+pub trait ResponseExt {
+    fn add_cors(self, env: &Env) -> Result<Response>;
+}
+
+impl ResponseExt for Response {
+    fn add_cors(mut self, env: &Env) -> Result<Response> {
+        let allowed_origin = env
+            .var("CORS_ALLOWED_ORIGIN")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| "*".to_string());
+        self.headers_mut()
+            .set("Access-Control-Allow-Origin", &allowed_origin)?;
+        Ok(self)
+    }
+}
 
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
@@ -58,31 +75,6 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Ok(resp)
 }
 
-async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T> {
-    let mut init = RequestInit::new();
-    init.with_method(Method::Get);
-
-    let mut cf = CfProperties::new();
-    let mut ttl_by_status = std::collections::HashMap::new();
-    ttl_by_status.insert("200".to_string(), config::CACHE_TTL_SECONDS);
-    ttl_by_status.insert("404".to_string(), config::CACHE_TTL_404);
-    cf.cache_ttl_by_status = Some(ttl_by_status);
-    init.with_cf_properties(cf);
-
-    let request = Request::new_with_init(url, &init)?;
-    let mut response = Fetch::Request(request).send().await?;
-
-    if response.status_code() != 200 {
-        return Err(Error::RustError(format!(
-            "Failed to fetch {}: status {}",
-            url,
-            response.status_code()
-        )));
-    }
-
-    response.json().await
-}
-
 async fn fetch_site_meta() -> Result<SiteMeta> {
     let mut sites: SiteMeta = std::collections::HashMap::new();
     let types = [
@@ -95,7 +87,10 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
         let url = format!("{}sites/{}.json", config::BASE_DATA_URL, name);
         let stype = stype.clone();
         async move {
-            let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
+            let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
+                .await?
+                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
+          
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
             }
@@ -125,17 +120,13 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     for &month in &months {
         let url = format!("{}items/{}/{:02}.json", config::BASE_DATA_URL, year, month);
         futures.push(async move {
-            match fetch_json::<Vec<Item>>(&url).await {
-                Ok(items) => Ok(items),
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("status 404") {
-                        console_log!("Month data not found (404), skipping: {}", url);
-                        Ok(Vec::new())
-                    } else {
-                        Err(e)
-                    }
+            match utils::fetch_json::<Vec<Item>>(&url).await {
+                Ok(Some(items)) => Ok(items),
+                Ok(None) => {
+                    console_log!("Month data not found (404), skipping: {}", url);
+                    Ok(Vec::new())
                 }
+                Err(e) => Err(e),
             }
         });
     }
@@ -173,14 +164,10 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 },
             };
 
-            let mut response = Response::from_json(&config_resp)?;
+            let mut response = Response::from_json(&config)?.add_cors(&env)?;
             response
                 .headers_mut()
-                .set("Access-Control-Allow-Origin", "*")?;
-            response.headers_mut().set(
-                "Cache-Control",
-                &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
-            )?;
+                .set("Cache-Control", "public, max-age=60")?; // Short cache for config
             Ok(response)
         }
         (Method::Get, "/api/items") => {
@@ -199,11 +186,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
             let items = fetch_items_for_season(target_year, target_season).await?;
 
-            let mut response = Response::from_json(&items)?;
-            response
-                .headers_mut()
-                .set("Access-Control-Allow-Origin", "*")?;
-            Ok(response)
+            Response::from_json(&items)?.add_cors(&env)
         }
         (Method::Get, "/api/metadata") => {
             let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());

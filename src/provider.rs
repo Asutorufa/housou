@@ -1,7 +1,7 @@
 pub mod anilist;
 pub mod tmdb;
 
-use crate::model;
+use crate::{model, ResponseExt};
 use worker::*;
 
 pub trait MetadataProvider {
@@ -23,7 +23,7 @@ pub async fn get_metadata(
     let tmdb = tmdb::TmdbProvider::new(env);
 
     match tmdb.fetch(tmdb_id, title, year).await {
-        Ok(unified) => return create_response(&unified),
+        Ok(unified) => return create_response(&unified, env),
         Err(e) => console_log!("TMDb fetch failed {:?}", e),
     }
 
@@ -33,16 +33,13 @@ pub async fn get_metadata(
         title.ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
 
     match anilist.fetch(None, Some(fallback_title), year).await {
-        Ok(unified) => create_response(&unified),
+        Ok(unified) => create_response(&unified, env),
         Err(e) => Err(e),
     }
 }
 
-fn create_response(unified: &model::UnifiedMetadata) -> Result<Response> {
-    let mut response = Response::from_json(unified)?;
-    response
-        .headers_mut()
-        .set("Access-Control-Allow-Origin", "*")?;
+fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
+    let mut response = Response::from_json(unified)?.add_cors(env)?;
 
     let ttl = if unified.is_finished {
         crate::config::CACHE_TTL_FINISHED
