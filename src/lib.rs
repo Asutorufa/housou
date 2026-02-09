@@ -1,16 +1,10 @@
 use serde_derive::Serialize;
 use worker::*;
 
+mod config;
 mod model;
 mod provider;
 use model::{Item, SiteMeta, SiteMetadata, SiteType};
-
-const BASE_DATA_URL: &str =
-    "https://raw.githubusercontent.com/bangumi-data/bangumi-data/master/data/";
-const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
-
-// Cache version - bump this to invalidate all cached data
-pub const CACHE_VERSION: &str = "v3";
 
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
@@ -33,7 +27,7 @@ struct TmdbAttribution {
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
-    let cache = Cache::open(format!("housou-cache-{}", CACHE_VERSION)).await;
+    let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
     // 1. Only cache GET requests
@@ -49,8 +43,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     if url.path().get(0..4).unwrap_or("") == "/api" && resp.status_code() == 200 {
         // Ensure Cache-Control is set (provider already sets it, but good to ensure)
         if !resp.headers().has("Cache-Control")? {
-            resp.headers_mut()
-                .set("Cache-Control", "public, max-age=86400")?;
+            resp.headers_mut().set(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_API),
+            )?;
         }
 
         // We need to clone the response to put it in cache because put() consumes it
@@ -68,8 +64,8 @@ async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T>
 
     let mut cf = CfProperties::new();
     let mut ttl_by_status = std::collections::HashMap::new();
-    ttl_by_status.insert("200".to_string(), CACHE_TTL_SECONDS);
-    ttl_by_status.insert("404".to_string(), 3600); // Cache 404s for 1 hour
+    ttl_by_status.insert("200".to_string(), config::CACHE_TTL_SECONDS);
+    ttl_by_status.insert("404".to_string(), config::CACHE_TTL_404);
     cf.cache_ttl_by_status = Some(ttl_by_status);
     init.with_cf_properties(cf);
 
@@ -96,7 +92,7 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
     ];
 
     for (name, stype) in types {
-        let url = format!("{}sites/{}.json", BASE_DATA_URL, name);
+        let url = format!("{}sites/{}.json", config::BASE_DATA_URL, name);
         let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
         for meta in data.values_mut() {
             meta.type_field = Some(stype.clone());
@@ -119,7 +115,7 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     let mut futures = Vec::new();
 
     for &month in &months {
-        let url = format!("{}items/{}/{:02}.json", BASE_DATA_URL, year, month);
+        let url = format!("{}items/{}/{:02}.json", config::BASE_DATA_URL, year, month);
         futures.push(async move {
             match fetch_json::<Vec<Item>>(&url).await {
                 Ok(items) => Ok(items),
@@ -155,27 +151,28 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
             // Fixed range of years to avoid fetching all month files just to get the list
             let current_year = js_sys::Date::new_0().get_full_year() as i32;
-            let years: Vec<i32> = (1943..=current_year).rev().collect();
+            let years: Vec<i32> = (config::START_YEAR..=current_year).rev().collect();
 
-            let config = ConfigResponse {
+            let config_resp = ConfigResponse {
                 site_meta: &site_meta,
                 years,
                 attribution: Attribution {
                     tmdb: TmdbAttribution {
-                        logo_square: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ed904132c3096b9736928c38cfe75196763ebd7e9f22e855d9e5.svg".to_string(),
-                        logo_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg".to_string(),
-                        logo_alt_long: "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_long_2-9665a76b1ae401a510ec1e0ca40ddcb3b0cfe45f1d51b77a308fea0845885648.svg".to_string()
+                        logo_square: config::TMDB_LOGO_SQUARE.to_string(),
+                        logo_long: config::TMDB_LOGO_LONG.to_string(),
+                        logo_alt_long: config::TMDB_LOGO_ALT_LONG.to_string(),
                     },
                 },
             };
 
-            let mut response = Response::from_json(&config)?;
+            let mut response = Response::from_json(&config_resp)?;
             response
                 .headers_mut()
                 .set("Access-Control-Allow-Origin", "*")?;
-            response
-                .headers_mut()
-                .set("Cache-Control", "public, max-age=60")?; // Short cache for config
+            response.headers_mut().set(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
+            )?;
             Ok(response)
         }
         (Method::Get, "/api/items") => {
