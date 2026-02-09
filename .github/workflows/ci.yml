@@ -51,18 +51,10 @@ jobs:
           npm ci
           npm run build
 
-      - name: Get access token
-        uses: actions/create-github-app-token@v2
-        id: generate-token
-        with:
-          app-id: ${{ vars.APP_ID }}
-          private-key: ${{ secrets.PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ steps.generate-token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update frontend build artifacts"
           title: "chore: update frontend build artifacts"
           body: "This PR updates the frontend build artifacts in `web/dist`."
