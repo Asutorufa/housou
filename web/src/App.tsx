@@ -6,7 +6,8 @@ import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
 import { STORAGE_KEY_SELECTIONS } from './constants'
-import type { AnimeItem, Config, UnifiedMetadata } from './types'
+import { useItems } from './hooks/useItems'
+import type { Config, UnifiedMetadata } from './types'
 
 interface Selections {
   year: string
@@ -16,9 +17,7 @@ interface Selections {
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
-  const [items, setItems] = useState<AnimeItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [initError, setInitError] = useState<string | null>(null)
 
   const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
     year: '',
@@ -38,6 +37,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
+
+  // Use custom hook for fetching items
+  const { items, loading, error: itemsError } = useItems(selectedYear, selectedSeason)
+
+  const error = initError || itemsError
 
   // Initialization
   useEffect(() => {
@@ -73,33 +77,11 @@ export default function App() {
           return { year, season, site }
         })
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        setInitError(err instanceof Error ? err.message : String(err))
       }
     }
     init()
   }, [setSelections])
-
-  // Fetch items
-  useEffect(() => {
-    if (!selectedYear) return
-
-    async function fetchItems() {
-      setLoading(true)
-      try {
-        let url = `/api/items?year=${selectedYear}`
-        if (selectedSeason && selectedSeason !== 'all') url += `&season=${selectedSeason}`
-        const response = await fetch(url)
-        if (!response.ok) throw new Error('Items fetch failed')
-        const data = await response.json()
-        setItems(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchItems()
-  }, [selectedYear, selectedSeason])
 
   // Filter items
   const filteredItems = useMemo(() => {
