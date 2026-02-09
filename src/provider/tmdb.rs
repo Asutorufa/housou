@@ -12,6 +12,10 @@ pub struct TmdbProvider<'a> {
 
 struct SyncApiClient(AsyncAPIClient);
 
+// SAFETY: AsyncAPIClient uses trait objects that are not Send/Sync, preventing it from being Sync.
+// However, Cloudflare Workers (wasm32-unknown-unknown) is a single-threaded environment.
+// We are using this wrapper to satisfy the static OnceLock requirement while guaranteeing
+// no actual concurrent access will occur in this environment.
 unsafe impl Send for SyncApiClient {}
 unsafe impl Sync for SyncApiClient {}
 
