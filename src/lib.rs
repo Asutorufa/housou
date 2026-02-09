@@ -95,13 +95,21 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
         ("resource", SiteType::Resource),
     ];
 
-    for (name, stype) in types {
+    let tasks = types.iter().map(|(name, stype)| {
         let url = format!("{}sites/{}.json", BASE_DATA_URL, name);
-        let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
-        for meta in data.values_mut() {
-            meta.type_field = Some(stype.clone());
+        let stype = stype.clone();
+        async move {
+            let mut data: std::collections::HashMap<String, SiteMetadata> = fetch_json(&url).await?;
+            for meta in data.values_mut() {
+                meta.type_field = Some(stype.clone());
+            }
+            Ok::<_, Error>(data)
         }
-        sites.extend(data);
+    });
+
+    let results = futures::future::join_all(tasks).await;
+    for result in results {
+        sites.extend(result?);
     }
     Ok(sites)
 }
