@@ -1,7 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { Clock, ExternalLink, PlayCircle, Star, X } from "lucide-react";
-import { useEffect, useState } from "react";
 import type {
   AnimeItem,
   SiteMeta,
@@ -26,15 +25,7 @@ export default function DetailsModal({
   items,
   siteMeta,
 }: DetailsModalProps) {
-  const [displayAnime, setDisplayAnime] = useState(anime);
-
-  useEffect(() => {
-    if (anime) {
-      setDisplayAnime(anime);
-    }
-  }, [anime]);
-
-  const { title, info } = anime || displayAnime || { title: "", info: null };
+  const { title, info } = anime || { title: "", info: null };
 
   // Find the original item to get site links
   const originalItem = items.find((i) => i.title === title);
