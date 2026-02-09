@@ -5,6 +5,7 @@ import DetailsModal from './components/DetailsModal'
 import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
+import { STORAGE_KEY_SELECTIONS } from './constants'
 import type { AnimeItem, Config, UnifiedMetadata } from './types'
 
 interface Selections {
@@ -19,7 +20,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [selections, setSelections] = useLocalStorage<Selections>('housou_selections', {
+  const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
     year: '',
     season: 'all',
     site: 'all'
