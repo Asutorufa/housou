@@ -84,7 +84,9 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
         Ok((show_id.clone(), MediaType::Tv { show_id, season }))
     } else if parts.first() == Some(&"movie") {
         if parts.len() < 2 {
-            return Err(Error::RustError("Invalid Movie ID format: missing ID".into()));
+            return Err(Error::RustError(
+                "Invalid Movie ID format: missing ID".into(),
+            ));
         }
         let movie_id = parts[1].to_string();
         Ok((movie_id, MediaType::Movie))
@@ -176,9 +178,6 @@ async fn search_media(
 static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 fn normalize_title(title: &str) -> String {
-    static SEASON_REGEX: OnceLock<Regex> = OnceLock::new();
-    static YEAR_REGEX: OnceLock<Regex> = OnceLock::new();
-
     let mut normalized = title.replace("-", " - ");
 
     let re = TITLE_NORMALIZE_REGEX.get_or_init(|| {
@@ -501,41 +500,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_normalize_title() {
-        assert_eq!(normalize_title("One Piece"), "One Piece");
-        assert_eq!(normalize_title("Title-Something"), "Title - Something");
-        assert_eq!(normalize_title("Title 第1期"), "Title");
-        assert_eq!(normalize_title("Title 第2クール"), "Title");
-        assert_eq!(normalize_title("Title Season 1"), "Title");
-        assert_eq!(normalize_title("Title 2nd Season"), "Title");
-        assert_eq!(normalize_title("Title Ⅱ"), "Title");
-        assert_eq!(normalize_title("Title (2023)"), "Title");
-        assert_eq!(normalize_title("Title (2023) Season 1"), "Title");
-        assert_eq!(normalize_title("Title  Season  1"), "Title");
-
-        // Known cases that might fail current implementation
-        assert_eq!(normalize_title("Title Season 1 (2023)"), "Title");
-        assert_eq!(normalize_title("Title - Season 1"), "Title");
-  }
-  
-    #[test]
     fn test_parse_tmdb_id() {
         // TV Show Cases
         assert_eq!(
             parse_tmdb_id("tv/123").unwrap(),
-            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 1 })
+            (
+                "123".to_string(),
+                MediaType::Tv {
+                    show_id: "123".to_string(),
+                    season: 1
+                }
+            )
         );
         assert_eq!(
             parse_tmdb_id("tv/123/season/2").unwrap(),
-            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+            (
+                "123".to_string(),
+                MediaType::Tv {
+                    show_id: "123".to_string(),
+                    season: 2
+                }
+            )
         );
         assert_eq!(
             parse_tmdb_id("/tv/123/season/2").unwrap(),
-            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+            (
+                "123".to_string(),
+                MediaType::Tv {
+                    show_id: "123".to_string(),
+                    season: 2
+                }
+            )
         );
         assert_eq!(
             parse_tmdb_id("tv/123/season/2/episode/5").unwrap(),
-            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+            (
+                "123".to_string(),
+                MediaType::Tv {
+                    show_id: "123".to_string(),
+                    season: 2
+                }
+            )
         );
 
         // Movie Cases
@@ -555,11 +560,23 @@ mod tests {
         // Slugged ID Cases
         assert_eq!(
             parse_tmdb_id("tv/123-show-name").unwrap(),
-            ("123-show-name".to_string(), MediaType::Tv { show_id: "123-show-name".to_string(), season: 1 })
+            (
+                "123-show-name".to_string(),
+                MediaType::Tv {
+                    show_id: "123-show-name".to_string(),
+                    season: 1
+                }
+            )
         );
         assert_eq!(
             parse_tmdb_id("tv/123-show-name/season/2").unwrap(),
-            ("123-show-name".to_string(), MediaType::Tv { show_id: "123-show-name".to_string(), season: 2 })
+            (
+                "123-show-name".to_string(),
+                MediaType::Tv {
+                    show_id: "123-show-name".to_string(),
+                    season: 2
+                }
+            )
         );
         assert_eq!(
             parse_tmdb_id("movie/456-movie-name").unwrap(),
@@ -576,30 +593,66 @@ mod tests {
         // But "tv/123/season/abc" should still fail because season must be int.
         assert_eq!(
             parse_tmdb_id("tv/abc").unwrap(),
-             ("abc".to_string(), MediaType::Tv { show_id: "abc".to_string(), season: 1 })
+            (
+                "abc".to_string(),
+                MediaType::Tv {
+                    show_id: "abc".to_string(),
+                    season: 1
+                }
+            )
         );
         assert!(parse_tmdb_id("tv/123/season/abc").is_err());
         assert!(parse_tmdb_id("").is_err());
         // foo/bar returns Unknown media type
         assert!(parse_tmdb_id("foo/bar").is_err());
-  }
+    }
 
     #[test]
     fn test_normalize_title() {
         let cases = vec![
-            ("Attack on Titan Season 3", "Attack on Titan"),
-            ("My Hero Academia 第2期", "My Hero Academia"),
-            ("Fullmetal Alchemist: Brotherhood", "Fullmetal Alchemist: Brotherhood"),
-            ("Steins;Gate (2011)", "Steins;Gate"),
-            ("One Piece - 1000", "One Piece - 1000"),
+            // Basic cases
+            ("One Piece", "One Piece"),
+            ("Title-Something", "Title - Something"),
+            // Japanese season formats
+            ("Title 第1期", "Title"),
+            ("Title 第2クール", "Title"),
+            // English season formats
+            ("Title Season 1", "Title"),
+            ("Title 2nd Season", "Title"),
+            ("Title Season 1 (2023)", "Title"),
+            ("Title - Season 1", "Title"),
+            // Roman numerals
+            ("Title Ⅱ", "Title"),
             ("Sword Art Online Ⅱ", "Sword Art Online"),
-            ("Demon Slayer: Kimetsu no Yaiba Season 2", "Demon Slayer: Kimetsu no Yaiba"),
+            // Year suffix
+            ("Title (2023)", "Title"),
+            ("Title (2023) Season 1", "Title"),
+            ("Steins;Gate (2011)", "Steins;Gate"),
+            // Spacing normalization
+            ("Title  Season  1", "Title"),
             ("  Test  Title  ", "Test Title"),
             ("Title   With    Many   Spaces", "Title With Many Spaces"),
+            // Real-world titles
+            ("Attack on Titan Season 3", "Attack on Titan"),
+            ("My Hero Academia 第2期", "My Hero Academia"),
+            (
+                "Fullmetal Alchemist: Brotherhood",
+                "Fullmetal Alchemist: Brotherhood",
+            ),
+            ("One Piece - 1000", "One Piece - 1000"),
+            (
+                "Demon Slayer: Kimetsu no Yaiba Season 2",
+                "Demon Slayer: Kimetsu no Yaiba",
+            ),
         ];
 
         for (input, expected) in cases {
-            assert_eq!(normalize_title(input), expected, "Failed for input: {}", input);
+            assert_eq!(
+                normalize_title(input),
+                expected,
+                "Failed for input: {}",
+                input
+            );
         }
     }
 }
