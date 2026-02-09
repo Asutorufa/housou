@@ -1,152 +1,173 @@
-import { useEffect, useMemo, useState } from 'react'
-import useSWR from 'swr'
-import { useLocalStorage } from 'usehooks-ts'
-import AttributionModal from './components/AttributionModal'
-import DetailsModal from './components/DetailsModal'
-import Footer from './components/Footer'
-import Header from './components/Header'
-import TabbedGrid from './components/TabbedGrid'
-import { STORAGE_KEY_SELECTIONS } from './constants'
-import type { AnimeItem, Config, UnifiedMetadata } from './types'
+import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
+import { useLocalStorage } from "usehooks-ts";
+import AttributionModal from "./components/AttributionModal";
+import DetailsModal from "./components/DetailsModal";
+import Footer from "./components/Footer";
+import Header from "./components/Header";
+import TabbedGrid from "./components/TabbedGrid";
+import { STORAGE_KEY_SELECTIONS } from "./constants";
+import type { AnimeItem, Config, UnifiedMetadata } from "./types";
 
 interface Selections {
-  year: string
-  season: string
-  site: string
+  year: string;
+  season: string;
+  site: string;
 }
 
 const fetcher = async (url: string) => {
-  const response = await fetch(url)
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Items fetch failed: ${response.status} ${response.statusText}`)
+    throw new Error(
+      `Items fetch failed: ${response.status} ${response.statusText}`,
+    );
   }
-  return response.json()
-}
+  return response.json();
+};
 
 export default function App() {
-  const [config, setConfig] = useState<Config | null>(null)
-  const [initError, setInitError] = useState<string | null>(null)
-  const [initLoading, setInitLoading] = useState(true)
+  const [config, setConfig] = useState<Config | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [initLoading, setInitLoading] = useState(true);
 
-  const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
-    year: '',
-    season: 'all',
-    site: 'all'
-  })
+  const [selections, setSelections] = useLocalStorage<Selections>(
+    STORAGE_KEY_SELECTIONS,
+    {
+      year: "",
+      season: "all",
+      site: "all",
+    },
+  );
 
-  const selectedYear = selections.year
-  const setSelectedYear = (year: string) => setSelections(prev => ({ ...prev, year }))
+  const selectedYear = selections.year;
+  const setSelectedYear = (year: string) =>
+    setSelections((prev) => ({ ...prev, year }));
 
-  const selectedSeason = selections.season
-  const setSelectedSeason = (season: string) => setSelections(prev => ({ ...prev, season }))
+  const selectedSeason = selections.season;
+  const setSelectedSeason = (season: string) =>
+    setSelections((prev) => ({ ...prev, season }));
 
-  const selectedSite = selections.site
-  const setSelectedSite = (site: string) => setSelections(prev => ({ ...prev, site }))
+  const selectedSite = selections.site;
+  const setSelectedSite = (site: string) =>
+    setSelections((prev) => ({ ...prev, site }));
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
-  const [isAttributionOpen, setIsAttributionOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAnime, setSelectedAnime] = useState<{
+    title: string;
+    info: UnifiedMetadata | null;
+  } | null>(null);
+  const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
   // Use SWR directly for fetching items
   const itemsUrl = useMemo(() => {
-    if (!selectedYear) return null
+    if (!selectedYear) return null;
 
-    const params = new URLSearchParams({ year: selectedYear })
-    if (selectedSeason && selectedSeason !== 'all') {
-      params.append('season', selectedSeason)
+    const params = new URLSearchParams({ year: selectedYear });
+    if (selectedSeason && selectedSeason !== "all") {
+      params.append("season", selectedSeason);
     }
 
-    return `/api/items?${params.toString()}`
-  }, [selectedYear, selectedSeason])
+    return `/api/items?${params.toString()}`;
+  }, [selectedYear, selectedSeason]);
 
-  const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
+  const {
+    data: fetchedItems,
+    error: itemsError,
+    isLoading: itemsLoading,
+  } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
 
-  const items = useMemo(() => fetchedItems || [], [fetchedItems])
-  const loading = initLoading || itemsLoading
+  const items = useMemo(() => fetchedItems || [], [fetchedItems]);
+  const loading = initLoading || itemsLoading;
 
-  const error = initError || (itemsError ? (itemsError instanceof Error ? itemsError.message : String(itemsError)) : null)
+  const error =
+    initError ||
+    (itemsError
+      ? itemsError instanceof Error
+        ? itemsError.message
+        : String(itemsError)
+      : null);
 
   // Initialization
   useEffect(() => {
     async function init() {
       try {
-        const response = await fetch(`/api/config?v=${new Date().getTime()}`)
-        if (!response.ok) throw new Error('Config fetch failed')
-        const data: Config = await response.json()
-        setConfig(data)
+        const response = await fetch(`/api/config?v=${new Date().getTime()}`);
+        if (!response.ok) throw new Error("Config fetch failed");
+        const data: Config = await response.json();
+        setConfig(data);
 
         // Validate or set defaults
-        setSelections(prev => {
-          let { year, season } = prev
-          const { site } = prev
-          const isYearValid = year && data.years.includes(parseInt(year))
+        setSelections((prev) => {
+          let { year, season } = prev;
+          const { site } = prev;
+          const isYearValid = year && data.years.includes(parseInt(year));
 
           if (!isYearValid) {
             // Apply defaults
-            const currentYear = new Date().getFullYear().toString()
+            const currentYear = new Date().getFullYear().toString();
             if (data.years.includes(parseInt(currentYear))) {
-              year = currentYear
+              year = currentYear;
             } else if (data.years.length > 0) {
-              year = data.years[data.years.length - 1].toString()
+              year = data.years[data.years.length - 1].toString();
             } else {
-              year = ''
+              year = "";
             }
 
             // Get current season
-            const seasons = ['Winter', 'Spring', 'Summer', 'Autumn']
-            season = seasons[Math.floor(new Date().getMonth() / 3)]
+            const seasons = ["Winter", "Spring", "Summer", "Autumn"];
+            season = seasons[Math.floor(new Date().getMonth() / 3)];
           }
 
-          return { year, season, site }
-        })
+          return { year, season, site };
+        });
       } catch (err) {
-        setInitError(err instanceof Error ? err.message : String(err))
+        setInitError(err instanceof Error ? err.message : String(err));
       } finally {
-        setInitLoading(false)
+        setInitLoading(false);
       }
     }
-    init()
-  }, [setSelections])
+    init();
+  }, [setSelections]);
 
   // Filter items
   const filteredItems = useMemo(() => {
-    let filtered = items
+    let filtered = items;
 
-    if (selectedSite && selectedSite !== 'all') {
-      filtered = filtered.filter(item =>
-        item.sites?.some(s => s.site === selectedSite)
-      )
+    if (selectedSite && selectedSite !== "all") {
+      filtered = filtered.filter((item) =>
+        item.sites?.some((s) => s.site === selectedSite),
+      );
     }
 
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(item => {
-        if (item.title.toLowerCase().includes(query)) return true
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((item) => {
+        if (item.title.toLowerCase().includes(query)) return true;
         if (item.titleTranslate) {
-          return Object.values(item.titleTranslate).some(ts =>
-            ts?.some(t => t.toLowerCase().includes(query))
-          )
+          return Object.values(item.titleTranslate).some((ts) =>
+            ts?.some((t) => t.toLowerCase().includes(query)),
+          );
         }
-        return false
-      })
+        return false;
+      });
     }
 
-    return filtered
-  }, [items, selectedSite, searchQuery])
+    return filtered;
+  }, [items, selectedSite, searchQuery]);
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 text-red-500 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 text-red-500 dark:bg-gray-900">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Error</h1>
+          <h1 className="mb-2 text-2xl font-bold">Error</h1>
           <p>{error}</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors">
+    <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
       <Header
         config={config}
         selectedYear={selectedYear}
@@ -159,17 +180,19 @@ export default function App() {
         setSearchQuery={setSearchQuery}
       />
 
-      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+      <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         {loading ? (
           <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
           </div>
         ) : (
           <TabbedGrid
             items={filteredItems}
             siteMeta={config?.site_meta}
             selectedSite={selectedSite}
-            onOpenModal={(title: string, info: UnifiedMetadata | null) => setSelectedAnime({ title, info })}
+            onOpenModal={(title: string, info: UnifiedMetadata | null) =>
+              setSelectedAnime({ title, info })
+            }
           />
         )}
         <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
@@ -189,5 +212,5 @@ export default function App() {
         config={config}
       />
     </div>
-  )
+  );
 }

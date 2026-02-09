@@ -275,20 +275,38 @@ mod tests {
 
         assert_eq!(unified.id, "12345");
         assert_eq!(unified.title.romaji, Some("Test Anime".to_string()));
-        assert_eq!(unified.title.english, Some("Test Anime English".to_string()));
+        assert_eq!(
+            unified.title.english,
+            Some("Test Anime English".to_string())
+        );
         assert_eq!(unified.title.native, Some("テストアニメ".to_string()));
-        assert_eq!(unified.cover_image.large, Some("https://example.com/large.jpg".to_string()));
-        assert_eq!(unified.cover_image.extra_large, Some("https://example.com/xlarge.jpg".to_string()));
+        assert_eq!(
+            unified.cover_image.large,
+            Some("https://example.com/large.jpg".to_string())
+        );
+        assert_eq!(
+            unified.cover_image.extra_large,
+            Some("https://example.com/xlarge.jpg".to_string())
+        );
         assert_eq!(unified.average_score, Some(85));
         assert_eq!(unified.episodes, Some(12));
         assert!(unified.is_finished);
-        assert_eq!(unified.genres, vec!["Action".to_string(), "Adventure".to_string()]);
-        assert_eq!(unified.description, Some("This is a test description.".to_string()));
+        assert_eq!(
+            unified.genres,
+            vec!["Action".to_string(), "Adventure".to_string()]
+        );
+        assert_eq!(
+            unified.description,
+            Some("This is a test description.".to_string())
+        );
         assert_eq!(unified.studios, vec!["Test Studio".to_string()]);
         assert_eq!(unified.characters.len(), 1);
         assert_eq!(unified.characters[0].name, "Test Character");
         assert_eq!(unified.characters[0].role, Some("MAIN".to_string()));
-        assert_eq!(unified.characters[0].voice_actor, Some("Test Voice Actor".to_string()));
+        assert_eq!(
+            unified.characters[0].voice_actor,
+            Some("Test Voice Actor".to_string())
+        );
 
         // Check fields that are always empty/None for AniList
         assert!(unified.staff.is_empty());
@@ -366,7 +384,10 @@ mod tests {
         let unified = anilist_to_unified(media);
 
         // Check genres
-        assert_eq!(unified.genres, vec!["Action".to_string(), "Comedy".to_string()]);
+        assert_eq!(
+            unified.genres,
+            vec!["Action".to_string(), "Comedy".to_string()]
+        );
 
         // Check studios
         assert_eq!(unified.studios, vec!["Studio A".to_string()]);
@@ -385,7 +406,10 @@ mod tests {
         // Char 3: malformed node (null) -> name becomes empty string
         assert_eq!(unified.characters[2].name, "");
         assert_eq!(unified.characters[2].role, None);
-        assert_eq!(unified.characters[2].voice_actor, Some("Actor 3".to_string()));
+        assert_eq!(
+            unified.characters[2].voice_actor,
+            Some("Actor 3".to_string())
+        );
     }
 
     #[test]

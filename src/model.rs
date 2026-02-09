@@ -3,21 +3,18 @@ use serde_derive::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SiteType {
+    #[default]
     Info,
     Onair,
     Resource,
 }
 
-impl Default for SiteType {
-    fn default() -> Self {
-        Self::Info
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum Language {
     #[serde(rename = "ja")]
+    #[default]
     Ja,
     #[serde(rename = "en")]
     En,
@@ -27,25 +24,15 @@ pub enum Language {
     ZhHant,
 }
 
-impl Default for Language {
-    fn default() -> Self {
-        Self::Ja
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ItemType {
+    #[default]
     Tv,
     Web,
     Movie,
     Ova,
-}
-
-impl Default for ItemType {
-    fn default() -> Self {
-        Self::Tv
-    }
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +49,7 @@ pub type SiteMeta = std::collections::HashMap<String, SiteMetadata>;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct Root {
     pub site_meta: SiteMeta,
     pub items: Vec<Item>,

@@ -1,10 +1,9 @@
-
 // Mock ResizeObserver
 window.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
-}
+};
 
 // Mock PointerEvent
 if (!window.PointerEvent) {

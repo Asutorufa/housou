@@ -1,0 +1,57 @@
+name: Lint Fix
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+
+      - name: Fix Rust Formatting
+        run: cargo fmt --all
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Fix Frontend Formatting
+        working-directory: web
+        run: npm run format
+
+      - name: Fix Frontend Lints
+        working-directory: web
+        run: npm run lint:fix
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: automated code style fixes"
+          title: "chore: automated code style fixes"
+          body: "Automated fixes for code style issues found in the codebase."
+          branch: "automated-style-fixes"
+          base: "main"
