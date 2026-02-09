@@ -2,16 +2,17 @@
 import { render, screen } from '@testing-library/react'
 import DetailsModal from './DetailsModal'
 import { describe, it, expect } from 'vitest'
+import React from 'react'
 
 // Mock ResizeObserver
-globalThis.ResizeObserver = class ResizeObserver {
+global.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 
 // Mock PointerEvent
-if (!globalThis.PointerEvent) {
+if (!global.PointerEvent) {
   class PointerEvent extends MouseEvent {
     public height: number;
     public isPrimary: boolean;
@@ -39,7 +40,7 @@ if (!globalThis.PointerEvent) {
     }
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  globalThis.PointerEvent = PointerEvent as any;
+  global.PointerEvent = PointerEvent as any;
 }
 
 
