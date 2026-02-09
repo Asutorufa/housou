@@ -29,15 +29,13 @@ impl ResponseExt for Response {
         Ok(self)
     }
 
-    fn add_security_headers(mut self) -> Result<Response> {
-        let headers = self.headers_mut();
-        headers.set(
+    fn add_security_headers(self) -> Result<Response> {
+        self.add_header(
             "Content-Security-Policy",
             "default-src 'none'; frame-ancestors 'none';",
-        )?;
-        headers.set("X-Content-Type-Options", "nosniff")?;
-        headers.set("X-Frame-Options", "DENY")?;
-        Ok(self)
+        )?
+        .add_header("X-Content-Type-Options", "nosniff")?
+        .add_header("X-Frame-Options", "DENY")
     }
 }
 
