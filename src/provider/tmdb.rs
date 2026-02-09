@@ -1,6 +1,7 @@
 use super::MetadataProvider;
 use crate::model;
 use regex::Regex;
+use std::sync::OnceLock;
 use tmdb_client::async_apis::AsyncAPIClient;
 use tmdb_client::models;
 use worker::*;
@@ -153,15 +154,22 @@ async fn search_media(
 }
 
 fn normalize_title(title: &str) -> String {
+    static SEASON_REGEX: OnceLock<Regex> = OnceLock::new();
+    static YEAR_REGEX: OnceLock<Regex> = OnceLock::new();
+
     let mut normalized = title.replace("-", " - ");
-    if let Ok(re) = Regex::new(
-        r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$",
-    ) {
-        normalized = re.replace(&normalized, "").to_string();
-    }
-    if let Ok(re) = Regex::new(r"\s*\(\d{4}\)\s*$") {
-        normalized = re.replace(&normalized, "").to_string();
-    }
+
+    let season_re = SEASON_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$")
+            .expect("Invalid Season Regex")
+    });
+    normalized = season_re.replace(&normalized, "").to_string();
+
+    let year_re = YEAR_REGEX.get_or_init(|| {
+        Regex::new(r"\s*\(\d{4}\)\s*$").expect("Invalid Year Regex")
+    });
+    normalized = year_re.replace(&normalized, "").to_string();
+
     normalized.replace("  ", " ").trim().to_string()
 }
 
@@ -451,5 +459,28 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
                 None
             }
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_title() {
+        let cases = vec![
+            ("Attack on Titan Season 3", "Attack on Titan"),
+            ("My Hero Academia 第2期", "My Hero Academia"),
+            ("Fullmetal Alchemist: Brotherhood", "Fullmetal Alchemist: Brotherhood"),
+            ("Steins;Gate (2011)", "Steins;Gate"),
+            ("One Piece - 1000", "One Piece - 1000"),
+            ("Sword Art Online Ⅱ", "Sword Art Online"),
+            ("Demon Slayer: Kimetsu no Yaiba Season 2", "Demon Slayer: Kimetsu no Yaiba"),
+            ("  Test  Title  ", "Test Title"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(normalize_title(input), expected, "Failed for input: {}", input);
+        }
     }
 }
