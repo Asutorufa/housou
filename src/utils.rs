@@ -1,20 +1,26 @@
 use worker::*;
 
 const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
+const CACHE_TTL_404_SECONDS: i32 = 3600; // 1 hour cache for 404
 
-pub async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<T> {
+pub async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<Option<T>> {
     let mut init = RequestInit::new();
     init.with_method(Method::Get);
 
     let mut cf = CfProperties::new();
-    let mut ttl_by_status = std::collections::HashMap::new();
-    ttl_by_status.insert("200".to_string(), CACHE_TTL_SECONDS);
-    ttl_by_status.insert("404".to_string(), 3600); // Cache 404s for 1 hour
+    let ttl_by_status = std::collections::HashMap::from([
+        ("200".to_string(), CACHE_TTL_SECONDS),
+        ("404".to_string(), CACHE_TTL_404_SECONDS),
+    ]);
     cf.cache_ttl_by_status = Some(ttl_by_status);
     init.with_cf_properties(cf);
 
     let request = Request::new_with_init(url, &init)?;
     let mut response = Fetch::Request(request).send().await?;
+
+    if response.status_code() == 404 {
+        return Ok(None);
+    }
 
     if response.status_code() != 200 {
         return Err(Error::RustError(format!(
@@ -24,5 +30,8 @@ pub async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Resul
         )));
     }
 
-    response.json().await
+    match response.json().await {
+        Ok(json) => Ok(Some(json)),
+        Err(e) => Err(e),
+    }
 }

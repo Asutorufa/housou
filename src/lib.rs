@@ -72,7 +72,10 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
 
     for (name, stype) in types {
         let url = format!("{}sites/{}.json", BASE_DATA_URL, name);
-        let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url).await?;
+        let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
+            .await?
+            .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
+
         for meta in data.values_mut() {
             meta.type_field = Some(stype.clone());
         }
@@ -97,16 +100,12 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
         let url = format!("{}items/{}/{:02}.json", BASE_DATA_URL, year, month);
         futures.push(async move {
             match utils::fetch_json::<Vec<Item>>(&url).await {
-                Ok(items) => Ok(items),
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("status 404") {
-                        console_log!("Month data not found (404), skipping: {}", url);
-                        Ok(Vec::new())
-                    } else {
-                        Err(e)
-                    }
+                Ok(Some(items)) => Ok(items),
+                Ok(None) => {
+                    console_log!("Month data not found (404), skipping: {}", url);
+                    Ok(Vec::new())
                 }
+                Err(e) => Err(e),
             }
         });
     }
