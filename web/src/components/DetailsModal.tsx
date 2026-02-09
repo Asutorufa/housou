@@ -234,10 +234,9 @@ export default function DetailsModal({ isOpen, onClose, anime, items, siteMeta }
                                             {info?.description && (
                                                 <div>
                                                     <h4 className="text-sm font-black uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">あらすじ</h4>
-                                                    <div
-                                                        className="text-sm md:text-base text-gray-600 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert"
-                                                        dangerouslySetInnerHTML={{ __html: info.description }}
-                                                    />
+                                                    <div className="text-sm md:text-base text-gray-600 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert">
+                                                        {info.description}
+                                                    </div>
                                                 </div>
                                             )}
 
