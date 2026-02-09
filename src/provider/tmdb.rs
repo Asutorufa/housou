@@ -737,36 +737,39 @@ mod tests {
 
         let unified = movie_to_unified(movie);
 
-        assert_eq!(unified.id, "movie/12345");
-        assert_eq!(unified.title.native, Some("Test Movie".to_string()));
-        assert_eq!(
-            unified.cover_image.large,
-            Some("https://image.tmdb.org/t/p/w500/path/to/poster.jpg".to_string())
-        );
-        assert_eq!(
-            unified.cover_image.extra_large,
-            Some("https://image.tmdb.org/t/p/original/path/to/poster.jpg".to_string())
-        );
-        assert_eq!(unified.genres, vec!["Action", "Adventure"]);
-        assert_eq!(
-            unified.description,
-            Some("This is a test movie description.".to_string())
-        );
-        assert_eq!(unified.studios, Vec::<String>::new());
-        assert_eq!(unified.is_finished, true);
-        assert_eq!(unified.average_score, Some(85));
-        assert_eq!(unified.runtime, Some(120));
-        // Content rating should prioritize JP, then US, then first available
-        assert_eq!(unified.content_rating, Some("G".to_string()));
+        let expected = model::UnifiedMetadata {
+            id: "movie/12345".into(),
+            title: model::UniversalTitle {
+                native: Some("Test Movie".into()),
+                ..Default::default()
+            },
+            cover_image: model::UniversalCoverImage {
+                large: Some("https://image.tmdb.org/t/p/w500/path/to/poster.jpg".into()),
+                extra_large: Some(
+                    "https://image.tmdb.org/t/p/original/path/to/poster.jpg".into(),
+                ),
+            },
+            average_score: Some(85),
+            genres: vec!["Action".into(), "Adventure".into()],
+            description: Some("This is a test movie description.".into()),
+            studios: vec![],
+            characters: vec![model::UniversalCharacter {
+                name: "Character 1".into(),
+                voice_actor: Some("Actor 1".into()),
+                role: Some("Cast".into()),
+            }],
+            staff: vec![model::UniversalStaff {
+                name: "Director 1".into(),
+                role: "Director".into(),
+                department: Some("Directing".into()),
+            }],
+            is_finished: true,
+            runtime: Some(120),
+            // Content rating should prioritize JP, then US, then first available
+            content_rating: Some("G".into()),
+            ..Default::default()
+        };
 
-        // Check characters
-        assert_eq!(unified.characters.len(), 1);
-        assert_eq!(unified.characters[0].name, "Character 1");
-        assert_eq!(unified.characters[0].voice_actor, Some("Actor 1".to_string()));
-
-        // Check staff
-        assert_eq!(unified.staff.len(), 1);
-        assert_eq!(unified.staff[0].name, "Director 1");
-        assert_eq!(unified.staff[0].role, "Director");
+        assert_eq!(unified, expected);
     }
 }
