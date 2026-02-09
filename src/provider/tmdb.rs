@@ -10,20 +10,38 @@ pub struct TmdbProvider<'a> {
     env: &'a Env,
 }
 
+struct SyncApiClient(AsyncAPIClient);
+
+// SAFETY: AsyncAPIClient uses trait objects that are not Send/Sync, preventing it from being Sync.
+// However, Cloudflare Workers (wasm32-unknown-unknown) is a single-threaded environment.
+// We are using this wrapper to satisfy the static OnceLock requirement while guaranteeing
+// no actual concurrent access will occur in this environment.
+unsafe impl Send for SyncApiClient {}
+unsafe impl Sync for SyncApiClient {}
+
+static TMDB_CLIENT: OnceLock<Option<SyncApiClient>> = OnceLock::new();
+
 impl<'a> TmdbProvider<'a> {
     pub fn new(env: &'a Env) -> Self {
         Self { env }
     }
 
-    fn get_client(&self) -> Result<AsyncAPIClient> {
-        let api_token = self
-            .env
-            .secret("TMDB_TOKEN")
-            .map(|s| s.to_string())
-            .or_else(|_| self.env.var("TMDB_TOKEN").map(|s| s.to_string()))
-            .map_err(|_| Error::RustError("TMDB_TOKEN not set".into()))?;
+    fn get_client(&self) -> Result<&AsyncAPIClient> {
+        let client_opt = TMDB_CLIENT.get_or_init(|| {
+            let api_token = self
+                .env
+                .secret("TMDB_TOKEN")
+                .map(|s| s.to_string())
+                .or_else(|_| self.env.var("TMDB_TOKEN").map(|s| s.to_string()))
+                .ok();
 
-        Ok(AsyncAPIClient::new_with_api_key(&api_token))
+            api_token.map(|t| SyncApiClient(AsyncAPIClient::new_with_api_key(t)))
+        });
+
+        client_opt
+            .as_ref()
+            .map(|w| &w.0)
+            .ok_or_else(|| Error::RustError("TMDB_TOKEN not set".into()))
     }
 }
 
@@ -40,15 +58,15 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
         let (media_id, media_type) = if let Some(id) = id {
             parse_tmdb_id(id)?
         } else if let Some(search_title) = title {
-            search_media(&client, search_title, year).await?
+            search_media(client, search_title, year).await?
         } else {
             return Err(Error::RustError("ID or Title required".into()));
         };
 
         // 2. Fetch Details based on type
         match media_type {
-            MediaType::Movie => get_movie_details(&client, media_id).await,
-            MediaType::Tv { show_id, season } => get_tv_details(&client, show_id, season).await,
+            MediaType::Movie => get_movie_details(client, media_id).await,
+            MediaType::Tv { show_id, season } => get_tv_details(client, show_id, season).await,
         }
     }
 }
@@ -314,27 +332,19 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
     // Content Ratings (Release Dates for Movies)
     let content_rating = movie.release_dates.and_then(|dates| {
         dates.results.and_then(|results| {
-            let get_cert = |r: &models::ReleasedateslistResults| {
-                r.release_dates
-                    .as_ref()
-                    .and_then(|d| {
-                        d.iter()
-                            .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
-                    })
-                    .and_then(|x| x.certification.clone())
-            };
-
-            results
-                .iter()
-                .find(|r| r.iso_3166_1.as_deref() == Some("JP"))
-                .and_then(get_cert)
-                .or_else(|| {
-                    results
-                        .iter()
-                        .find(|r| r.iso_3166_1.as_deref() == Some("US"))
-                        .and_then(get_cert)
-                })
-                .or_else(|| results.iter().filter_map(get_cert).next())
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| {
+                     r.release_dates
+                        .as_ref()
+                        .and_then(|d| {
+                            d.iter()
+                                .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
+                        })
+                        .and_then(|x| x.certification.clone())
+                }
+            )
         })
     });
 
@@ -443,21 +453,11 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     // Content Ratings
     let content_rating = show.content_ratings.and_then(|ratings| {
         ratings.results.and_then(|results| {
-            let get_rating = |r: &models::RatingslistResults| {
-                r.rating.as_ref().filter(|s| !s.is_empty()).cloned()
-            };
-
-            results
-                .iter()
-                .find(|r| r.iso_3166_1.as_deref() == Some("JP"))
-                .and_then(get_rating)
-                .or_else(|| {
-                    results
-                        .iter()
-                        .find(|r| r.iso_3166_1.as_deref() == Some("US"))
-                        .and_then(get_rating)
-                })
-                .or_else(|| results.iter().filter_map(get_rating).next())
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned()
+            )
         })
     });
 
@@ -505,6 +505,26 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     }
 }
 
+fn find_best_rating<T, FCountry, FRating>(
+    results: &[T],
+    get_country: FCountry,
+    get_rating: FRating,
+) -> Option<String>
+where
+    FCountry: Fn(&T) -> Option<&str>,
+    FRating: Fn(&T) -> Option<String>,
+{
+    let find_by_country = |country: &str| {
+        results
+            .iter()
+            .find(|r| get_country(r) == Some(country))
+            .and_then(&get_rating)
+    };
+
+    find_by_country("JP")
+        .or_else(|| find_by_country("US"))
+        .or_else(|| results.iter().filter_map(&get_rating).next())
+}
 
 #[cfg(test)]
 mod tests {
@@ -771,5 +791,91 @@ mod tests {
         };
 
         assert_eq!(unified, expected);
+  }
+
+    #[test]
+    fn test_find_best_rating() {
+        struct MockRating {
+            country: Option<String>,
+            rating: Option<String>,
+        }
+
+        let cases = vec![
+            (
+                vec![
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("PG".into()),
+                    },
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: Some("G".into()),
+                    },
+                ],
+                Some("G".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("12".into()),
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("PG-13".into()),
+                    },
+                ],
+                Some("PG-13".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("15".into()),
+                    },
+                    MockRating {
+                        country: Some("FR".into()),
+                        rating: Some("12".into()),
+                    },
+                ],
+                Some("15".to_string()),
+            ),
+            (vec![], None),
+            (
+                vec![
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: Some("R".into()),
+                    },
+                ],
+                Some("R".to_string()),
+            ),
+            (
+                vec![
+                    MockRating {
+                        country: Some("JP".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("US".into()),
+                        rating: None,
+                    },
+                    MockRating {
+                        country: Some("UK".into()),
+                        rating: Some("18".into()),
+                    },
+                ],
+                Some("18".to_string()),
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let result = find_best_rating(&input, |r| r.country.as_deref(), |r| r.rating.clone());
+            assert_eq!(result, expected);
+        }
     }
 }
