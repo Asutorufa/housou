@@ -119,7 +119,7 @@ export default function Header({
             "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md transition-all hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
             isSearchFocused
               ? "w-full border-blue-500 ring-2 ring-blue-500/20"
-              : "ml-auto w-10 md:w-64" // ml-auto keeps it right-aligned even if filters are gone
+              : "ml-auto w-10 md:w-64", // ml-auto keeps it right-aligned even if filters are gone
           )}
         >
           <div
