@@ -47,30 +47,39 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
-    // 1. Only cache GET requests
-    if req.method() == Method::Get {
-        if let Ok(Some(resp)) = cache.get(url.as_str(), true).await {
-            return Ok(resp);
-        }
-    }
+    // 1. Handle caching and routing
+    let mut resp = if req.method() == Method::Get {
+        if let Ok(Some(cached_resp)) = cache.get(url.as_str(), true).await {
+            // Use cached response, clone to make it mutable for adding security headers
+            cached_resp.cloned()?
+        } else {
+            // Generate new response
+            let mut fresh_resp = router(req, env).await?;
 
-    let mut resp = router(req, env).await?;
-
-    // 2. Cache successful GET responses
-    if url.path().get(0..4).unwrap_or("") == "/api" && resp.status_code() == 200 {
-        // Ensure Cache-Control is set (provider already sets it, but good to ensure)
-        if !resp.headers().has("Cache-Control")? {
-            resp.headers_mut().set(
+            // Cache successful GET responses
+            if url.path().get(0..4).unwrap_or("") == "/api" && fresh_resp.status_code() == 200 {
+                if !fresh_resp.headers().has("Cache-Control")? {
+                    fresh_resp.headers_mut().set(
                 "Cache-Control",
                 &format!("public, max-age={}", config::CACHE_TTL_API),
             )?;
+                }
+                let _ = cache.put(url.as_str(), fresh_resp.cloned()?).await;
+            }
+            fresh_resp
         }
+    } else {
+        router(req, env).await?
+    };
 
-        // We need to clone the response to put it in cache because put() consumes it
-        // Or rather, we return the response and put a clone.
-        // Cache API in worker-rs: put(key, resp)
-        let _ = cache.put(url.as_str(), resp.cloned()?).await;
-    }
+    // Add security headers to ALL responses
+    let headers = resp.headers_mut();
+    headers.set(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none';",
+    )?;
+    headers.set("X-Content-Type-Options", "nosniff")?;
+    headers.set("X-Frame-Options", "DENY")?;
 
     Ok(resp)
 }
