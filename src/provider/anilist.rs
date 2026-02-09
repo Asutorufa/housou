@@ -238,10 +238,10 @@ mod tests {
         assert_eq!(unified.cover_image.large, None);
         assert_eq!(unified.average_score, None);
         assert_eq!(unified.episodes, None);
-        assert_eq!(unified.genres.len(), 0);
+        assert!(unified.genres.is_empty());
         assert_eq!(unified.description, None);
-        assert_eq!(unified.studios.len(), 0);
-        assert_eq!(unified.characters.len(), 0);
+        assert!(unified.studios.is_empty());
+        assert!(unified.characters.is_empty());
         assert!(!unified.is_finished); // RELEASING -> false
     }
 
