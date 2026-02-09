@@ -68,13 +68,20 @@ fn parse_tmdb_id(id: &str) -> Result<(i32, MediaType)> {
         return Err(Error::RustError("Empty ID".into()));
     }
 
+    // Helper to extract numeric ID from a slug (e.g., "123-show-title" -> 123)
+    let parse_id = |s: &str| -> Result<i32> {
+        s.split('-')
+            .next()
+            .unwrap_or(s)
+            .parse()
+            .map_err(|_| Error::RustError("Invalid ID format".into()))
+    };
+
     if parts.first() == Some(&"tv") {
         if parts.len() < 2 {
             return Err(Error::RustError("Invalid TV ID format: missing ID".into()));
         }
-        let show_id = parts[1]
-            .parse()
-            .map_err(|_| Error::RustError("Invalid show ID".into()))?;
+        let show_id = parse_id(parts[1])?;
         let season = if parts.len() >= 4 && parts[2] == "season" {
             parts[3]
                 .parse()
@@ -87,15 +94,11 @@ fn parse_tmdb_id(id: &str) -> Result<(i32, MediaType)> {
         if parts.len() < 2 {
             return Err(Error::RustError("Invalid Movie ID format: missing ID".into()));
         }
-        let movie_id = parts[1]
-            .parse()
-            .map_err(|_| Error::RustError("Invalid movie ID".into()))?;
+        let movie_id = parse_id(parts[1])?;
         Ok((movie_id, MediaType::Movie))
     } else if parts.len() == 1 {
-        // Assume movie if ID is just a number
-        let movie_id = parts[0]
-            .parse()
-            .map_err(|_| Error::RustError("Invalid ID format".into()))?;
+        // Assume movie if ID is just a number/slug
+        let movie_id = parse_id(parts[0])?;
         Ok((movie_id, MediaType::Movie))
     } else {
         Err(Error::RustError("Unknown media type or format".into()))
@@ -513,6 +516,24 @@ mod tests {
         );
         assert_eq!(
             parse_tmdb_id("/movie/456").unwrap(),
+            (456, MediaType::Movie)
+        );
+
+        // Slugged ID Cases
+        assert_eq!(
+            parse_tmdb_id("tv/123-show-name").unwrap(),
+            (123, MediaType::Tv { show_id: 123, season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123-show-name/season/2").unwrap(),
+            (123, MediaType::Tv { show_id: 123, season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("movie/456-movie-name").unwrap(),
+            (456, MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("456-movie-name").unwrap(),
             (456, MediaType::Movie)
         );
 
