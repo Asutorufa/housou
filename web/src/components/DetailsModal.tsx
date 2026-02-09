@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { Clock, ExternalLink, PlayCircle, Star, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AnimeItem,
   SiteMeta,
@@ -34,7 +34,7 @@ export default function DetailsModal({
     }
   }, [anime]);
 
-  const { title, info } = displayAnime || { title: "", info: null };
+  const { title, info } = anime || displayAnime || { title: "", info: null };
 
   // Find the original item to get site links
   const originalItem = items.find((i) => i.title === title);
@@ -449,7 +449,10 @@ export default function DetailsModal({
                                   {},
                                 );
                               return Object.entries(grouped).map(
-                                ([dept, members]) => (
+                                ([dept, members]: [
+                                  string,
+                                  UniversalStaff[],
+                                ]) => (
                                   <div key={dept} className="mb-3">
                                     <div className="mb-1.5 text-[10px] font-bold tracking-wider text-gray-400 uppercase dark:text-gray-500">
                                       {dept}

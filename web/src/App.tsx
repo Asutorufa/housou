@@ -16,55 +16,76 @@ interface Selections {
 }
 
 const fetcher = async (url: string) => {
-  const response = await fetch(url)
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Items fetch failed: ${response.status} ${response.statusText}`)
+    throw new Error(
+      `Items fetch failed: ${response.status} ${response.statusText}`,
+    );
   }
-  return response.json()
-}
+  return response.json();
+};
 
 export default function App() {
-  const [config, setConfig] = useState<Config | null>(null)
-  const [initError, setInitError] = useState<string | null>(null)
-  const [initLoading, setInitLoading] = useState(true)
+  const [config, setConfig] = useState<Config | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [initLoading, setInitLoading] = useState(true);
 
-  const [selections, setSelections] = useLocalStorage<Selections>(STORAGE_KEY_SELECTIONS, {
-    year: '',
-    season: 'all',
-    site: 'all'
-  })
+  const [selections, setSelections] = useLocalStorage<Selections>(
+    STORAGE_KEY_SELECTIONS,
+    {
+      year: "",
+      season: "all",
+      site: "all",
+    },
+  );
 
-  const selectedYear = selections.year
-  const setSelectedYear = (year: string) => setSelections(prev => ({ ...prev, year }))
+  const selectedYear = selections.year;
+  const setSelectedYear = (year: string) =>
+    setSelections((prev) => ({ ...prev, year }));
 
-  const selectedSeason = selections.season
-  const setSelectedSeason = (season: string) => setSelections(prev => ({ ...prev, season }))
+  const selectedSeason = selections.season;
+  const setSelectedSeason = (season: string) =>
+    setSelections((prev) => ({ ...prev, season }));
 
-  const selectedSite = selections.site
-  const setSelectedSite = (site: string) => setSelections(prev => ({ ...prev, site }))
+  const selectedSite = selections.site;
+  const setSelectedSite = (site: string) =>
+    setSelections((prev) => ({ ...prev, site }));
 
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
-  const [isAttributionOpen, setIsAttributionOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedAnime, setSelectedAnime] = useState<{
+    title: string;
+    info: UnifiedMetadata | null;
+  } | null>(null);
+  const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
   // Use SWR directly for fetching items
   const itemsUrl = useMemo(() => {
-    if (!selectedYear) return null
+    if (!selectedYear) return null;
 
-    const params = new URLSearchParams({ year: selectedYear })
-    if (selectedSeason && selectedSeason !== 'all') {
-      params.append('season', selectedSeason)
+    const params = new URLSearchParams({ year: selectedYear });
+    if (selectedSeason && selectedSeason !== "all") {
+      params.append("season", selectedSeason);
     }
 
-    return `/api/items?${params.toString()}`
-  }, [selectedYear, selectedSeason])
+    return `/api/items?${params.toString()}`;
+  }, [selectedYear, selectedSeason]);
 
-  const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
+  const {
+    data: fetchedItems,
+    error: itemsError,
+    isLoading: itemsLoading,
+  } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
 
-  const items = useMemo(() => fetchedItems || [], [fetchedItems])
-  const loading = initLoading || itemsLoading
+  const items = useMemo(() => fetchedItems || [], [fetchedItems]);
+  const loading = initLoading || itemsLoading;
 
-  const error = initError || (itemsError ? (itemsError instanceof Error ? itemsError.message : String(itemsError)) : null)
+  const error =
+    initError ||
+    (itemsError
+      ? itemsError instanceof Error
+        ? itemsError.message
+        : String(itemsError)
+      : null);
 
   // Initialization
   useEffect(() => {
@@ -100,9 +121,9 @@ export default function App() {
           return { year, season, site };
         });
       } catch (err) {
-        setInitError(err instanceof Error ? err.message : String(err))
+        setInitError(err instanceof Error ? err.message : String(err));
       } finally {
-        setInitLoading(false)
+        setInitLoading(false);
       }
     }
     init();
