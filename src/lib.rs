@@ -12,6 +12,22 @@ const CACHE_TTL_SECONDS: i32 = 21600; // 6 hours cache
 // Cache version - bump this to invalidate all cached data
 pub const CACHE_VERSION: &str = "v3";
 
+pub trait ResponseExt {
+    fn add_cors(self, env: &Env) -> Result<Response>;
+}
+
+impl ResponseExt for Response {
+    fn add_cors(mut self, env: &Env) -> Result<Response> {
+        let allowed_origin = env
+            .var("CORS_ALLOWED_ORIGIN")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| "*".to_string());
+        self.headers_mut()
+            .set("Access-Control-Allow-Origin", &allowed_origin)?;
+        Ok(self)
+    }
+}
+
 #[derive(Serialize)]
 struct ConfigResponse<'a> {
     site_meta: &'a SiteMeta,
@@ -177,10 +193,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 },
             };
 
-            let mut response = Response::from_json(&config)?;
-            response
-                .headers_mut()
-                .set("Access-Control-Allow-Origin", "*")?;
+            let mut response = Response::from_json(&config)?.add_cors(&env)?;
             response
                 .headers_mut()
                 .set("Cache-Control", "public, max-age=60")?; // Short cache for config
@@ -202,11 +215,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
             let items = fetch_items_for_season(target_year, target_season).await?;
 
-            let mut response = Response::from_json(&items)?;
-            response
-                .headers_mut()
-                .set("Access-Control-Allow-Origin", "*")?;
-            Ok(response)
+            Response::from_json(&items)?.add_cors(&env)
         }
         (Method::Get, "/api/metadata") => {
             let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());
