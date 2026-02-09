@@ -53,6 +53,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
     }
 }
 
+
 #[derive(Debug, PartialEq)]
 enum MediaType {
     Movie,
@@ -178,21 +179,30 @@ async fn search_media(
 static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 fn normalize_title(title: &str) -> String {
-    let mut normalized = title.replace("-", " - ");
+    let normalized = title.replace("-", " - ");
 
     let re = TITLE_NORMALIZE_REGEX.get_or_init(|| {
         Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*|\s*\(\d{4}\)\s*)+$")
             .expect("Invalid Title Normalize Regex")
     });
 
-    normalized = re.replace(&normalized, "").into_owned();
+    let stripped = re.replace(&normalized, "");
 
-    normalized
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim_end_matches(|c: char| c.is_whitespace() || c == '-')
-        .to_string()
+    let mut parts = stripped.split_whitespace();
+    let mut result = String::with_capacity(stripped.len());
+
+    if let Some(first) = parts.next() {
+        result.push_str(first);
+        for part in parts {
+            result.push(' ');
+            result.push_str(part);
+        }
+    }
+
+    while result.ends_with(|c: char| c.is_whitespace() || c == '-') {
+        result.pop();
+    }
+    result
 }
 
 async fn get_movie_details(
@@ -494,6 +504,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         }),
     }
 }
+
 
 #[cfg(test)]
 mod tests {
