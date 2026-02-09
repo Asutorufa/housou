@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import useSWR from 'swr'
 import { useLocalStorage } from 'usehooks-ts'
 import AttributionModal from './components/AttributionModal'
 import DetailsModal from './components/DetailsModal'
@@ -6,13 +7,20 @@ import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
 import { STORAGE_KEY_SELECTIONS } from './constants'
-import { useItems } from './hooks/useItems'
-import type { Config, UnifiedMetadata } from './types'
+import type { AnimeItem, Config, UnifiedMetadata } from './types'
 
 interface Selections {
   year: string
   season: string
   site: string
+}
+
+const fetcher = async (url: string) => {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error('Items fetch failed')
+  }
+  return response.json()
 }
 
 export default function App() {
@@ -38,10 +46,21 @@ export default function App() {
   const [selectedAnime, setSelectedAnime] = useState<{ title: string; info: UnifiedMetadata | null } | null>(null)
   const [isAttributionOpen, setIsAttributionOpen] = useState(false)
 
-  // Use custom hook for fetching items
-  const { items, loading, error: itemsError } = useItems(selectedYear, selectedSeason)
+  // Use SWR directly for fetching items
+  let itemsUrl: string | null = null
+  if (selectedYear) {
+    itemsUrl = `/api/items?year=${selectedYear}`
+    if (selectedSeason && selectedSeason !== 'all') {
+      itemsUrl += `&season=${selectedSeason}`
+    }
+  }
 
-  const error = initError || itemsError
+  const { data: fetchedItems, error: itemsError, isLoading: itemsLoading } = useSWR<AnimeItem[]>(itemsUrl, fetcher)
+
+  const items = useMemo(() => fetchedItems || [], [fetchedItems])
+  const loading = itemsLoading
+
+  const error = initError || (itemsError ? (itemsError instanceof Error ? itemsError.message : String(itemsError)) : null)
 
   // Initialization
   useEffect(() => {
