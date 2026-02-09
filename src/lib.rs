@@ -9,6 +9,8 @@ use model::{Item, SiteMeta, SiteMetadata, SiteType};
 
 pub trait ResponseExt {
     fn add_cors(self, env: &Env) -> Result<Response>;
+    fn add_header(self, key: &str, value: &str) -> Result<Response>;
+    fn add_security_headers(self) -> Result<Response>;
 }
 
 impl ResponseExt for Response {
@@ -20,6 +22,20 @@ impl ResponseExt for Response {
         self.headers_mut()
             .set("Access-Control-Allow-Origin", &allowed_origin)?;
         Ok(self)
+    }
+
+    fn add_header(mut self, key: &str, value: &str) -> Result<Response> {
+        self.headers_mut().set(key, value)?;
+        Ok(self)
+    }
+
+    fn add_security_headers(self) -> Result<Response> {
+        self.add_header(
+            "Content-Security-Policy",
+            "default-src 'none'; frame-ancestors 'none';",
+        )?
+        .add_header("X-Content-Type-Options", "nosniff")?
+        .add_header("X-Frame-Options", "DENY")
     }
 }
 
@@ -48,7 +64,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let url = req.url()?;
 
     // 1. Handle caching and routing
-    let mut resp = if req.method() == Method::Get {
+    let resp = if req.method() == Method::Get {
         if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()?
@@ -59,7 +75,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             // Cache successful GET responses
             if url.path().get(0..4).unwrap_or("") == "/api" && fresh_resp.status_code() == 200 {
                 if !fresh_resp.headers().has("Cache-Control")? {
-                    fresh_resp.headers_mut().set(
+                    fresh_resp = fresh_resp.add_header(
                         "Cache-Control",
                         &format!("public, max-age={}", config::CACHE_TTL_API),
                     )?;
@@ -73,15 +89,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     };
 
     // Add security headers to ALL responses
-    let headers = resp.headers_mut();
-    headers.set(
-        "Content-Security-Policy",
-        "default-src 'none'; frame-ancestors 'none';",
-    )?;
-    headers.set("X-Content-Type-Options", "nosniff")?;
-    headers.set("X-Frame-Options", "DENY")?;
-
-    Ok(resp)
+    resp.add_security_headers()
 }
 
 async fn fetch_site_meta() -> Result<SiteMeta> {
@@ -173,12 +181,12 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 },
             };
 
-            let mut response = Response::from_json(&config_resp)?.add_cors(&env)?;
-            response.headers_mut().set(
-                "Cache-Control",
-                &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
-            )?;
-            Ok(response)
+            Response::from_json(&config_resp)?
+                .add_cors(&env)?
+                .add_header(
+                    "Cache-Control",
+                    &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
+                )
         }
         (Method::Get, "/api/items") => {
             let year_param = query.get("year").and_then(|y| y.parse::<i32>().ok());

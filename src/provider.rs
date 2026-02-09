@@ -39,16 +39,13 @@ pub async fn get_metadata(
 }
 
 fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
-    let mut response = Response::from_json(unified)?.add_cors(env)?;
-
     let ttl = if unified.is_finished {
         crate::config::CACHE_TTL_FINISHED
     } else {
         crate::config::CACHE_TTL_ONGOING
     };
 
-    response
-        .headers_mut()
-        .set("Cache-Control", &format!("public, max-age={}", ttl))?;
-    Ok(response)
+    Response::from_json(unified)?
+        .add_cors(env)?
+        .add_header("Cache-Control", &format!("public, max-age={}", ttl))
 }
