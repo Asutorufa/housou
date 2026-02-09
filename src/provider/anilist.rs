@@ -1,5 +1,6 @@
 use super::MetadataProvider;
 use crate::model;
+use serde::Deserialize;
 use worker::*;
 
 pub struct AnilistProvider;
@@ -64,33 +65,108 @@ impl MetadataProvider for AnilistProvider {
         }
 
         let body: serde_json::Value = anilist_response.json().await?;
-        let media = &body["data"]["Media"];
-        if media.is_null() {
+        let media_json = &body["data"]["Media"];
+        if media_json.is_null() {
             return Err(Error::RustError("AniList: Not Found".into()));
         }
 
-        Ok(anilist_to_unified(media.clone()))
+        let media: AniListMedia = serde_json::from_value(media_json.clone())
+            .map_err(|e| Error::RustError(format!("AniList deserialization error: {}", e)))?;
+
+        Ok(anilist_to_unified(media))
     }
 }
 
-pub fn anilist_to_unified(media: serde_json::Value) -> model::UnifiedMetadata {
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListMedia {
+    pub id: i64,
+    pub title: Option<AniListTitle>,
+    #[serde(rename = "coverImage")]
+    pub cover_image: Option<AniListCoverImage>,
+    #[serde(rename = "averageScore")]
+    pub average_score: Option<i32>,
+    pub episodes: Option<i32>,
+    pub status: Option<String>,
+    pub genres: Option<Vec<serde_json::Value>>,
+    pub description: Option<String>,
+    pub studios: Option<AniListStudios>,
+    pub characters: Option<AniListCharacters>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListTitle {
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListCoverImage {
+    pub large: Option<String>,
+    #[serde(rename = "extraLarge")]
+    pub extra_large: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListStudios {
+    pub nodes: Option<Vec<AniListStudioNode>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListStudioNode {
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListCharacters {
+    pub edges: Option<Vec<AniListCharacterEdge>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListCharacterEdge {
+    pub role: Option<String>,
+    pub node: Option<AniListCharacterNode>,
+    #[serde(rename = "voiceActors")]
+    pub voice_actors: Option<Vec<AniListVoiceActor>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListCharacterNode {
+    pub name: Option<AniListName>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListName {
+    pub full: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AniListVoiceActor {
+    pub name: Option<AniListName>,
+}
+
+pub fn anilist_to_unified(media: AniListMedia) -> model::UnifiedMetadata {
     use model::*;
 
-    let title = UniversalTitle {
-        romaji: media["title"]["romaji"].as_str().map(|s| s.to_string()),
-        english: media["title"]["english"].as_str().map(|s| s.to_string()),
-        native: media["title"]["native"].as_str().map(|s| s.to_string()),
+    let title = match media.title {
+        Some(t) => UniversalTitle {
+            romaji: t.romaji,
+            english: t.english,
+            native: t.native,
+        },
+        None => UniversalTitle::default(),
     };
 
-    let cover_image = UniversalCoverImage {
-        large: media["coverImage"]["large"].as_str().map(|s| s.to_string()),
-        extra_large: media["coverImage"]["extraLarge"]
-            .as_str()
-            .map(|s| s.to_string()),
+    let cover_image = match media.cover_image {
+        Some(c) => UniversalCoverImage {
+            large: c.large,
+            extra_large: c.extra_large,
+        },
+        None => UniversalCoverImage::default(),
     };
 
     let mut genres = Vec::new();
-    if let Some(arr) = media["genres"].as_array() {
+    if let Some(arr) = media.genres {
         for g in arr {
             if let Some(s) = g.as_str() {
                 genres.push(s.to_string());
@@ -99,44 +175,49 @@ pub fn anilist_to_unified(media: serde_json::Value) -> model::UnifiedMetadata {
     }
 
     let mut studios = Vec::new();
-    if let Some(arr) = media["studios"]["nodes"].as_array() {
-        for s in arr {
-            if let Some(name) = s["name"].as_str() {
-                studios.push(name.to_string());
+    if let Some(nodes) = media.studios.and_then(|s| s.nodes) {
+        for s in nodes {
+            if let Some(name) = s.name {
+                studios.push(name);
             }
         }
     }
 
     let mut characters = Vec::new();
-    if let Some(arr) = media["characters"]["edges"].as_array() {
-        for edge in arr {
+    if let Some(edges) = media.characters.and_then(|c| c.edges) {
+        for edge in edges {
             characters.push(UniversalCharacter {
-                name: edge["node"]["name"]["full"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string(),
-                voice_actor: edge["voiceActors"][0]["name"]["full"]
-                    .as_str()
-                    .map(|s| s.to_string()),
-                role: edge["role"].as_str().map(|s| s.to_string()),
+                name: edge
+                    .node
+                    .as_ref()
+                    .and_then(|n| n.name.as_ref())
+                    .and_then(|n| n.full.clone())
+                    .unwrap_or_default(),
+                voice_actor: edge
+                    .voice_actors
+                    .as_ref()
+                    .and_then(|v| v.first())
+                    .and_then(|v| v.name.as_ref())
+                    .and_then(|n| n.full.clone()),
+                role: edge.role,
             });
         }
     }
 
     UnifiedMetadata {
-        id: media["id"].as_i64().unwrap_or(0).to_string(),
+        id: media.id.to_string(),
         title,
         cover_image,
-        average_score: media["averageScore"].as_i64().map(|v| v as i32),
-        episodes: media["episodes"].as_i64().map(|v| v as i32),
+        average_score: media.average_score,
+        episodes: media.episodes,
         genres,
-        description: media["description"].as_str().map(|s| s.to_string()),
+        description: media.description,
         studios,
         characters,
         staff: vec![],
         episodes_list: vec![],
-        is_finished: media["status"]
-            .as_str()
+        is_finished: media
+            .status
             .map(|s| s == "FINISHED" || s == "CANCELLED")
             .unwrap_or(false),
         total_seasons: None, // AniList doesn't have seasons concept
@@ -153,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_anilist_to_unified_full() {
-        let media = json!({
+        let media_json = json!({
             "id": 12345,
             "title": {
                 "romaji": "Test Anime",
@@ -189,6 +270,7 @@ mod tests {
             }
         });
 
+        let media: AniListMedia = serde_json::from_value(media_json).unwrap();
         let unified = anilist_to_unified(media);
 
         assert_eq!(unified.id, "12345");
@@ -219,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_anilist_to_unified_minimal() {
-        let media = json!({
+        let media_json = json!({
             "id": 67890,
             "title": {
                 "romaji": "Minimal Anime"
@@ -229,6 +311,7 @@ mod tests {
             // other fields missing
         });
 
+        let media: AniListMedia = serde_json::from_value(media_json).unwrap();
         let unified = anilist_to_unified(media);
 
         assert_eq!(unified.id, "67890");
@@ -247,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_anilist_to_unified_arrays() {
-        let media = json!({
+        let media_json = json!({
             "id": 111,
             "title": { "romaji": "Array Test" },
             "genres": ["Action", null, 123, "Comedy"], // mixed types
@@ -279,6 +362,7 @@ mod tests {
             }
         });
 
+        let media: AniListMedia = serde_json::from_value(media_json).unwrap();
         let unified = anilist_to_unified(media);
 
         // Check genres
@@ -305,21 +389,22 @@ mod tests {
     }
 
     #[test]
-    fn test_anilist_to_unified_invalid_id() {
-        // Case 1: ID is missing completely
+    fn test_anilist_deserialization_error() {
+        // Case 1: ID is missing completely (field required)
         let media_no_id = json!({
             "title": { "romaji": "No ID Anime" },
             "status": "RELEASING"
         });
-        assert_eq!(anilist_to_unified(media_no_id).id, "0");
+        let res: Result<AniListMedia, _> = serde_json::from_value(media_no_id);
+        assert!(res.is_err());
 
-        // Case 2: ID is not a number (e.g. string)
-        // Note: The implementation uses `as_i64()`, which returns None if the value is not a number.
+        // Case 2: ID is not a number
         let media_bad_id = json!({
             "id": "not-a-number",
             "title": { "romaji": "Bad ID Anime" },
             "status": "RELEASING"
         });
-        assert_eq!(anilist_to_unified(media_bad_id).id, "0");
+        let res: Result<AniListMedia, _> = serde_json::from_value(media_bad_id);
+        assert!(res.is_err());
     }
 }
