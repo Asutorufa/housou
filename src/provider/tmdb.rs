@@ -188,14 +188,15 @@ fn normalize_title(title: &str) -> String {
 
     let stripped = re.replace(&normalized, "");
 
+    let mut parts = stripped.split_whitespace();
     let mut result = String::with_capacity(stripped.len());
-    let mut first = true;
-    for part in stripped.split_whitespace() {
-        if !first {
+
+    if let Some(first) = parts.next() {
+        result.push_str(first);
+        for part in parts {
             result.push(' ');
+            result.push_str(part);
         }
-        result.push_str(part);
-        first = false;
     }
 
     while result.ends_with(|c: char| c.is_whitespace() || c == '-') {
@@ -503,6 +504,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         }),
     }
 }
+
 
 #[cfg(test)]
 mod tests {
