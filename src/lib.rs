@@ -93,7 +93,6 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
             let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
                 .await?
                 .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
-
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
             }
