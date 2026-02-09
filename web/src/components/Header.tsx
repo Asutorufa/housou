@@ -114,17 +114,22 @@ export default function Header({
         {/* Search Input (Right) */}
         <motion.div
           layout
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          transition={{
+            type: "spring",
+            stiffness: 300,
+            damping: 35,
+            mass: 0.8,
+          }}
           className={cn(
-            "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md transition-all hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
+            "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
             isSearchFocused
               ? "w-full border-blue-500 ring-2 ring-blue-500/20"
-              : "ml-auto w-10 md:w-64", // ml-auto keeps it right-aligned even if filters are gone
+              : "ml-auto w-10 md:w-64",
           )}
         >
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 flex items-center justify-center text-gray-400 transition-all duration-300 md:inset-y-0 md:right-auto md:left-3 md:w-auto md:justify-start",
+              "pointer-events-none absolute inset-0 flex items-center justify-center text-gray-400 md:inset-y-0 md:right-auto md:left-3 md:w-auto md:justify-start",
               isSearchFocused &&
                 "inset-y-0 right-auto left-3 w-auto justify-start text-blue-500",
             )}
@@ -217,10 +222,7 @@ function CustomSelect({
           align="start" // Align to start of trigger inside the pill
           className="select-content z-[60] min-w-[120px] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-xl shadow-black/10 backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30"
         >
-          <Select.ScrollUpButton className="flex h-6 cursor-default items-center justify-center bg-white/50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
-            <ChevronDown className="rotate-180" size={14} />
-          </Select.ScrollUpButton>
-          <Select.Viewport className="max-h-[300px] overflow-y-auto p-1">
+          <Select.Viewport className="custom-scrollbar scroll-fade max-h-[300px] overflow-y-auto p-1">
             {options.map((opt) => (
               <Select.Item
                 key={opt.value}
@@ -238,9 +240,6 @@ function CustomSelect({
               </Select.Item>
             ))}
           </Select.Viewport>
-          <Select.ScrollDownButton className="flex h-6 cursor-default items-center justify-center bg-white/50 text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
-            <ChevronDown size={14} />
-          </Select.ScrollDownButton>
         </Select.Content>
       </Select.Portal>
     </Select.Root>

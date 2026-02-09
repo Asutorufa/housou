@@ -10,26 +10,60 @@
 
 /* Masonry layout is now handled in TabbedGrid.tsx using flexbox */
 
-/* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+/* Global Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Custom Scrollbar overrides for specific areas */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.1);
-  border-radius: 10px;
+  border: none;
+  background-clip: padding-box;
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -39,6 +73,24 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Scroll Fade Effect */
+.scroll-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 15px,
+    black calc(100% - 15px),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    black 15px,
+    black calc(100% - 15px),
+    transparent
+  );
 }
 
 /* Radix Select dropdown animation */
