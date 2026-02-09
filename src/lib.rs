@@ -45,6 +45,15 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     let mut resp = router(req, env).await?;
 
+    // Add security headers
+    let headers = resp.headers_mut();
+    headers.set(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none';",
+    )?;
+    headers.set("X-Content-Type-Options", "nosniff")?;
+    headers.set("X-Frame-Options", "DENY")?;
+
     // 2. Cache successful GET responses
     if url.path().get(0..4).unwrap_or("") == "/api" && resp.status_code() == 200 {
         // Ensure Cache-Control is set (provider already sets it, but good to ensure)
