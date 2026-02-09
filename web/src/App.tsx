@@ -5,6 +5,7 @@ import Footer from './components/Footer'
 import Header from './components/Header'
 import TabbedGrid from './components/TabbedGrid'
 import type { AnimeItem, Config, UnifiedMetadata } from './types'
+import { getErrorMessage } from './utils/errorUtils'
 
 export default function App() {
   const [config, setConfig] = useState<Config | null>(null)
@@ -51,7 +52,7 @@ export default function App() {
           else setSelectedSeason('Autumn')
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(getErrorMessage(err))
       }
     }
     init()
@@ -82,7 +83,7 @@ export default function App() {
         const data = await response.json()
         setItems(data)
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        setError(getErrorMessage(err))
       } finally {
         setLoading(false)
       }
