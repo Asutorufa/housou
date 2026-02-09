@@ -52,6 +52,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum MediaType {
     Movie,
     Tv { show_id: i32, season: i32 },
@@ -451,5 +452,63 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
                 None
             }
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_tmdb_id() {
+        // TV Show Cases
+        assert_eq!(
+            parse_tmdb_id("tv/123"),
+            (123, MediaType::Tv { show_id: 123, season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123/season/2"),
+            (123, MediaType::Tv { show_id: 123, season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("/tv/123/season/2"),
+            (123, MediaType::Tv { show_id: 123, season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123/season/2/episode/5"),
+            (123, MediaType::Tv { show_id: 123, season: 2 })
+        );
+
+        // Movie Cases
+        assert_eq!(
+            parse_tmdb_id("movie/456"),
+            (456, MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("456"),
+            (456, MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("/movie/456"),
+            (456, MediaType::Movie)
+        );
+
+        // Edge Cases
+        assert_eq!(
+            parse_tmdb_id("tv"),
+            (0, MediaType::Movie)
+        );
+         assert_eq!(
+            parse_tmdb_id("tv/abc"),
+            (0, MediaType::Tv { show_id: 0, season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123/season/abc"),
+            (123, MediaType::Tv { show_id: 123, season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id(""),
+            (0, MediaType::Movie)
+        );
     }
 }
