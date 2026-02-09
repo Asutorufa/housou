@@ -1,6 +1,7 @@
 use super::MetadataProvider;
 use crate::model;
 use regex::Regex;
+use std::sync::OnceLock;
 use tmdb_client::async_apis::AsyncAPIClient;
 use tmdb_client::models;
 use worker::*;
@@ -37,7 +38,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
 
         // 1. Resolve ID (Search if needed)
         let (media_id, media_type) = if let Some(id) = id {
-            parse_tmdb_id(id)
+            parse_tmdb_id(id)?
         } else if let Some(search_title) = title {
             search_media(&client, search_title, year).await?
         } else {
@@ -52,29 +53,47 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
     }
 }
 
+#[derive(Debug, PartialEq)]
 enum MediaType {
     Movie,
-    Tv { show_id: i32, season: i32 },
+    Tv { show_id: String, season: i32 },
 }
 
-fn parse_tmdb_id(id: &str) -> (i32, MediaType) {
+fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
     let id = id.trim_start_matches('/');
     // Strip episode part if present
     let id = id.split("/episode/").next().unwrap_or(id);
     let parts: Vec<&str> = id.split('/').collect();
 
-    if parts.first() == Some(&"tv") && parts.len() >= 2 {
-        let show_id = parts[1].parse().unwrap_or(0);
+    if parts.is_empty() || (parts.len() == 1 && parts[0].is_empty()) {
+        return Err(Error::RustError("Empty ID".into()));
+    }
+
+    if parts.first() == Some(&"tv") {
+        if parts.len() < 2 {
+            return Err(Error::RustError("Invalid TV ID format: missing ID".into()));
+        }
+        let show_id = parts[1].to_string();
         let season = if parts.len() >= 4 && parts[2] == "season" {
-            parts[3].parse().unwrap_or(1) // Default to season 1
+            parts[3]
+                .parse()
+                .map_err(|_| Error::RustError("Invalid season number".into()))?
         } else {
             1
         };
-        (show_id, MediaType::Tv { show_id, season })
+        Ok((show_id.clone(), MediaType::Tv { show_id, season }))
+    } else if parts.first() == Some(&"movie") {
+        if parts.len() < 2 {
+            return Err(Error::RustError("Invalid Movie ID format: missing ID".into()));
+        }
+        let movie_id = parts[1].to_string();
+        Ok((movie_id, MediaType::Movie))
+    } else if parts.len() == 1 {
+        // Assume movie if ID is just a number/slug
+        let movie_id = parts[0].to_string();
+        Ok((movie_id, MediaType::Movie))
     } else {
-        // Assume movie if not TV, or if ID is just a number
-        let movie_id = parts.last().unwrap_or(&"0").parse().unwrap_or(0);
-        (movie_id, MediaType::Movie)
+        Err(Error::RustError("Unknown media type or format".into()))
     }
 }
 
@@ -82,7 +101,7 @@ async fn search_media(
     client: &AsyncAPIClient,
     title: &str,
     year: Option<i32>,
-) -> Result<(i32, MediaType)> {
+) -> Result<(String, MediaType)> {
     // Try normalized title search
     let normalized = normalize_title(title);
 
@@ -99,35 +118,37 @@ async fn search_media(
 
             match media_type {
                 Some("movie") => {
-                    let id = res.get("id").and_then(|v| v.as_i64()).map(|v| v as i32);
+                    let id = res.get("id").and_then(|v| v.as_i64());
                     let release_date = res.get("release_date").and_then(|v| v.as_str());
 
                     if let Some(id) = id {
+                        let id_str = id.to_string();
                         // Check year if provided
                         if let Some(y) = year {
                             if let Some(date_str) = release_date {
                                 if date_str.starts_with(&y.to_string()) {
-                                    return Ok((id, MediaType::Movie));
+                                    return Ok((id_str, MediaType::Movie));
                                 }
                             }
                         } else {
-                            return Ok((id, MediaType::Movie));
+                            return Ok((id_str, MediaType::Movie));
                         }
                     }
                 }
                 Some("tv") => {
-                    let id = res.get("id").and_then(|v| v.as_i64()).map(|v| v as i32);
+                    let id = res.get("id").and_then(|v| v.as_i64());
                     let first_air_date = res.get("first_air_date").and_then(|v| v.as_str());
 
                     if let Some(id) = id {
+                        let id_str = id.to_string();
                         // Check year if provided
                         if let Some(y) = year {
                             if let Some(date_str) = first_air_date {
                                 if date_str.starts_with(&y.to_string()) {
                                     return Ok((
-                                        id,
+                                        id_str.clone(),
                                         MediaType::Tv {
-                                            show_id: id,
+                                            show_id: id_str,
                                             season: 1,
                                         },
                                     ));
@@ -135,9 +156,9 @@ async fn search_media(
                             }
                         } else {
                             return Ok((
-                                id,
+                                id_str.clone(),
                                 MediaType::Tv {
-                                    show_id: id,
+                                    show_id: id_str,
                                     season: 1,
                                 },
                             ));
@@ -153,25 +174,40 @@ async fn search_media(
 }
 
 fn normalize_title(title: &str) -> String {
+    static SEASON_REGEX: OnceLock<Regex> = OnceLock::new();
+    static YEAR_REGEX: OnceLock<Regex> = OnceLock::new();
+
     let mut normalized = title.replace("-", " - ");
-    if let Ok(re) = Regex::new(
-        r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$",
-    ) {
-        normalized = re.replace(&normalized, "").to_string();
-    }
-    if let Ok(re) = Regex::new(r"\s*\(\d{4}\)\s*$") {
-        normalized = re.replace(&normalized, "").to_string();
-    }
-    normalized.replace("  ", " ").trim().to_string()
+
+    let season_re = SEASON_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*)$")
+            .expect("Invalid Season Regex")
+    });
+    normalized = season_re.replace(&normalized, "").into_owned();
+
+    let year_re = YEAR_REGEX.get_or_init(|| {
+        Regex::new(r"\s*\(\d{4}\)\s*$").expect("Invalid Year Regex")
+    });
+    normalized = year_re.replace(&normalized, "").into_owned();
+
+    normalized.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 async fn get_movie_details(
     client: &AsyncAPIClient,
-    movie_id: i32,
+    movie_id: String,
 ) -> Result<model::UnifiedMetadata> {
+    // Extract ID if it contains a slug (fallback to parsing the whole string if no slug)
+    let id: i32 = movie_id
+        .split('-')
+        .next()
+        .unwrap_or(&movie_id)
+        .parse()
+        .map_err(|_| Error::RustError("Invalid movie ID format".into()))?;
+
     let movie = client
         .movies_api()
-        .get_movie_details(movie_id, Some("ja-JP"), None, Some("release_dates,credits"))
+        .get_movie_details(id, Some("ja-JP"), None, Some("release_dates,credits"))
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {}", e)))?;
 
@@ -180,23 +216,26 @@ async fn get_movie_details(
 
 async fn get_tv_details(
     client: &AsyncAPIClient,
-    show_id: i32,
+    show_id: String,
     season_number: i32,
 ) -> Result<model::UnifiedMetadata> {
+    // Extract ID if it contains a slug
+    let id: i32 = show_id
+        .split('-')
+        .next()
+        .unwrap_or(&show_id)
+        .parse()
+        .map_err(|_| Error::RustError("Invalid show ID format".into()))?;
+
     let show = client
         .tv_api()
-        .get_tv_details(
-            show_id,
-            Some("ja-JP"),
-            None,
-            Some("content_ratings,credits"),
-        )
+        .get_tv_details(id, Some("ja-JP"), None, Some("content_ratings,credits"))
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch TV details: {}", e)))?;
 
     let season = client
         .tv_seasons_api()
-        .get_tv_season_details(show_id, season_number, Some("ja-JP"), None, Some("credits"))
+        .get_tv_season_details(id, season_number, Some("ja-JP"), None, Some("credits"))
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch Season details: {}", e)))?;
 
@@ -451,5 +490,95 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
                 None
             }
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_tmdb_id() {
+        // TV Show Cases
+        assert_eq!(
+            parse_tmdb_id("tv/123").unwrap(),
+            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123/season/2").unwrap(),
+            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("/tv/123/season/2").unwrap(),
+            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123/season/2/episode/5").unwrap(),
+            ("123".to_string(), MediaType::Tv { show_id: "123".to_string(), season: 2 })
+        );
+
+        // Movie Cases
+        assert_eq!(
+            parse_tmdb_id("movie/456").unwrap(),
+            ("456".to_string(), MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("456").unwrap(),
+            ("456".to_string(), MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("/movie/456").unwrap(),
+            ("456".to_string(), MediaType::Movie)
+        );
+
+        // Slugged ID Cases
+        assert_eq!(
+            parse_tmdb_id("tv/123-show-name").unwrap(),
+            ("123-show-name".to_string(), MediaType::Tv { show_id: "123-show-name".to_string(), season: 1 })
+        );
+        assert_eq!(
+            parse_tmdb_id("tv/123-show-name/season/2").unwrap(),
+            ("123-show-name".to_string(), MediaType::Tv { show_id: "123-show-name".to_string(), season: 2 })
+        );
+        assert_eq!(
+            parse_tmdb_id("movie/456-movie-name").unwrap(),
+            ("456-movie-name".to_string(), MediaType::Movie)
+        );
+        assert_eq!(
+            parse_tmdb_id("456-movie-name").unwrap(),
+            ("456-movie-name".to_string(), MediaType::Movie)
+        );
+
+        // Edge Cases
+        assert!(parse_tmdb_id("tv").is_err());
+        // tv/abc is now valid because we don't extract int. "abc" is a valid ID string.
+        // But "tv/123/season/abc" should still fail because season must be int.
+        assert_eq!(
+            parse_tmdb_id("tv/abc").unwrap(),
+             ("abc".to_string(), MediaType::Tv { show_id: "abc".to_string(), season: 1 })
+        );
+        assert!(parse_tmdb_id("tv/123/season/abc").is_err());
+        assert!(parse_tmdb_id("").is_err());
+        // foo/bar returns Unknown media type
+        assert!(parse_tmdb_id("foo/bar").is_err());
+  }
+
+    #[test]
+    fn test_normalize_title() {
+        let cases = vec![
+            ("Attack on Titan Season 3", "Attack on Titan"),
+            ("My Hero Academia 第2期", "My Hero Academia"),
+            ("Fullmetal Alchemist: Brotherhood", "Fullmetal Alchemist: Brotherhood"),
+            ("Steins;Gate (2011)", "Steins;Gate"),
+            ("One Piece - 1000", "One Piece - 1000"),
+            ("Sword Art Online Ⅱ", "Sword Art Online"),
+            ("Demon Slayer: Kimetsu no Yaiba Season 2", "Demon Slayer: Kimetsu no Yaiba"),
+            ("  Test  Title  ", "Test Title"),
+            ("Title   With    Many   Spaces", "Title With Many Spaces"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(normalize_title(input), expected, "Failed for input: {}", input);
+        }
     }
 }
