@@ -23,6 +23,7 @@ futures = "0.3.31"
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
     "async",
 ] }
+rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "b1a982874ad1695b6e5d050a87abe776f7b356ab", default-features = false }
 
 [profile.release]
 opt-level = "z"
