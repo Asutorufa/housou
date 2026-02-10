@@ -8,36 +8,58 @@ pub struct AnilistProvider;
 impl MetadataProvider for AnilistProvider {
     async fn fetch(
         &self,
-        _id: Option<&str>,
+        id: Option<&str>,
         title: Option<&str>,
         _year: Option<i32>,
     ) -> Result<model::UnifiedMetadata> {
-        let title = title.ok_or_else(|| Error::RustError("Title required for AniList".into()))?;
+        let (query_var, query_type, search_arg) = if let Some(i) = id {
+            ("id", "Int", i.to_string())
+        } else if let Some(t) = title {
+            ("search", "String", t.to_string())
+        } else {
+            return Err(Error::RustError(
+                "AniList provider requires ID or Title".into(),
+            ));
+        };
+
+        // If passing ID (string) but GraphQL expects Int, we need to ensure the variable in JSON is a number or parsed.
+        // `serde_json::json!` handles values. If `search_arg` is a string "123", we might need to parse it if query expects Int.
+        // Jikan ID is usually string in our `Item` model, but integer in API.
+        // Let's parse ID if present.
+
+        let variables = if id.is_some() {
+            serde_json::json!({ "id": search_arg.parse::<i32>().unwrap_or(0) })
+        } else {
+            serde_json::json!({ "search": search_arg })
+        };
+
+        let query_def = format!("query (${}: {})", query_var, query_type);
+        let media_arg = format!("{}: ${}", query_var, query_var);
 
         let gql_query = serde_json::json!({
-            "query": r#"
-                query ($search: String) {
-                    Media(search: $search, type: ANIME) {
+            "query": format!(r#"
+                {} {{
+                    Media({}, type: ANIME) {{
                         id
-                        title { romaji english native }
-                        coverImage { large extraLarge }
+                        title {{ romaji english native }}
+                        coverImage {{ large extraLarge }}
                         averageScore
                         episodes
                         status
                         genres
                         description(asHtml: false)
-                        studios(isMain: true) { nodes { name } }
-                        characters(sort: ROLE, perPage: 6) {
-                            edges {
+                        studios(isMain: true) {{ nodes {{ name }} }}
+                        characters(sort: ROLE, perPage: 6) {{
+                            edges {{
                                 role
-                                node { name { full } }
-                                voiceActors(language: JAPANESE) { name { full } }
-                            }
-                        }
-                    }
-                }
-            "#,
-            "variables": { "search": title }
+                                node {{ name {{ full }} }}
+                                voiceActors(language: JAPANESE) {{ name {{ full }} }}
+                            }}
+                        }}
+                    }}
+                }}
+            "#, query_def, media_arg),
+            "variables": variables
         });
 
         let mut init = RequestInit::new();

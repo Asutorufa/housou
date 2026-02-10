@@ -64,9 +64,9 @@ pub struct Item {
     pub type_field: ItemType,
     pub lang: Language,
     pub official_site: String,
-    pub begin: String,
+    pub begin: Option<String>,
     pub broadcast: Option<String>,
-    pub end: String,
+    pub end: Option<String>,
     pub comment: Option<String>,
     pub sites: Vec<Site>,
 }

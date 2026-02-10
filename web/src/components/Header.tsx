@@ -41,6 +41,8 @@ export default function Header({
     setActiveDropdown(isOpen ? key : null);
   };
 
+  const currentYear = new Date().getFullYear();
+
   return (
     <header className="group/header pointer-events-none sticky top-2 z-50 w-full px-2 md:px-4">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
@@ -62,7 +64,7 @@ export default function Header({
                 options={
                   config?.years.map((y) => ({
                     value: y.toString(),
-                    label: y.toString(),
+                    label: y > currentYear ? `${y} (予定)` : y.toString(),
                   })) || []
                 }
                 placeholder="年"
