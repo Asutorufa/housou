@@ -1,7 +1,8 @@
 pub mod anilist;
+pub mod jikan;
 pub mod tmdb;
 
-use crate::{ResponseExt, model};
+use crate::{model, ResponseExt};
 use worker::*;
 
 pub trait MetadataProvider {
@@ -15,19 +16,30 @@ pub trait MetadataProvider {
 
 pub async fn get_metadata(
     tmdb_id: Option<&str>,
+    mal_id: Option<&str>,
     title: Option<&str>,
     year: Option<i32>,
     env: &Env,
 ) -> Result<Response> {
-    // 1. Try TMDb first if configured
-    let tmdb = tmdb::TmdbProvider::new(env);
-
-    match tmdb.fetch(tmdb_id, title, year).await {
-        Ok(unified) => return create_response(&unified, env),
-        Err(e) => console_log!("TMDb fetch failed {:?}", e),
+    // 1. Try TMDb first if TMDB ID is present or configured
+    if let Some(_) = tmdb_id {
+        let tmdb = tmdb::TmdbProvider::new(env);
+        match tmdb.fetch(tmdb_id, title, year).await {
+            Ok(unified) => return create_response(&unified, env),
+            Err(e) => console_log!("TMDb fetch failed {:?}", e),
+        }
     }
 
-    // 2. Fallback to AniList
+    // 2. Try Jikan if MAL ID is present (or no TMDB ID was found)
+    if let Some(_) = mal_id {
+        let jikan = jikan::JikanProvider;
+        match jikan.fetch(mal_id, title, year).await {
+            Ok(unified) => return create_response(&unified, env),
+            Err(e) => console_log!("Jikan fetch failed {:?}", e),
+        }
+    }
+
+    // 3. Fallback to AniList
     let anilist = anilist::AnilistProvider;
     let fallback_title =
         title.ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;

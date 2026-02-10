@@ -51,10 +51,16 @@ export default function AnimeCard({
     setLoading(true);
     try {
       const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
+      const malSite = item.sites?.find((s) => s.site === "mal");
+
       let url = `/api/metadata?title=${encodeURIComponent(item.title)}`;
 
       if (tmdbSite?.id) {
         url += `&tmdb_id=${encodeURIComponent(tmdbSite.id)}`;
+      }
+
+      if (malSite?.id) {
+        url += `&mal_id=${encodeURIComponent(malSite.id)}`;
       }
 
       if (item.begin) {

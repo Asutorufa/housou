@@ -1,7 +1,7 @@
 import { http, HttpResponse } from "msw";
 
 const mockConfig = {
-  years: [2024, 2025],
+  years: [2024, 2025, 2026],
   site_meta: {
     bilibili: {
       title: "Bilibili",
@@ -54,12 +54,30 @@ const mockItems = [
   },
 ];
 
+const jikanItems = [
+  {
+    title: "未来の作品 2026",
+    begin: "2026-04-01T00:00:00Z",
+    sites: [{ site: "mal", id: "99999" }],
+    titleTranslate: {
+      en: ["Future Anime 2026"],
+    },
+    type: "tv",
+  },
+];
+
 export const handlers = [
   http.get("/api/config", () => {
     return HttpResponse.json(mockConfig);
   }),
 
-  http.get("/api/items", () => {
+  http.get("/api/items", ({ request }) => {
+    const url = new URL(request.url);
+    const year = url.searchParams.get("year");
+
+    if (year === "2026") {
+      return HttpResponse.json(jikanItems);
+    }
     return HttpResponse.json(mockItems);
   }),
 
@@ -105,6 +123,36 @@ export const handlers = [
   http.get("/api/metadata", ({ request }) => {
     const url = new URL(request.url);
     const title = url.searchParams.get("title");
+    const malId = url.searchParams.get("mal_id");
+
+    if (malId === "99999" || title === "未来の作品 2026") {
+      return HttpResponse.json({
+        id: "99999",
+        title: {
+          native: "未来の作品 2026",
+          romaji: "Mirai no Sakuhin 2026",
+          english: "Future Anime 2026",
+        },
+        coverImage: {
+          extraLarge: "https://via.placeholder.com/300x400?text=Future+Anime",
+          large: "https://via.placeholder.com/150x200?text=Future+Anime",
+        },
+        description:
+          "This is a mock description for a future anime from Jikan.",
+        averageScore: null,
+        episodes: 12,
+        genres: ["Sci-Fi", "Future"],
+        studios: ["Future Studio"],
+        characters: [],
+        staff: [],
+        episodesList: [],
+        isFinished: false,
+        totalSeasons: null,
+        currentSeason: null,
+        runtime: null,
+        contentRating: null,
+      });
+    }
 
     return HttpResponse.json({
       id: "12345",
