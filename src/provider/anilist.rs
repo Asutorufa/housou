@@ -1,8 +1,11 @@
 use super::MetadataProvider;
 use crate::model;
+use std::sync::OnceLock;
 use worker::*;
 
 pub struct AnilistProvider;
+
+static ANILIST_CLIENT: OnceLock<rust_anilist::Client> = OnceLock::new();
 
 impl MetadataProvider for AnilistProvider {
     async fn fetch(
@@ -11,7 +14,7 @@ impl MetadataProvider for AnilistProvider {
         title: Option<&str>,
         _year: Option<i32>,
     ) -> Result<model::UnifiedMetadata> {
-        let client = rust_anilist::Client::default();
+        let client = ANILIST_CLIENT.get_or_init(rust_anilist::Client::default);
 
         let anime = if let Some(i) = id {
             // AniList ID must be an integer
@@ -27,9 +30,9 @@ impl MetadataProvider for AnilistProvider {
 
             // rust-anilist search_anime returns Option<Vec<Anime>>
             // and it might return None or an empty vector.
-            match results {
-                Some(vec) if !vec.is_empty() => vec.into_iter().next().unwrap(),
-                _ => return Err(Error::RustError("AniList: Not Found".into())),
+            match results.and_then(|v| v.into_iter().next()) {
+                Some(anime) => anime,
+                None => return Err(Error::RustError("AniList: Not Found".into())),
             }
         } else {
             return Err(Error::RustError(
@@ -45,9 +48,9 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
     use model::*;
 
     let title = UniversalTitle {
-        romaji: Some(media.title.romaji().to_string()),
-        english: Some(media.title.english().to_string()),
-        native: Some(media.title.native().to_string()),
+        romaji: (!media.title.romaji().is_empty()).then(|| media.title.romaji().to_string()),
+        english: (!media.title.english().is_empty()).then(|| media.title.english().to_string()),
+        native: (!media.title.native().is_empty()).then(|| media.title.native().to_string()),
     };
 
     let cover_image = UniversalCoverImage {
@@ -94,6 +97,12 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
         })
         .collect();
 
+    let description = if media.description.is_empty() {
+        None
+    } else {
+        Some(media.description)
+    };
+
     UnifiedMetadata {
         id: media.id.to_string(),
         title,
@@ -101,7 +110,7 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
         average_score: media.average_score.map(|s| s as i32),
         episodes: media.episodes.map(|e| e as i32),
         genres,
-        description: Some(media.description),
+        description,
         studios,
         characters,
         staff,
@@ -267,7 +276,7 @@ mod tests {
         assert_eq!(unified.average_score, None);
         assert_eq!(unified.episodes, None);
         assert!(unified.genres.is_empty());
-        assert_eq!(unified.description, Some("".to_string()));
+        assert_eq!(unified.description, None); // Should be None
         assert!(unified.studios.is_empty());
         assert!(unified.characters.is_empty());
         assert!(!unified.is_finished); // RELEASING -> false
