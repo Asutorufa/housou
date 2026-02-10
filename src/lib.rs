@@ -201,10 +201,8 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
                 .map(|s| provider::jikan::fetch_season(year, s));
             let results = futures::future::join_all(tasks).await;
             let mut all_items = Vec::new();
-            for result in results {
-                if let Ok(items) = result {
-                    all_items.extend(items);
-                }
+            for items in results.into_iter().flatten() {
+                all_items.extend(items);
             }
             return Ok(all_items);
         }

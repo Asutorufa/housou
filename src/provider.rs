@@ -22,7 +22,7 @@ pub async fn get_metadata(
     env: &Env,
 ) -> Result<Response> {
     // 1. Try TMDb first if TMDB ID is present or configured
-    if let Some(_) = tmdb_id {
+    if tmdb_id.is_some() {
         let tmdb = tmdb::TmdbProvider::new(env);
         match tmdb.fetch(tmdb_id, title, year).await {
             Ok(unified) => return create_response(&unified, env),
@@ -31,7 +31,7 @@ pub async fn get_metadata(
     }
 
     // 2. Try Jikan if MAL ID is present (or no TMDB ID was found)
-    if let Some(_) = mal_id {
+    if mal_id.is_some() {
         let jikan = jikan::JikanProvider;
         match jikan.fetch(mal_id, title, year).await {
             Ok(unified) => return create_response(&unified, env),
