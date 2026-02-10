@@ -2,7 +2,7 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{model, ResponseExt};
+use crate::{ResponseExt, model};
 use worker::*;
 
 #[derive(Debug, Default)]
@@ -49,14 +49,16 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
     // If ID is missing, title is required.
 
     if args.anilist_id.is_some() || args.title.is_some() {
-         match anilist.fetch(args.anilist_id, args.title, args.year).await {
+        match anilist.fetch(args.anilist_id, args.title, args.year).await {
             Ok(unified) => return create_response(&unified, env),
             Err(e) => console_log!("AniList fetch failed {:?}", e),
         }
     }
 
     // If all failed or no inputs
-    Err(Error::RustError("No suitable metadata provider found or all failed".into()))
+    Err(Error::RustError(
+        "No suitable metadata provider found or all failed".into(),
+    ))
 }
 
 fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
