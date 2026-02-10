@@ -1,6 +1,6 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { clsx, type ClassValue } from "clsx";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";

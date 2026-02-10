@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import {
   ChevronDown,
   Clock,
