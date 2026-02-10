@@ -1,6 +1,6 @@
 use crate::model::{
-    Item, ItemType, Language, Site, TitleTranslate, UnifiedMetadata,
-    UniversalCoverImage, UniversalTitle,
+    Item, ItemType, Language, Site, TitleTranslate, UnifiedMetadata, UniversalCoverImage,
+    UniversalTitle,
 };
 use crate::provider::MetadataProvider;
 use crate::utils;

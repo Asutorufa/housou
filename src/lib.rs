@@ -196,7 +196,9 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
         } else {
             // Fetch all 4 seasons from Jikan
             let seasons = ["winter", "spring", "summer", "fall"]; // Jikan uses "fall" instead of "autumn"
-            let tasks = seasons.iter().map(|s| provider::jikan::fetch_season(year, s));
+            let tasks = seasons
+                .iter()
+                .map(|s| provider::jikan::fetch_season(year, s));
             let results = futures::future::join_all(tasks).await;
             let mut all_items = Vec::new();
             for result in results {

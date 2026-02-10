@@ -2,7 +2,7 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{model, ResponseExt};
+use crate::{ResponseExt, model};
 use worker::*;
 
 pub trait MetadataProvider {
