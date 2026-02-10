@@ -2,8 +2,16 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{ResponseExt, model};
+use crate::{model, ResponseExt};
 use worker::*;
+
+#[derive(Debug, Default)]
+pub struct MetadataArgs<'a> {
+    pub tmdb_id: Option<&'a str>,
+    pub mal_id: Option<&'a str>,
+    pub title: Option<&'a str>,
+    pub year: Option<i32>,
+}
 
 pub trait MetadataProvider {
     async fn fetch(
@@ -14,26 +22,20 @@ pub trait MetadataProvider {
     ) -> Result<model::UnifiedMetadata>;
 }
 
-pub async fn get_metadata(
-    tmdb_id: Option<&str>,
-    mal_id: Option<&str>,
-    title: Option<&str>,
-    year: Option<i32>,
-    env: &Env,
-) -> Result<Response> {
+pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response> {
     // 1. Try TMDb first if TMDB ID is present or configured
-    if tmdb_id.is_some() {
+    if args.tmdb_id.is_some() {
         let tmdb = tmdb::TmdbProvider::new(env);
-        match tmdb.fetch(tmdb_id, title, year).await {
+        match tmdb.fetch(args.tmdb_id, args.title, args.year).await {
             Ok(unified) => return create_response(&unified, env),
             Err(e) => console_log!("TMDb fetch failed {:?}", e),
         }
     }
 
     // 2. Try Jikan if MAL ID is present (or no TMDB ID was found)
-    if mal_id.is_some() {
+    if args.mal_id.is_some() {
         let jikan = jikan::JikanProvider;
-        match jikan.fetch(mal_id, title, year).await {
+        match jikan.fetch(args.mal_id, args.title, args.year).await {
             Ok(unified) => return create_response(&unified, env),
             Err(e) => console_log!("Jikan fetch failed {:?}", e),
         }
@@ -41,10 +43,11 @@ pub async fn get_metadata(
 
     // 3. Fallback to AniList
     let anilist = anilist::AnilistProvider;
-    let fallback_title =
-        title.ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
+    let fallback_title = args
+        .title
+        .ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
 
-    match anilist.fetch(None, Some(fallback_title), year).await {
+    match anilist.fetch(None, Some(fallback_title), args.year).await {
         Ok(unified) => create_response(&unified, env),
         Err(e) => Err(e),
     }

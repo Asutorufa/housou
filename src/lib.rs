@@ -302,7 +302,14 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 .and_then(|d| d.get(0..4))
                 .and_then(|y| y.parse::<i32>().ok());
 
-            provider::get_metadata(tmdb_id, mal_id, title, year, &env).await
+            let args = provider::MetadataArgs {
+                tmdb_id,
+                mal_id,
+                title,
+                year,
+            };
+
+            provider::get_metadata(args, &env).await
         }
         _ => Response::error("Not Found", 404),
     }
