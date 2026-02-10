@@ -37,7 +37,7 @@ jobs:
       - name: Build Worker
         run: npx wrangler build --env production
 
-  update-frontend:
+  check-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,14 +54,3 @@ jobs:
         run: |
           npm ci
           npm run build
-
-      - name: Create Pull Request
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore: update frontend build artifacts"
-          title: "chore: update frontend build artifacts"
-          body: "This PR updates the frontend build artifacts in `web/dist`."
-          branch: "update-frontend-assets"
-          base: "main"
