@@ -4,9 +4,13 @@ use crate::model::{
 };
 use crate::provider::MetadataProvider;
 use crate::utils;
+use regex::Regex;
 use serde_derive::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 use worker::*;
+
+static HTML_TAG_REGEX: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct JikanResponse<T> {
@@ -87,7 +91,14 @@ pub async fn fetch_season(year: i32, season: &str) -> Result<Vec<Item>> {
     let response: Option<JikanResponse<Vec<JikanAnime>>> = utils::fetch_json(&url).await?;
 
     let items = response
-        .map(|r| r.data.into_iter().map(convert_to_item).collect())
+        .map(|r| {
+            let mut seen = HashSet::new();
+            r.data
+                .into_iter()
+                .filter(|anime| seen.insert(anime.mal_id))
+                .map(convert_to_item)
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(items)
@@ -109,19 +120,59 @@ fn convert_to_item(anime: JikanAnime) -> Item {
         ..Default::default()
     }];
 
+    // Prefer Japanese title as main title
+    let (title, title_translate) = if let Some(ja_title) = &anime.title_japanese {
+        if !ja_title.is_empty() {
+            // Main title is Japanese
+            let mut en = anime.title_english.map(|t| vec![t]).unwrap_or_default();
+            // If the default 'title' is different from Japanese title, add it to English/Romaji fallback
+            // Jikan's 'title' is usually Romaji.
+            if &anime.title != ja_title {
+                en.push(anime.title);
+            }
+            (
+                ja_title.clone(),
+                TitleTranslate {
+                    en: if en.is_empty() { None } else { Some(en) },
+                    ja: Some(vec![ja_title.clone()]),
+                    ..Default::default()
+                },
+            )
+        } else {
+            // Fallback to default title
+            (
+                anime.title.clone(),
+                TitleTranslate {
+                    en: anime.title_english.map(|t| vec![t]),
+                    ..Default::default()
+                },
+            )
+        }
+    } else {
+        (
+            anime.title.clone(),
+            TitleTranslate {
+                en: anime.title_english.map(|t| vec![t]),
+                ..Default::default()
+            },
+        )
+    };
+
+    // Strip HTML tags from synopsis
+    let comment = anime.synopsis.map(|s| {
+        let regex = HTML_TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
+        regex.replace_all(&s, "").to_string()
+    });
+
     Item {
-        title: anime.title.clone(),
-        title_translate: TitleTranslate {
-            en: anime.title_english.map(|t| vec![t]),
-            ja: anime.title_japanese.map(|t| vec![t]),
-            ..Default::default()
-        },
+        title,
+        title_translate,
         type_field,
         lang: Language::Ja,
         official_site: anime.url,
         begin: anime.aired.from,
         end: anime.aired.to,
-        comment: anime.synopsis,
+        comment,
         sites,
         broadcast: anime.broadcast.and_then(|b| b.string),
     }
@@ -129,6 +180,12 @@ fn convert_to_item(anime: JikanAnime) -> Item {
 
 fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
     let image = anime.images.get("jpg").or_else(|| anime.images.get("webp"));
+
+    // Strip HTML from description
+    let description = anime.synopsis.map(|s| {
+        let regex = HTML_TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
+        regex.replace_all(&s, "").to_string()
+    });
 
     UnifiedMetadata {
         id: anime.mal_id.to_string(),
@@ -144,7 +201,7 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         average_score: anime.score.map(|s| (s * 10.0) as i32),
         episodes: anime.episodes,
         genres: anime.genres.into_iter().map(|g| g.name).collect(),
-        description: anime.synopsis,
+        description,
         studios: anime.studios.into_iter().map(|s| s.name).collect(),
         characters: vec![],
         staff: vec![],
