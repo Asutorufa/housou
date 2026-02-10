@@ -296,6 +296,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         (Method::Get, "/api/metadata") => {
             let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());
             let mal_id = query.get("mal_id").map(|s| s.as_str());
+            let anilist_id = query.get("anilist_id").map(|s| s.as_str());
             let title = query.get("title").map(|s| s.as_str());
             let year = query
                 .get("begin")
@@ -305,6 +306,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             let args = provider::MetadataArgs {
                 tmdb_id,
                 mal_id,
+                anilist_id,
                 title,
                 year,
             };

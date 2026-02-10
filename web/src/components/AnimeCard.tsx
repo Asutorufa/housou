@@ -52,6 +52,9 @@ export default function AnimeCard({
     try {
       const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
       const malSite = item.sites?.find((s) => s.site === "mal");
+      const anilistSite = item.sites?.find(
+        (s) => s.site === "aniList" || s.site === "anilist",
+      );
 
       let url = `/api/metadata?title=${encodeURIComponent(item.title)}`;
 
@@ -61,6 +64,10 @@ export default function AnimeCard({
 
       if (malSite?.id) {
         url += `&mal_id=${encodeURIComponent(malSite.id)}`;
+      }
+
+      if (anilistSite?.id) {
+        url += `&anilist_id=${encodeURIComponent(anilistSite.id)}`;
       }
 
       if (item.begin) {

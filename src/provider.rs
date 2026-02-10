@@ -2,13 +2,14 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{ResponseExt, model};
+use crate::{model, ResponseExt};
 use worker::*;
 
 #[derive(Debug, Default)]
 pub struct MetadataArgs<'a> {
     pub tmdb_id: Option<&'a str>,
     pub mal_id: Option<&'a str>,
+    pub anilist_id: Option<&'a str>,
     pub title: Option<&'a str>,
     pub year: Option<i32>,
 }
@@ -41,16 +42,21 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
         }
     }
 
-    // 3. Fallback to AniList
+    // 3. Fallback to AniList (try ID first, then title)
     let anilist = anilist::AnilistProvider;
-    let fallback_title = args
-        .title
-        .ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
+    // We pass ID if present, otherwise title fallback logic is handled inside or we error here if both missing?
+    // provider::anilist::fetch logic will be updated to handle ID.
+    // If ID is missing, title is required.
 
-    match anilist.fetch(None, Some(fallback_title), args.year).await {
-        Ok(unified) => create_response(&unified, env),
-        Err(e) => Err(e),
+    if args.anilist_id.is_some() || args.title.is_some() {
+         match anilist.fetch(args.anilist_id, args.title, args.year).await {
+            Ok(unified) => return create_response(&unified, env),
+            Err(e) => console_log!("AniList fetch failed {:?}", e),
+        }
     }
+
+    // If all failed or no inputs
+    Err(Error::RustError("No suitable metadata provider found or all failed".into()))
 }
 
 fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
