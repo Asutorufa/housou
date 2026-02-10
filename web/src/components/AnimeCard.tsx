@@ -1,5 +1,5 @@
 import { clsx, type ClassValue } from "clsx";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";

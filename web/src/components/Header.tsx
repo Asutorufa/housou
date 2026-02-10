@@ -1,6 +1,6 @@
 import * as Select from "@radix-ui/react-select";
 import { clsx, type ClassValue } from "clsx";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { useState } from "react";
 import { twMerge } from "tailwind-merge";
