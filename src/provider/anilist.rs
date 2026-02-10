@@ -18,9 +18,10 @@ impl MetadataProvider for AnilistProvider {
             let anime_id = i
                 .parse::<i64>()
                 .map_err(|e| Error::RustError(format!("Invalid AniList ID: {}", e)))?;
-            client.get_anime(anime_id).await.map_err(|e| {
-                Error::RustError(format!("AniList API error (get_anime): {}", e))
-            })?
+            client
+                .get_anime(anime_id)
+                .await
+                .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {}", e)))?
         } else if let Some(t) = title {
             let results = client.search_anime(t, 1, 1).await;
 
@@ -86,12 +87,10 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
         .staff
         .unwrap_or_default()
         .into_iter()
-        .map(|s| {
-            model::UniversalStaff {
-                name: s.name.full.unwrap_or_default(),
-                role: "".to_string(),
-                department: None,
-            }
+        .map(|s| model::UniversalStaff {
+            name: s.name.full.unwrap_or_default(),
+            role: "".to_string(),
+            department: None,
         })
         .collect();
 
