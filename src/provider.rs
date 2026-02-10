@@ -2,7 +2,7 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{model, ResponseExt};
+use crate::{ResponseExt, model};
 use worker::*;
 
 #[derive(Debug, Default)]
@@ -50,7 +50,10 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
         .title
         .ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
 
-    match anilist.fetch(args.anilist_id, Some(fallback_title), args.year).await {
+    match anilist
+        .fetch(args.anilist_id, Some(fallback_title), args.year)
+        .await
+    {
         Ok(unified) => create_response(&unified, env, None),
         Err(e) => Err(e),
     }
