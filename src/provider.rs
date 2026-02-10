@@ -2,7 +2,7 @@ pub mod anilist;
 pub mod jikan;
 pub mod tmdb;
 
-use crate::{ResponseExt, model};
+use crate::{model, ResponseExt};
 use worker::*;
 
 #[derive(Debug, Default)]
@@ -28,7 +28,7 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
     if args.tmdb_id.is_some() {
         let tmdb = tmdb::TmdbProvider::new(env);
         match tmdb.fetch(args.tmdb_id, args.title, args.year).await {
-            Ok(unified) => return create_response(&unified, env),
+            Ok(unified) => return create_response(&unified, env, None),
             Err(e) => console_log!("TMDb fetch failed {:?}", e),
         }
     }
@@ -37,32 +37,33 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
     if args.mal_id.is_some() {
         let jikan = jikan::JikanProvider;
         match jikan.fetch(args.mal_id, args.title, args.year).await {
-            Ok(unified) => return create_response(&unified, env),
+            Ok(unified) => {
+                return create_response(&unified, env, Some(crate::config::CACHE_TTL_JIKAN));
+            }
             Err(e) => console_log!("Jikan fetch failed {:?}", e),
         }
     }
 
-    // 3. Fallback to AniList (try ID first, then title)
+    // 3. Fallback to AniList
     let anilist = anilist::AnilistProvider;
-    // We pass ID if present, otherwise title fallback logic is handled inside or we error here if both missing?
-    // provider::anilist::fetch logic will be updated to handle ID.
-    // If ID is missing, title is required.
+    let fallback_title = args
+        .title
+        .ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
 
-    if args.anilist_id.is_some() || args.title.is_some() {
-        match anilist.fetch(args.anilist_id, args.title, args.year).await {
-            Ok(unified) => return create_response(&unified, env),
-            Err(e) => console_log!("AniList fetch failed {:?}", e),
-        }
+    match anilist.fetch(args.anilist_id, Some(fallback_title), args.year).await {
+        Ok(unified) => create_response(&unified, env, None),
+        Err(e) => Err(e),
     }
-
-    // If all failed or no inputs
-    Err(Error::RustError(
-        "No suitable metadata provider found or all failed".into(),
-    ))
 }
 
-fn create_response(unified: &model::UnifiedMetadata, env: &Env) -> Result<Response> {
-    let ttl = if unified.is_finished {
+fn create_response(
+    unified: &model::UnifiedMetadata,
+    env: &Env,
+    ttl_override: Option<i32>,
+) -> Result<Response> {
+    let ttl = if let Some(t) = ttl_override {
+        t
+    } else if unified.is_finished {
         crate::config::CACHE_TTL_FINISHED
     } else {
         crate::config::CACHE_TTL_ONGOING
