@@ -1173,7 +1173,7 @@ dependencies = [
 [[package]]
 name = "rust-anilist"
 version = "0.1.5"
-source = "git+https://github.com/Asutorufa/rust-anilist?rev=b1a982874ad1695b6e5d050a87abe776f7b356ab#b1a982874ad1695b6e5d050a87abe776f7b356ab"
+source = "git+https://github.com/Asutorufa/rust-anilist?rev=f3074c0dc489196acdeb945d49f56fbaf8c24046#f3074c0dc489196acdeb945d49f56fbaf8c24046"
 dependencies = [
  "chrono",
  "openssl",
