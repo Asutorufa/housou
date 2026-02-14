@@ -17,7 +17,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^0.564.0",
     "motion": "^12.34.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
