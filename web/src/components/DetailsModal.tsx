@@ -242,12 +242,13 @@ export default function DetailsModal({
                               onChange={handleStatusChange}
                               className="appearance-none rounded-xl border border-blue-200 bg-blue-50 py-2 pl-9 pr-8 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30 cursor-pointer"
                             >
-                              <option value={0}>Add to List</option>
-                              <option value={1}>Watching</option>
-                              <option value={2}>Completed</option>
-                              <option value={3}>On Hold</option>
-                              <option value={4}>Dropped</option>
-                              <option value={5}>Plan to Watch</option>
+                              {Object.entries(STATUS_LABELS).map(
+                                ([value, label]) => (
+                                  <option key={value} value={value}>
+                                    {label}
+                                  </option>
+                                ),
+                              )}
                             </select>
                             <div className="pointer-events-none absolute right-3 text-blue-600 dark:text-blue-400">
                               <ChevronDown size={14} />

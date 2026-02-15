@@ -1,6 +1,6 @@
-import { createContext, useContext, ReactNode, useCallback } from "react";
+import { createContext, useContext, type ReactNode, useCallback } from "react";
 import useSWR from "swr";
-import { User } from "../types";
+import type { User } from "../types";
 
 interface AuthContextType {
   user: User | undefined;
@@ -34,7 +34,6 @@ export function AuthProvider({
 }) {
   const {
     data: user,
-    error,
     mutate,
     isLoading,
   } = useSWR<User>(enabled ? "/api/auth/me" : null, fetcher, {

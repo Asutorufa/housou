@@ -1,10 +1,11 @@
-use worker::*;
-use crate::db::{Database, AppDatabase, User, Session, UserItem};
+use crate::ResponseExt;
+use crate::db::{AppDatabase, Database, User};
 use bcrypt::{DEFAULT_COST, hash, verify};
-use uuid::Uuid;
 use cookie::{Cookie, SameSite, time::Duration};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
+use worker::*;
 
 const SESSION_COOKIE_NAME: &str = "housou_session";
 const SESSION_DURATION_DAYS: i64 = 30;
@@ -89,23 +90,27 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
         return Response::error("Email already registered", 400);
     }
 
-    let password_hash = hash(&body.password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
-    let user = db.create_user(&body.email, &body.username, Some(&password_hash), None).await?;
+    let password_hash =
+        hash(&body.password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
+    let user = db
+        .create_user(&body.email, &body.username, Some(&password_hash), None)
+        .await?;
 
     // Auto login
     let token = Uuid::new_v4().to_string();
     let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
-    Response::from_json(&user)?
-        .with_header("Set-Cookie", &create_session_cookie(&token))
+    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token))
 }
 
 pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
     let body: LoginRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    let user = db.get_user_by_email(&body.email).await?
+    let user = db
+        .get_user_by_email(&body.email)
+        .await?
         .ok_or_else(|| Error::RustError("Invalid credentials".to_string()))?;
 
     let valid = if let Some(hash_str) = &user.password_hash {
@@ -122,8 +127,7 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
     let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
-    Response::from_json(&user)?
-        .with_header("Set-Cookie", &create_session_cookie(&token))
+    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token))
 }
 
 pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
@@ -131,7 +135,7 @@ pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
         let db = get_db(&env)?;
         db.delete_session(&token).await?;
     }
-    Response::ok("Logged out")?.with_header("Set-Cookie", &clear_session_cookie())
+    Response::ok("Logged out")?.add_header("Set-Cookie", &clear_session_cookie())
 }
 
 pub async fn handle_me(req: Request, env: Env) -> Result<Response> {
@@ -166,7 +170,8 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
     let body: UpdateItemRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    db.update_user_item(user.id, &body.item_id, body.status, body.score).await?;
+    db.update_user_item(user.id, &body.item_id, body.status, body.score)
+        .await?;
     Response::ok("Updated")
 }
 
@@ -177,7 +182,10 @@ pub async fn handle_get_item(req: Request, env: Env) -> Result<Response> {
     };
 
     let url = req.url()?;
-    let item_id = url.query_pairs().find(|(k, _)| k == "item_id").map(|(_, v)| v.to_string());
+    let item_id = url
+        .query_pairs()
+        .find(|(k, _)| k == "item_id")
+        .map(|(_, v)| v.to_string());
 
     if let Some(id) = item_id {
         let db = get_db(&env)?;
@@ -205,7 +213,10 @@ struct GithubTokenResponse {
 pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response> {
     let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
 
-    let base_url = env.var("BASE_URL").map(|s| s.to_string()).unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let base_url = env
+        .var("BASE_URL")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|_| "http://localhost:8787".to_string());
     let redirect_uri = format!("{}/api/auth/github/callback", base_url);
 
     let url = format!(
@@ -218,7 +229,10 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
 
 pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
     let url = req.url()?;
-    let code = url.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.to_string());
+    let code = url
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .map(|(_, v)| v.to_string());
 
     if let Some(code) = code {
         let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
@@ -232,7 +246,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
             "code": code
         });
 
-        let mut headers = Headers::new();
+        let headers = Headers::new();
         headers.set("Accept", "application/json")?;
         headers.set("Content-Type", "application/json")?;
         headers.set("User-Agent", "housou-worker")?;
@@ -255,8 +269,11 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         // Get user info
         let user_url = "https://api.github.com/user";
-        let mut headers = Headers::new();
-        headers.set("Authorization", &format!("Bearer {}", token_data.access_token))?;
+        let headers = Headers::new();
+        headers.set(
+            "Authorization",
+            &format!("Bearer {}", token_data.access_token),
+        )?;
         headers.set("User-Agent", "housou-worker")?;
         headers.set("Accept", "application/json")?;
 
@@ -270,7 +287,10 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         let mut user_resp = Fetch::Request(req_get).send().await?;
 
         if user_resp.status_code() != 200 {
-             return Response::error(format!("GitHub User Error: {}", user_resp.status_code()), 500);
+            return Response::error(
+                format!("GitHub User Error: {}", user_resp.status_code()),
+                500,
+            );
         }
 
         let gh_user: GithubUser = user_resp.json().await?;
@@ -282,26 +302,34 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         let user = if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
             u
         } else {
-             // Link or Create
-             let email = gh_user.email.clone().unwrap_or_else(|| format!("{}@github.com", gh_user.login));
+            // Link or Create
+            let email = gh_user
+                .email
+                .clone()
+                .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
 
-             if let Some(_) = db.get_user_by_email(&email).await? {
-                 return Response::error("Email already in use", 400);
-             }
+            if let Some(_) = db.get_user_by_email(&email).await? {
+                return Response::error("Email already in use", 400);
+            }
 
-             db.create_user(&email, &gh_user.login, None, Some(&gh_id_str)).await?
+            db.create_user(&email, &gh_user.login, None, Some(&gh_id_str))
+                .await?
         };
 
         // Create session
         let token = Uuid::new_v4().to_string();
-        let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+        let expires_at =
+            Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
         db.create_session(user.id, &token, expires_at).await?;
 
         // Redirect to home
-        let base_url = env.var("BASE_URL").map(|s| s.to_string()).unwrap_or_else(|_| "/".to_string());
+        let base_url = env
+            .var("BASE_URL")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| "/".to_string());
 
         Response::redirect(Url::parse(&base_url)?)?
-            .with_header("Set-Cookie", &create_session_cookie(&token))
+            .add_header("Set-Cookie", &create_session_cookie(&token))
     } else {
         Response::error("Missing code", 400)
     }

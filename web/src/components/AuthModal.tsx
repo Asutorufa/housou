@@ -2,13 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Github, X } from "lucide-react";
 import { useState } from "react";
-import { clsx } from "clsx";
-import { twMerge } from "tailwind-merge";
 import { useAuth } from "../contexts/AuthContext";
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs));
-}
 
 interface AuthModalProps {
   isOpen: boolean;

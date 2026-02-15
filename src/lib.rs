@@ -1,7 +1,7 @@
 use serde_derive::Serialize;
 use std::sync::OnceLock;
-use worker::*;
 use std::sync::atomic::{AtomicBool, Ordering};
+use worker::*;
 
 mod auth;
 mod config;
@@ -91,7 +91,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let resp = if req.method() == Method::Get {
         // Skip caching for auth routes
         if url.path().starts_with("/api/auth") || url.path().starts_with("/api/user") {
-             router(req, env).await?
+            router(req, env).await?
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()?
@@ -100,7 +100,11 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let mut fresh_resp = router(req, env).await?;
 
             // Cache successful GET responses (except auth)
-            if url.path().starts_with("/api") && !url.path().starts_with("/api/auth") && !url.path().starts_with("/api/user") && fresh_resp.status_code() == 200 {
+            if url.path().starts_with("/api")
+                && !url.path().starts_with("/api/auth")
+                && !url.path().starts_with("/api/user")
+                && fresh_resp.status_code() == 200
+            {
                 if !fresh_resp.headers().has("Cache-Control")? {
                     fresh_resp = fresh_resp.add_header(
                         "Cache-Control",
@@ -341,18 +345,48 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             provider::get_metadata(args, &env).await
         }
         // Auth Routes (Only if enabled)
-        (Method::Post, "/api/auth/register") if auth_enabled => auth::handle_register(req, env).await?.add_cors(&env),
-        (Method::Post, "/api/auth/login") if auth_enabled => auth::handle_login(req, env).await?.add_cors(&env),
-        (Method::Post, "/api/auth/logout") if auth_enabled => auth::handle_logout(req, env).await?.add_cors(&env),
-        (Method::Get, "/api/auth/me") if auth_enabled => auth::handle_me(req, env).await?.add_cors(&env),
-        (Method::Put, "/api/auth/profile") if auth_enabled => auth::handle_update_profile(req, env).await?.add_cors(&env),
-        (Method::Get, "/api/auth/github/authorize") if auth_enabled => auth::handle_github_authorize(req, env).await?.add_cors(&env),
-        (Method::Get, "/api/auth/github/callback") if auth_enabled => auth::handle_github_callback(req, env).await?.add_cors(&env),
-        (Method::Get, "/api/user/item") if auth_enabled => auth::handle_get_item(req, env).await?.add_cors(&env),
-        (Method::Post, "/api/user/item") if auth_enabled => auth::handle_update_item(req, env).await?.add_cors(&env),
+        (Method::Post, "/api/auth/register") if auth_enabled => {
+            auth::handle_register(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Post, "/api/auth/login") if auth_enabled => {
+            auth::handle_login(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Post, "/api/auth/logout") if auth_enabled => {
+            auth::handle_logout(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Get, "/api/auth/me") if auth_enabled => {
+            auth::handle_me(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Put, "/api/auth/profile") if auth_enabled => {
+            auth::handle_update_profile(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/auth/github/authorize") if auth_enabled => {
+            auth::handle_github_authorize(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/auth/github/callback") if auth_enabled => {
+            auth::handle_github_callback(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/user/item") if auth_enabled => auth::handle_get_item(req, env.clone())
+            .await?
+            .add_cors(&env),
+        (Method::Post, "/api/user/item") if auth_enabled => {
+            auth::handle_update_item(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
 
         // Handle Options for CORS on auth routes
-        (Method::Options, path) if path.starts_with("/api/auth") || path.starts_with("/api/user") => {
+        (Method::Options, path)
+            if path.starts_with("/api/auth") || path.starts_with("/api/user") =>
+        {
             Response::empty()?.add_cors(&env)
         }
 

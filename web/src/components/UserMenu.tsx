@@ -1,6 +1,5 @@
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
