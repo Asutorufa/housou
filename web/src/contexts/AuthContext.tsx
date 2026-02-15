@@ -30,6 +30,18 @@ const fetcher = async (url: string) => {
   return res.json();
 };
 
+// Helper to hash password
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hashHex;
+}
+
 export function AuthProvider({
   children,
   enabled = false,
@@ -51,10 +63,11 @@ export function AuthProvider({
 
   const login = useCallback(
     async (data: LoginData) => {
+      const hashedPassword = await hashPassword(data.password);
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, password: hashedPassword }),
       });
       if (!res.ok) {
         let message = "Login failed";
@@ -76,10 +89,11 @@ export function AuthProvider({
 
   const register = useCallback(
     async (data: RegisterData) => {
+      const hashedPassword = await hashPassword(data.password);
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, password: hashedPassword }),
       });
       if (!res.ok) {
         let message = "Registration failed";
