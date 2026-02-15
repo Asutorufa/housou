@@ -55,6 +55,49 @@ cd web && npm run build && cd ..
 npx wrangler deploy
 ```
 
+## Authentication & Database (Optional)
+
+Housou supports optional user accounts for tracking watch status (Watching, Completed, etc.). This feature requires Cloudflare D1 and GitHub OAuth.
+
+### 1. Create D1 Database
+
+Create a new D1 database:
+
+```bash
+npx wrangler d1 create housou-db
+```
+
+Copy the output (binding configuration) and paste it into your `wrangler.toml` file:
+
+```toml
+[[d1_databases]]
+binding = "DB" # Must be "DB"
+database_name = "housou-db"
+database_id = "your-database-id-here"
+```
+
+### 2. Configure GitHub OAuth
+
+1.  Register a new OAuth App on GitHub.
+    *   **Homepage URL**: `https://your-worker.workers.dev` (or your custom domain)
+    *   **Authorization callback URL**: `https://your-worker.workers.dev/api/auth/github/callback`
+2.  Set the client ID and secret:
+
+```bash
+npx wrangler secret put GITHUB_CLIENT_ID
+npx wrangler secret put GITHUB_CLIENT_SECRET
+```
+
+### 3. Deploy
+
+Deploy the worker. The database tables will be automatically created on the first request.
+
+```bash
+npx wrangler deploy
+```
+
+If you do not configure the `DB` binding, the authentication features will be automatically disabled and hidden from the UI.
+
 ## Project Structure
 
 ```text

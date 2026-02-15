@@ -1,10 +1,14 @@
 import * as Select from "@radix-ui/react-select";
 import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronDown, Search, X } from "lucide-react";
+import { ChevronDown, Search, X, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { twMerge } from "tailwind-merge";
 import type { Config } from "../types";
+import AuthModal from "./AuthModal";
+import ProfileModal from "./ProfileModal";
+import UserMenu from "./UserMenu";
+import { useAuth } from "../contexts/AuthContext";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -33,8 +37,11 @@ export default function Header({
   searchQuery,
   setSearchQuery,
 }: HeaderProps) {
+  const { loggedIn } = useAuth();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   // Helper to handle dropdown state
   const handleDropdownChange = (key: string, isOpen: boolean) => {
@@ -113,61 +120,101 @@ export default function Header({
           )}
         </AnimatePresence>
 
-        {/* Search Input (Right) */}
-        <motion.div
-          layout
-          transition={{
-            type: "spring",
-            stiffness: 300,
-            damping: 35,
-            mass: 0.8,
-          }}
+        {/* Right Group: Search + User Menu */}
+        <div
           className={cn(
-            "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
-            isSearchFocused
-              ? "w-full border-blue-500 ring-2 ring-blue-500/20"
-              : "ml-auto w-10 md:w-64",
+            "flex items-center gap-2 transition-all duration-300",
+            isSearchFocused ? "flex-1 ml-0" : "ml-auto",
           )}
         >
-          <div
+          {/* Search Input */}
+          <motion.div
+            layout
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 35,
+              mass: 0.8,
+            }}
             className={cn(
-              "pointer-events-none absolute inset-0 flex items-center justify-center text-gray-400 md:inset-y-0 md:right-auto md:left-3 md:w-auto md:justify-start",
-              isSearchFocused &&
-                "inset-y-0 right-auto left-3 w-auto justify-start text-blue-500",
+              "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
+              isSearchFocused
+                ? "w-full border-blue-500 ring-2 ring-blue-500/20"
+                : "w-10 md:w-64",
             )}
           >
-            <Search size={16} />
-          </div>
-          <input
-            type="text"
-            placeholder="検索..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => {
-              setIsSearchFocused(false);
-              setActiveDropdown(null); // Close dropdowns on blur just in case
-            }}
-            className="w-full border-none bg-transparent py-2.5 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
-          />
-          <AnimatePresence>
-            {searchQuery && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                onClick={() => setSearchQuery("")}
-                className={cn(
-                  "absolute inset-y-0 right-2 hidden items-center text-gray-400 hover:text-gray-600 md:flex dark:hover:text-gray-200",
-                  isSearchFocused && "flex",
-                )}
-              >
-                <X size={14} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </motion.div>
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-0 flex items-center justify-center text-gray-400 md:inset-y-0 md:right-auto md:left-3 md:w-auto md:justify-start",
+                isSearchFocused &&
+                  "inset-y-0 right-auto left-3 w-auto justify-start text-blue-500",
+              )}
+            >
+              <Search size={16} />
+            </div>
+            <input
+              type="text"
+              placeholder="検索..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => {
+                setIsSearchFocused(false);
+                setActiveDropdown(null); // Close dropdowns on blur just in case
+              }}
+              className="w-full border-none bg-transparent py-2.5 pr-8 pl-9 text-sm text-gray-900 placeholder-transparent outline-none focus:placeholder-gray-500 md:placeholder-gray-500 dark:text-gray-100 dark:focus:placeholder-gray-400 md:dark:placeholder-gray-400"
+            />
+            <AnimatePresence>
+              {searchQuery && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  onClick={() => setSearchQuery("")}
+                  className={cn(
+                    "absolute inset-y-0 right-2 hidden items-center text-gray-400 hover:text-gray-600 md:flex dark:hover:text-gray-200",
+                    isSearchFocused && "flex",
+                  )}
+                >
+                  <X size={14} />
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* User Menu */}
+          {config?.auth_enabled && (
+            <div className="pointer-events-auto shrink-0 relative">
+              {loggedIn ? (
+                <UserMenu
+                  isOpen={activeDropdown === "user"}
+                  onOpenChange={(open) => handleDropdownChange("user", open)}
+                  onOpenProfile={() => setIsProfileModalOpen(true)}
+                />
+              ) : (
+                <motion.button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                >
+                  <UserIcon
+                    size={16}
+                    className="text-gray-700 dark:text-gray-200"
+                  />
+                </motion.button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+      />
     </header>
   );
 }

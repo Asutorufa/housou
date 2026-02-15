@@ -46,6 +46,15 @@ export interface Config {
       logo_alt_long: string;
     };
   };
+  auth_enabled?: boolean;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  github_id?: string;
+  created_at: number;
 }
 
 export interface UniversalTitle {

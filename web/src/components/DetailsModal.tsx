@@ -7,8 +7,11 @@ import {
   PlayCircle,
   Star,
   X,
+  Bookmark,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
+import { useAuth } from "../contexts/AuthContext";
 import type {
   AnimeItem,
   SiteMeta,
@@ -98,7 +101,49 @@ export default function DetailsModal({
   items,
   siteMeta,
 }: DetailsModalProps) {
+  const { loggedIn } = useAuth();
   const { title, info } = anime || { title: "", info: null };
+  const itemId = info?.id;
+
+  // Fetch user data for this item
+  const { data: userData, mutate: mutateUserData } = useSWR(
+    isOpen && loggedIn && itemId ? `/api/user/item?item_id=${itemId}` : null,
+    async (url) => {
+      const res = await fetch(url);
+      if (res.status === 404 || !res.ok) return null;
+      return res.json();
+    },
+  );
+
+  const handleStatusChange = async (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
+    const status = parseInt(e.target.value);
+    if (!itemId) return;
+
+    // Optimistic update
+    const newData = { ...userData, status };
+    mutateUserData(newData, false);
+
+    await fetch("/api/user/item", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_id: itemId, status, score: userData?.score }),
+    });
+
+    mutateUserData(newData);
+  };
+
+  const STATUS_LABELS: Record<number, string> = {
+    0: "Add to List",
+    1: "Watching",
+    2: "Completed",
+    3: "On Hold",
+    4: "Dropped",
+    5: "Plan to Watch",
+  };
+
+  const currentStatus = userData?.status || 0;
 
   // Find the original item to get site links
   const originalItem = items.find((i) => i.title === title);
@@ -146,7 +191,6 @@ export default function DetailsModal({
                       {info?.coverImage?.extraLarge ||
                       info?.coverImage?.large ? (
                         <>
-                          {/* Blurred background for better aesthetics with different aspect ratios */}
                           <img
                             src={
                               info.coverImage.extraLarge ||
@@ -186,6 +230,31 @@ export default function DetailsModal({
                             {title}
                           </motion.h1>
                         </Dialog.Title>
+
+                        {/* Status Selector (Only if logged in) */}
+                        {loggedIn && itemId && (
+                          <div className="mb-4 inline-flex items-center gap-2 relative">
+                            <div className="pointer-events-none absolute left-3 text-blue-600 dark:text-blue-400">
+                              <Bookmark size={16} />
+                            </div>
+                            <select
+                              value={currentStatus}
+                              onChange={handleStatusChange}
+                              className="appearance-none rounded-xl border border-blue-200 bg-blue-50 py-2 pl-9 pr-8 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30 cursor-pointer"
+                            >
+                              <option value={0}>Add to List</option>
+                              <option value={1}>Watching</option>
+                              <option value={2}>Completed</option>
+                              <option value={3}>On Hold</option>
+                              <option value={4}>Dropped</option>
+                              <option value={5}>Plan to Watch</option>
+                            </select>
+                            <div className="pointer-events-none absolute right-3 text-blue-600 dark:text-blue-400">
+                              <ChevronDown size={14} />
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap gap-2">
                           {!!info?.averageScore && info.averageScore > 0 && (
                             <div className="flex items-center gap-1.5 rounded-full border border-yellow-200/50 bg-yellow-50 px-3 py-1 text-sm font-bold text-yellow-700 dark:border-yellow-700/30 dark:bg-yellow-900/20 dark:text-yellow-400">

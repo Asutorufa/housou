@@ -6,6 +6,7 @@ import DetailsModal from "./components/DetailsModal";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
+import { AuthProvider } from "./contexts/AuthContext";
 import { STORAGE_KEY_SELECTIONS } from "./constants";
 import type { AnimeItem, Config, UnifiedMetadata } from "./types";
 
@@ -167,50 +168,52 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
-      <Header
-        config={config}
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-        selectedSeason={selectedSeason}
-        setSelectedSeason={setSelectedSeason}
-        selectedSite={selectedSite}
-        setSelectedSite={setSelectedSite}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
+    <AuthProvider enabled={config?.auth_enabled}>
+      <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
+        <Header
+          config={config}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          selectedSeason={selectedSeason}
+          setSelectedSeason={setSelectedSeason}
+          selectedSite={selectedSite}
+          setSelectedSite={setSelectedSite}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
 
-      <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <TabbedGrid
-            items={filteredItems}
-            siteMeta={config?.site_meta}
-            selectedSite={selectedSite}
-            onOpenModal={(title: string, info: UnifiedMetadata | null) =>
-              setSelectedAnime({ title, info })
-            }
-          />
-        )}
-        <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
-      </main>
+        <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <TabbedGrid
+              items={filteredItems}
+              siteMeta={config?.site_meta}
+              selectedSite={selectedSite}
+              onOpenModal={(title: string, info: UnifiedMetadata | null) =>
+                setSelectedAnime({ title, info })
+              }
+            />
+          )}
+          <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
+        </main>
 
-      <DetailsModal
-        isOpen={!!selectedAnime}
-        onClose={() => setSelectedAnime(null)}
-        anime={selectedAnime}
-        items={items}
-        siteMeta={config?.site_meta}
-      />
+        <DetailsModal
+          isOpen={!!selectedAnime}
+          onClose={() => setSelectedAnime(null)}
+          anime={selectedAnime}
+          items={items}
+          siteMeta={config?.site_meta}
+        />
 
-      <AttributionModal
-        isOpen={isAttributionOpen}
-        onClose={() => setIsAttributionOpen(false)}
-        config={config}
-      />
-    </div>
+        <AttributionModal
+          isOpen={isAttributionOpen}
+          onClose={() => setIsAttributionOpen(false)}
+          config={config}
+        />
+      </div>
+    </AuthProvider>
   );
 }

@@ -20,6 +20,11 @@ worker-macros = "0.7.4"
 regex = "1.12.3"
 js-sys = "0.3.77"
 futures = "0.3.31"
+bcrypt = "0.15"
+uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
+cookie = "0.18"
+getrandom = { version = "0.2", features = ["js"] }
+async-trait = "0.1"
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
     "async",
 ] }
