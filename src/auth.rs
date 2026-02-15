@@ -183,10 +183,11 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
     db.update_username(user.id, &body.username).await?;
 
     // Return updated user safely
-    match db.get_user_by_id(user.id).await? {
-        Some(updated_user) => Response::from_json(&updated_user),
-        None => Response::error("User not found after update", 500),
-    }
+    let updated_user = db
+        .get_user_by_id(user.id)
+        .await?
+        .ok_or_else(|| Error::RustError("User not found after update".to_string()))?;
+    Response::from_json(&updated_user)
 }
 
 pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> {
