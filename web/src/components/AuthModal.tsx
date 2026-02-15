@@ -16,7 +16,7 @@ export default function AuthModal({
   initialTab = "login",
 }: AuthModalProps) {
   const { login, register } = useAuth();
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +64,7 @@ export default function AuthModal({
 
           <Tabs.Root
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as any)}
+            onValueChange={(v) => setActiveTab(v as "login" | "register")}
           >
             <Tabs.List className="mb-6 grid w-full grid-cols-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
               <Tabs.Trigger
