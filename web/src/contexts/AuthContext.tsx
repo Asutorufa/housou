@@ -57,13 +57,16 @@ export function AuthProvider({
         body: JSON.stringify(data),
       });
       if (!res.ok) {
+        let message = "Login failed";
         try {
           const json = await res.json();
-          if (json.error) throw new Error(json.error);
-        } catch (e) {
-          if (e instanceof Error && e.message !== "Login failed") throw e;
+          if (json.error) {
+            message = json.error;
+          }
+        } catch {
+          // Ignore if parsing fails, use default message
         }
-        throw new Error("Login failed");
+        throw new Error(message);
       }
       const user = await res.json();
       mutate(user, false);
@@ -79,14 +82,16 @@ export function AuthProvider({
         body: JSON.stringify(data),
       });
       if (!res.ok) {
+        let message = "Registration failed";
         try {
           const json = await res.json();
-          if (json.error) throw new Error(json.error);
-        } catch (e) {
-          if (e instanceof Error && e.message !== "Registration failed")
-            throw e;
+          if (json.error) {
+            message = json.error;
+          }
+        } catch {
+          // Ignore if parsing fails
         }
-        throw new Error("Registration failed");
+        throw new Error(message);
       }
       const user = await res.json();
       mutate(user, false);

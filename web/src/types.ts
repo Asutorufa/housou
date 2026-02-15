@@ -59,14 +59,14 @@ export interface User {
 
 // Define strict types for auth payloads
 export interface LoginData {
-  email?: string;
-  password?: string;
+  email: string;
+  password: string;
 }
 
 export interface RegisterData {
-  email?: string;
-  username?: string;
-  password?: string;
+  email: string;
+  username: string;
+  password: string;
 }
 
 export interface UniversalTitle {

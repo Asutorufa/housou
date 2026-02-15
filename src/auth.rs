@@ -363,9 +363,12 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         // Redirect to home
         let base_url = get_base_url(&env);
 
-        Response::redirect(Url::parse(&base_url)?)?
-            .add_header("Set-Cookie", &create_session_cookie(&token))?
-            .add_header("Set-Cookie", &clear_oauth_state_cookie()) // Clear state cookie
+        let mut resp = Response::redirect(Url::parse(&base_url)?)?;
+        resp.headers_mut()
+            .append("Set-Cookie", &create_session_cookie(&token))?;
+        resp.headers_mut()
+            .append("Set-Cookie", &clear_oauth_state_cookie())?;
+        Ok(resp)
     } else {
         Response::error("Missing code", 400)
     }
