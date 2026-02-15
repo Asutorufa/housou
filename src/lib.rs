@@ -182,25 +182,6 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     // Future if:
     // 1. Year > Current Year
     // 2. Year == Current Year AND Season > Current Season
-    // Note: If season is "all" (None), we treat it as future if year > current_year.
-    // If year == current_year and season is "all", we technically have mixed data (past seasons + future seasons).
-    // The current bangumi-data implementation for "all" fetches all months (1-12).
-    // If we want to strictly follow the requirement "use Jikan for future", we might need to mix sources for the current year "all" request,
-    // but the requirement says "to current time data from bangumi-data", "future from jikan".
-    // A simple split is:
-    // If year > current_year: Use Jikan (All seasons).
-    // If year == current_year:
-    //    If specific season requested:
-    //       If season > current_season: Use Jikan.
-    //       Else: Use Bangumi.
-    //    If "all" requested:
-    //       Use Bangumi (it covers 1-12, potentially empty for future months but usually pre-filled? No, bangumi-data updates periodically).
-    //       Actually, bangumi-data might not have future data yet.
-    //       Let's stick to the prompt: "Future upcoming data use Jikan API".
-    //       Ideally for "all" in current year, we'd fetch past/current from Bangumi and future from Jikan, but that's complex to merge.
-    //       Let's assume "all" for current year uses Bangumi (safe default).
-    //       Only if user explicitly selects a future season or a future year we switch to Jikan.
-
     let is_future = if year > current_year {
         true
     } else if year == current_year {

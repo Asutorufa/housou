@@ -302,7 +302,6 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         let user = if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
             u
         } else {
-            // Link or Create
             let email = gh_user
                 .email
                 .clone()

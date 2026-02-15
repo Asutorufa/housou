@@ -19,21 +19,6 @@ class ApiError extends Error {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Move fetcher inside the component or to a separate file if reused to avoid Fast Refresh warning
-// Since it's specific to this context, we can define it inside or move it to a utils file.
-// Moving it to top-level is what triggered the warning because the file exports a component.
-// But useSWR needs a stable reference. We can keep it outside but simply not export it?
-// The warning "Fast refresh only works when a file only exports components" implies that if a file exports a component (AuthProvider), it shouldn't export other things (useAuth).
-// Wait, `useAuth` is a hook, which is fine. The warning might be because of `AuthContext` creation or something else?
-// Ah, `useAuth` is exported. `AuthProvider` is exported.
-// Let's try defining fetcher inside `AuthProvider` using `useCallback` or just outside but non-exported.
-// Actually, the warning specifically says: "Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components".
-// This suggests I should split the file. But usually hooks and provider in one file is common pattern.
-// Maybe it's because I'm exporting *both* a component and a hook? That's standard though.
-// Let's try to ignore the warning for now as it's a warning, OR strict mode treats it as error.
-// The lint output showed it as an ERROR.
-// I will move the types to `types.ts` (done above) and keep this file clean.
-
 const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (res.status === 401) {
@@ -145,20 +130,6 @@ export function AuthProvider({
     </AuthContext.Provider>
   );
 }
-
-// Ensure useAuth is also fine.
-// If the linter complains about mixed exports, I might need to accept it or suppress it.
-// Ideally, move AuthProvider to one file and useAuth (consuming context) to another, but they need the context object.
-// Context object is not exported.
-// The rule 'react-refresh/only-export-components' is strict.
-// It allows checking: "Exporting a component and a hook is allowed if the hook is named use*".
-// My hook IS named useAuth.
-// So why does it fail?
-// Maybe because I'm defining `fetcher` top level? But it is NOT exported.
-// Wait, the error was on line 146:17 in previous run?
-// 146:17 is `export function useAuth`.
-// The rule might be triggered because `fetcher` or `ApiError` or `AuthContext` are defined in the same file.
-// I will move `ApiError` and `fetcher` out if needed, or just suppress the lint for this file as it is a Context definition file where this pattern is standard.
 
 /* eslint-disable react-refresh/only-export-components */
 export function useAuth() {
