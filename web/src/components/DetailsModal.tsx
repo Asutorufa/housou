@@ -135,12 +135,12 @@ export default function DetailsModal({
   };
 
   const STATUS_LABELS: Record<number, string> = {
-    0: "Add to List",
-    1: "Watching",
-    2: "Completed",
-    3: "On Hold",
-    4: "Dropped",
-    5: "Plan to Watch",
+    0: "リストに追加",
+    1: "見てる",
+    2: "見終わった",
+    3: "保留",
+    4: "切った",
+    5: "見たい",
   };
 
   const currentStatus = userData?.status || 0;

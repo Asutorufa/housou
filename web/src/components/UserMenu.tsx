@@ -51,7 +51,7 @@ export default function UserMenu({
             >
               <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 mb-1">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  Signed in as
+                  ログイン中:
                 </p>
                 <p className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
                   {user?.username}
@@ -66,7 +66,7 @@ export default function UserMenu({
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:text-gray-200 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
               >
                 <Settings size={16} />
-                Profile
+                プロフィール
               </button>
 
               <button
@@ -77,7 +77,7 @@ export default function UserMenu({
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               >
                 <LogOut size={16} />
-                Sign Out
+                ログアウト
               </button>
             </motion.div>
           </>

@@ -55,7 +55,7 @@ export default function AuthModal({
         <Dialog.Content className="fixed left-[50%] top-[50%] z-50 w-full max-w-md translate-x-[-50%] translate-y-[-50%] rounded-2xl border border-gray-200 bg-white p-6 shadow-xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] dark:border-gray-800 dark:bg-gray-900">
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {activeTab === "login" ? "Login" : "Register"}
+              {activeTab === "login" ? "ログイン" : "登録"}
             </Dialog.Title>
             <Dialog.Close className="rounded-full p-1.5 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
               <X size={18} />
@@ -71,20 +71,20 @@ export default function AuthModal({
                 value="login"
                 className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-all data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
               >
-                Login
+                ログイン
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="register"
                 className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-all data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
               >
-                Register
+                登録
               </Tabs.Trigger>
             </Tabs.List>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Email
+                  メールアドレス
                 </label>
                 <input
                   type="email"
@@ -99,7 +99,7 @@ export default function AuthModal({
               {activeTab === "register" && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Username
+                    ユーザー名
                   </label>
                   <input
                     type="text"
@@ -114,7 +114,7 @@ export default function AuthModal({
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Password
+                  パスワード
                 </label>
                 <input
                   type="password"
@@ -138,10 +138,10 @@ export default function AuthModal({
                 className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 {loading
-                  ? "Loading..."
+                  ? "読み込み中..."
                   : activeTab === "login"
-                    ? "Sign In"
-                    : "Sign Up"}
+                    ? "ログイン"
+                    : "登録"}
               </button>
             </form>
 
@@ -151,7 +151,7 @@ export default function AuthModal({
               </div>
               <div className="relative flex justify-center text-xs uppercase">
                 <span className="bg-white px-2 text-gray-500 dark:bg-gray-900">
-                  Or continue with
+                  または
                 </span>
               </div>
             </div>

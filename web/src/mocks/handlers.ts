@@ -1,19 +1,83 @@
 import { http, HttpResponse } from "msw";
 
 export const handlers = [
-  // Existing handlers...
   http.get("/api/config", () => {
     return HttpResponse.json({
-      site_meta: {},
-      years: [2024, 2023],
+      site_meta: {
+        crunchyroll: {
+          title: "Crunchyroll",
+          type: "onair",
+          urlTemplate: "https://www.crunchyroll.com/series/{{id}}",
+        },
+        netflix: { title: "Netflix", type: "onair" },
+      },
+      years: [2025, 2024, 2023],
       attribution: {
         tmdb: {
-          logo_square: "",
-          logo_long: "",
-          logo_alt_long: "",
+          logo_square:
+            "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_square_2-d537fb228cf3ded904ef09b136fe3fec72548ebc1fea3fbbd1ad9e36364db38b.svg",
+          logo_long:
+            "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg",
+          logo_alt_long:
+            "https://www.themoviedb.org/assets/2/v4/logos/v2/blue_long_2-9665a76b1ae401a510ec1e0ca40ddcb3b0cfe45f1d51b77a308fea0845885648.svg",
         },
       },
       auth_enabled: true,
+    });
+  }),
+
+  http.get("/api/items", () => {
+    return HttpResponse.json([
+      {
+        title: "Test Anime 1",
+        type: "tv",
+        lang: "ja",
+        officialSite: "https://example.com",
+        begin: "2024-01-01",
+        end: "2024-03-31",
+        comment: "",
+        sites: [{ site: "crunchyroll", id: "test-1" }],
+        titleTranslate: {
+          en: ["Test Anime One"],
+          "zh-Hans": ["测试动画1"],
+        },
+      },
+      {
+        title: "Test Anime 2",
+        type: "tv",
+        lang: "ja",
+        officialSite: "",
+        begin: "2024-01-02",
+        sites: [],
+      },
+    ]);
+  }),
+
+  http.get("/api/metadata", () => {
+    return HttpResponse.json({
+      id: "100",
+      title: {
+        native: "Test Anime 1",
+        romaji: "Test Anime 1",
+        english: "Test Anime One",
+      },
+      coverImage: { large: "https://placehold.co/400x600" },
+      averageScore: 85,
+      episodes: 12,
+      genres: ["Action", "Comedy"],
+      description: "This is a test description for the anime.",
+      studios: ["Studio Test"],
+      characters: [],
+      staff: [],
+      episodesList: [
+        { number: 1, title: "Start", airDate: "2024-01-01" },
+        { number: 2, title: "Next", airDate: "2024-01-08" },
+      ],
+      isFinished: false,
+      totalSeasons: 1,
+      currentSeason: 1,
+      runtime: 24,
+      contentRating: "PG-13",
     });
   }),
 
