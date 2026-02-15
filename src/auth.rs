@@ -23,13 +23,10 @@ async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     let db = get_db(env)?;
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
-    // Parse cookies more robustly
-    for cookie_str in cookies_header.split(';') {
-        if let Ok(cookie) = Cookie::parse(cookie_str.trim())
-            && cookie.name() == SESSION_COOKIE_NAME
-        {
+    // Parse cookies more robustly using cookie crate
+    for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
+        if cookie.name() == SESSION_COOKIE_NAME {
             let token = cookie.value();
-            // Check database for session
             if let Some(session) = db.get_session(token).await?
                 && let Some(user) = db.get_user_by_id(session.user_id).await?
             {
@@ -268,10 +265,8 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
     let mut stored_state = None;
 
-    for cookie_str in cookies_header.split(';') {
-        if let Ok(cookie) = Cookie::parse(cookie_str.trim())
-            && cookie.name() == OAUTH_STATE_COOKIE_NAME
-        {
+    for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
+        if cookie.name() == OAUTH_STATE_COOKIE_NAME {
             stored_state = Some(cookie.value().to_string());
             break;
         }
