@@ -9,6 +9,8 @@ use worker::*;
 
 const SESSION_COOKIE_NAME: &str = "housou_session";
 const SESSION_DURATION_DAYS: i64 = 30;
+const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
+const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
 // Helper to get DB
 fn get_db(env: &Env) -> Result<AppDatabase> {
@@ -21,12 +23,13 @@ async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     let db = get_db(env)?;
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
-    // Simple cookie parsing
+    // Parse cookies more robustly
     for cookie_str in cookies_header.split(';') {
         if let Ok(cookie) = Cookie::parse(cookie_str.trim())
             && cookie.name() == SESSION_COOKIE_NAME
         {
             let token = cookie.value();
+            // Check database for session
             if let Some(session) = db.get_session(token).await?
                 && let Some(user) = db.get_user_by_id(session.user_id).await?
             {
@@ -55,6 +58,32 @@ fn clear_session_cookie() -> String {
         .same_site(SameSite::Strict)
         .max_age(Duration::seconds(0))
         .to_string()
+}
+
+fn create_oauth_state_cookie(state: &str) -> String {
+    Cookie::build((OAUTH_STATE_COOKIE_NAME, state))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax) // Lax needed for redirect flow
+        .max_age(Duration::minutes(OAUTH_STATE_DURATION_MINUTES))
+        .to_string()
+}
+
+fn clear_oauth_state_cookie() -> String {
+    Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .max_age(Duration::seconds(0))
+        .to_string()
+}
+
+fn get_base_url(env: &Env) -> String {
+    env.var("BASE_URL")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|_| "http://localhost:8787".to_string())
 }
 
 #[derive(Deserialize)]
@@ -86,7 +115,7 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    if db.get_user_by_email(&body.email).await?.is_some() {
+    if (db.get_user_by_email(&body.email).await?).is_some() {
         return Response::error("Email already registered", 400);
     }
 
@@ -156,9 +185,11 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
 
     db.update_username(user.id, &body.username).await?;
 
-    // Return updated user
-    let updated_user = db.get_user_by_id(user.id).await?.unwrap();
-    Response::from_json(&updated_user)
+    // Return updated user safely
+    match db.get_user_by_id(user.id).await? {
+        Some(updated_user) => Response::from_json(&updated_user),
+        None => Response::error("User not found after update", 500),
+    }
 }
 
 pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> {
@@ -212,27 +243,43 @@ struct GithubTokenResponse {
 
 pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response> {
     let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
-
-    let base_url = env
-        .var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let base_url = get_base_url(&env);
     let redirect_uri = format!("{}/api/auth/github/callback", base_url);
 
+    // CSRF Protection: Generate State
+    let state = Uuid::new_v4().to_string();
+
     let url = format!(
-        "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user:email",
-        client_id, redirect_uri
+        "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user:email&state={}",
+        client_id, redirect_uri, state
     );
 
-    Response::redirect(Url::parse(&url)?)
+    Response::redirect(Url::parse(&url)?)?
+        .add_header("Set-Cookie", &create_oauth_state_cookie(&state))
 }
 
 pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
     let url = req.url()?;
-    let code = url
-        .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.to_string());
+    let query_params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+    let code = query_params.get("code").cloned();
+    let state = query_params.get("state").cloned();
+
+    // Verify State (CSRF)
+    let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
+    let mut stored_state = None;
+
+    for cookie_str in cookies_header.split(';') {
+        if let Ok(cookie) = Cookie::parse(cookie_str.trim())
+            && cookie.name() == OAUTH_STATE_COOKIE_NAME
+        {
+            stored_state = Some(cookie.value().to_string());
+            break;
+        }
+    }
+
+    if state.is_none() || stored_state.is_none() || state != stored_state {
+        return Response::error("Invalid or missing OAuth state", 403);
+    }
 
     if let Some(code) = code {
         let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
@@ -251,12 +298,10 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         headers.set("Content-Type", "application/json")?;
         headers.set("User-Agent", "housou-worker")?;
 
-        let init = RequestInit {
-            method: Method::Post,
-            headers,
-            body: Some(JsValue::from_str(&body.to_string())),
-            ..Default::default()
-        };
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        init.with_headers(headers);
+        init.with_body(Some(JsValue::from_str(&body.to_string())));
 
         let req_post = Request::new_with_init(token_url, &init)?;
         let mut resp = Fetch::Request(req_post).send().await?;
@@ -277,11 +322,9 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         headers.set("User-Agent", "housou-worker")?;
         headers.set("Accept", "application/json")?;
 
-        let init = RequestInit {
-            method: Method::Get,
-            headers,
-            ..Default::default()
-        };
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get);
+        init.with_headers(headers);
 
         let req_get = Request::new_with_init(user_url, &init)?;
         let mut user_resp = Fetch::Request(req_get).send().await?;
@@ -322,13 +365,11 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         db.create_session(user.id, &token, expires_at).await?;
 
         // Redirect to home
-        let base_url = env
-            .var("BASE_URL")
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| "/".to_string());
+        let base_url = get_base_url(&env);
 
         Response::redirect(Url::parse(&base_url)?)?
-            .add_header("Set-Cookie", &create_session_cookie(&token))
+            .add_header("Set-Cookie", &create_session_cookie(&token))?
+            .add_header("Set-Cookie", &clear_oauth_state_cookie()) // Clear state cookie
     } else {
         Response::error("Missing code", 400)
     }
