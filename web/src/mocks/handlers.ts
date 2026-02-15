@@ -77,18 +77,18 @@ export const handlers = [
     const itemId = url.searchParams.get("item_id");
 
     if (itemId === "100") {
-       return HttpResponse.json({
-           user_id: 1,
-           item_id: "100",
-           status: 1, // Watching
-           score: 8,
-           updated_at: Date.now()
-       });
+      return HttpResponse.json({
+        user_id: 1,
+        item_id: "100",
+        status: 1, // Watching
+        score: 8,
+        updated_at: Date.now(),
+      });
     }
     return new HttpResponse(null, { status: 404 });
   }),
 
   http.post("/api/user/item", async () => {
-      return HttpResponse.json({ message: "Updated" });
-  })
+    return HttpResponse.json({ message: "Updated" });
+  }),
 ];
