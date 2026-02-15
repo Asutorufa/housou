@@ -30,6 +30,11 @@ pub struct UserItem {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Deserialize)]
+struct SchemaVersion {
+    version: i32,
+}
+
 #[async_trait(?Send)]
 pub trait Database {
     async fn migrate(&self) -> Result<()>;
@@ -73,36 +78,81 @@ impl AppDatabase {
 #[async_trait(?Send)]
 impl Database for AppDatabase {
     async fn migrate(&self) -> Result<()> {
-        let queries = [
-            "CREATE TABLE IF NOT EXISTS users (
+        // Create schema_migrations table if not exists
+        self.db
+            .prepare(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE,
-                username TEXT,
-                password_hash TEXT,
-                github_id TEXT UNIQUE,
-                created_at INTEGER
+                version INTEGER NOT NULL UNIQUE,
+                applied_at INTEGER NOT NULL
             );",
-            "CREATE TABLE IF NOT EXISTS sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                token TEXT UNIQUE,
-                expires_at INTEGER,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            );",
-            "CREATE TABLE IF NOT EXISTS user_items (
-                user_id INTEGER,
-                item_id TEXT,
-                status INTEGER,
-                score INTEGER,
-                updated_at INTEGER,
-                PRIMARY KEY (user_id, item_id),
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            );",
+            )
+            .run()
+            .await?;
+
+        // Get current version
+        let current_version: i32 = self
+            .db
+            .prepare("SELECT MAX(version) as version FROM schema_migrations")
+            .first::<SchemaVersion>(None)
+            .await?
+            .map(|v| v.version)
+            .unwrap_or(0);
+
+        // Define migrations
+        let migrations = vec![
+            // Version 1: Initial schema
+            (
+                1,
+                vec![
+                    "CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT UNIQUE,
+                        username TEXT,
+                        password_hash TEXT,
+                        github_id TEXT UNIQUE,
+                        created_at INTEGER
+                    );",
+                    "CREATE TABLE IF NOT EXISTS sessions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER,
+                        token TEXT UNIQUE,
+                        expires_at INTEGER,
+                        FOREIGN KEY(user_id) REFERENCES users(id)
+                    );",
+                    "CREATE TABLE IF NOT EXISTS user_items (
+                        user_id INTEGER,
+                        item_id TEXT,
+                        status INTEGER,
+                        score INTEGER,
+                        updated_at INTEGER,
+                        PRIMARY KEY (user_id, item_id),
+                        FOREIGN KEY(user_id) REFERENCES users(id)
+                    );",
+                ],
+            ),
         ];
 
-        for query in queries {
-            self.db.prepare(query).run().await?;
+        // Apply pending migrations
+        for (version, queries) in migrations {
+            if version > current_version {
+                console_log!("Applying migration version {}", version);
+                for query in queries {
+                    self.db.prepare(query).run().await?;
+                }
+
+                let now = Date::now().as_millis() as i64;
+                self.db
+                    .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+                    .bind(&[
+                        JsValue::from_f64(version as f64),
+                        JsValue::from_f64(now as f64),
+                    ])?
+                    .run()
+                    .await?;
+            }
         }
+
         Ok(())
     }
 
