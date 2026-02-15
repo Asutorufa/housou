@@ -23,14 +23,14 @@ async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
 
     // Simple cookie parsing
     for cookie_str in cookies_header.split(';') {
-        if let Ok(cookie) = Cookie::parse(cookie_str.trim()) {
-            if cookie.name() == SESSION_COOKIE_NAME {
-                let token = cookie.value();
-                if let Some(session) = db.get_session(token).await? {
-                    if let Some(user) = db.get_user_by_id(session.user_id).await? {
-                        return Ok(Some((user, token.to_string())));
-                    }
-                }
+        if let Ok(cookie) = Cookie::parse(cookie_str.trim())
+            && cookie.name() == SESSION_COOKIE_NAME
+        {
+            let token = cookie.value();
+            if let Some(session) = db.get_session(token).await?
+                && let Some(user) = db.get_user_by_id(session.user_id).await?
+            {
+                return Ok(Some((user, token.to_string())));
             }
         }
     }
@@ -253,7 +253,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         let init = RequestInit {
             method: Method::Post,
-            headers: headers,
+            headers,
             body: Some(JsValue::from_str(&body.to_string())),
             ..Default::default()
         };
@@ -279,7 +279,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         let init = RequestInit {
             method: Method::Get,
-            headers: headers,
+            headers,
             ..Default::default()
         };
 
@@ -308,7 +308,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
                 .clone()
                 .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
 
-            if let Some(_) = db.get_user_by_email(&email).await? {
+            if (db.get_user_by_email(&email).await?).is_some() {
                 return Response::error("Email already in use", 400);
             }
 

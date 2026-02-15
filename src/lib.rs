@@ -71,16 +71,16 @@ struct TmdbAttribution {
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     // Migration Logic (Lazy)
-    if let Ok(d1) = env.d1("DB") {
-        if !MIGRATION_DONE.load(Ordering::Relaxed) {
-            let db = db::AppDatabase::new(d1);
-            // We ignore migration errors here to not block the whole app,
-            // but ideally we should log them.
-            if let Err(e) = db.migrate().await {
-                console_error!("Migration failed: {}", e);
-            } else {
-                MIGRATION_DONE.store(true, Ordering::Relaxed);
-            }
+    if let Ok(d1) = env.d1("DB")
+        && !MIGRATION_DONE.load(Ordering::Relaxed)
+    {
+        let db = db::AppDatabase::new(d1);
+        // We ignore migration errors here to not block the whole app,
+        // but ideally we should log them.
+        if let Err(e) = db.migrate().await {
+            console_error!("Migration failed: {}", e);
+        } else {
+            MIGRATION_DONE.store(true, Ordering::Relaxed);
         }
     }
 
