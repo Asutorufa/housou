@@ -1057,7 +1057,6 @@ mod tests_tv_transformation {
     }
 }
 
-
 #[cfg(test)]
 mod tests_tv_title_formatting {
     use super::*;
@@ -1094,7 +1093,13 @@ mod tests_tv_title_formatting {
         assert_eq!(result.title.native, Some("Season".to_string()));
 
         // Case 4: Neither present
-        let result = tv_to_unified(show_none, models::SeasonDetails { name: None, ..Default::default() });
+        let result = tv_to_unified(
+            show_none,
+            models::SeasonDetails {
+                name: None,
+                ..Default::default()
+            },
+        );
         assert_eq!(result.title.native, None);
     }
 }
