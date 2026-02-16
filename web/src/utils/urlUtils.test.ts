@@ -26,6 +26,7 @@ describe("isValidUrl", () => {
   it("should return false for invalid URLs", () => {
     expect(isValidUrl("not a url")).toBe(false);
     expect(isValidUrl("/relative/path")).toBe(false);
+    expect(isValidUrl("//example.com")).toBe(false);
     expect(isValidUrl("")).toBe(false);
     expect(isValidUrl(null)).toBe(false);
     expect(isValidUrl(undefined)).toBe(false);
