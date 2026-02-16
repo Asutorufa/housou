@@ -361,15 +361,15 @@ export default function DetailsModal({
                             </h4>
                             <a
                               href={originalItem.officialSite}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-1.5 text-sm font-bold text-purple-600 transition-colors hover:bg-purple-100 dark:border-purple-800/50 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/30"
-                          >
-                            公式サイト
-                            <ExternalLink size={12} />
-                          </a>
-                        </div>
-                      )}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-1.5 text-sm font-bold text-purple-600 transition-colors hover:bg-purple-100 dark:border-purple-800/50 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/30"
+                            >
+                              公式サイト
+                              <ExternalLink size={12} />
+                            </a>
+                          </div>
+                        )}
                       {Object.entries({
                         onair: {
                           label: "配信",
