@@ -249,7 +249,10 @@ mod tests {
 
         assert_eq!(item.title, "カウボーイビバップ");
         assert_eq!(item.type_field, ItemType::Tv);
-        assert_eq!(item.official_site, "https://myanimelist.net/anime/1/Cowboy_Bebop");
+        assert_eq!(
+            item.official_site,
+            "https://myanimelist.net/anime/1/Cowboy_Bebop"
+        );
         assert_eq!(item.begin.as_deref(), Some("1998-04-03T00:00:00+00:00"));
         assert_eq!(item.end.as_deref(), Some("1999-04-24T00:00:00+00:00"));
 
@@ -310,7 +313,8 @@ mod tests {
         ];
 
         for (jikan_type, item_type) in types {
-            let json = format!(r#"{{
+            let json = format!(
+                r#"{{
                 "mal_id": 1,
                 "url": "url",
                 "images": {{}},
@@ -319,10 +323,16 @@ mod tests {
                 "aired": {{}},
                 "studios": [],
                 "genres": []
-            }}"#, jikan_type);
+            }}"#,
+                jikan_type
+            );
 
             let item = convert_to_item(create_anime(&json));
-            assert_eq!(item.type_field, item_type, "Failed for type: {}", jikan_type);
+            assert_eq!(
+                item.type_field, item_type,
+                "Failed for type: {}",
+                jikan_type
+            );
         }
     }
 
@@ -339,7 +349,10 @@ mod tests {
             "genres": []
         }"#;
         let item = convert_to_item(create_anime(json));
-        assert_eq!(item.comment.as_deref(), Some("This is bold and italic.New line."));
+        assert_eq!(
+            item.comment.as_deref(),
+            Some("This is bold and italic.New line.")
+        );
     }
 
     #[test]
