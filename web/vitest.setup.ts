@@ -1,3 +1,6 @@
+import "@testing-library/jest-dom";
+import { vi } from "vitest";
+
 // Mock ResizeObserver
 window.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -36,3 +39,8 @@ if (!window.PointerEvent) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   window.PointerEvent = PointerEvent as any;
 }
+
+// Mock HTMLElement methods
+window.HTMLElement.prototype.scrollIntoView = vi.fn();
+window.HTMLElement.prototype.releasePointerCapture = vi.fn();
+window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);

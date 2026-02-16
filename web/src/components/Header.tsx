@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { twMerge } from "tailwind-merge";
 import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
@@ -54,6 +54,17 @@ export default function Header({
   };
 
   const currentYear = new Date().getFullYear();
+
+  const siteOptions = useMemo(
+    () => [
+      { value: "all", label: "全て" },
+      ...Object.entries(config?.site_meta || {}).map(([key, meta]) => ({
+        value: key,
+        label: meta?.title || key,
+      })),
+    ],
+    [config?.site_meta],
+  );
 
   return (
     <header className="group/header pointer-events-none sticky top-2 z-50 w-full px-2 md:px-4">
@@ -112,15 +123,7 @@ export default function Header({
               <CustomSelect
                 value={selectedSite}
                 onValueChange={setSelectedSite}
-                options={[
-                  { value: "all", label: "全て" },
-                  ...Object.entries(config?.site_meta || {}).map(
-                    ([key, meta]) => ({
-                      value: key,
-                      label: meta?.title || key,
-                    }),
-                  ),
-                ]}
+                options={siteOptions}
                 placeholder="サイト"
                 isOpen={activeDropdown === "site"}
                 onOpenChange={(open) => handleDropdownChange("site", open)}
