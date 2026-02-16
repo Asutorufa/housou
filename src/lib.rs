@@ -269,7 +269,6 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
     let method = req.method();
     let path = req.path();
     let url = req.url()?;
-    let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
 
     // Check if Auth is enabled (DB binding exists)
     let auth_enabled = env.d1("DB").is_ok();
@@ -304,15 +303,23 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
                 )
         }
         (Method::Get, "/api/items") => {
-            let year_param = query.get("year").and_then(|y| y.parse::<i32>().ok());
-            let season_param = query.get("season").map(|s| s.as_str());
+            let mut year_param = None;
+            let mut season_param = None;
 
-            if year_param.is_none() {
-                return Response::error("Bad Request: 'year' parameter is required", 400);
+            for (k, v) in url.query_pairs() {
+                if k == "year" {
+                    year_param = Some(v);
+                } else if k == "season" {
+                    season_param = Some(v);
+                }
             }
-            let target_year = year_param.unwrap();
 
-            let target_season = match season_param {
+            let target_year = match year_param.as_deref().and_then(|y| y.parse::<i32>().ok()) {
+                Some(y) => y,
+                None => return Response::error("Bad Request: 'year' parameter is required", 400),
+            };
+
+            let target_season = match season_param.as_deref() {
                 Some("all") | None | Some("") => None,
                 Some(s) => Some(s),
             };
@@ -365,20 +372,33 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
         }
 
         (Method::Get, "/api/metadata") => {
-            let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());
-            let mal_id = query.get("mal_id").map(|s| s.as_str());
-            let anilist_id = query.get("anilist_id").map(|s| s.as_str());
-            let title = query.get("title").map(|s| s.as_str());
-            let year = query
-                .get("begin")
+            let mut tmdb_id = None;
+            let mut mal_id = None;
+            let mut anilist_id = None;
+            let mut title = None;
+            let mut begin_param = None;
+
+            for (k, v) in url.query_pairs() {
+                match k.as_ref() {
+                    "tmdb_id" => tmdb_id = Some(v),
+                    "mal_id" => mal_id = Some(v),
+                    "anilist_id" => anilist_id = Some(v),
+                    "title" => title = Some(v),
+                    "begin" => begin_param = Some(v),
+                    _ => {}
+                }
+            }
+
+            let year = begin_param
+                .as_deref()
                 .and_then(|d| d.get(0..4))
                 .and_then(|y| y.parse::<i32>().ok());
 
             let args = provider::MetadataArgs {
-                tmdb_id,
-                mal_id,
-                anilist_id,
-                title,
+                tmdb_id: tmdb_id.as_deref(),
+                mal_id: mal_id.as_deref(),
+                anilist_id: anilist_id.as_deref(),
+                title: title.as_deref(),
                 year,
             };
 
