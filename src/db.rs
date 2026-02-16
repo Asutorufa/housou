@@ -1,6 +1,5 @@
-use crate::model::UserStatus;
 use async_trait::async_trait;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 
@@ -9,11 +8,7 @@ pub struct User {
     pub id: i32,
     pub email: String,
     pub username: String,
-    pub avatar_url: Option<String>,
-    #[serde(skip_serializing)]
     pub password_hash: Option<String>,
-    #[serde(skip_serializing)]
-    #[allow(dead_code)]
     pub github_id: Option<String>,
     pub created_at: i64,
 }
@@ -30,21 +25,14 @@ pub struct Session {
 pub struct UserItem {
     pub user_id: i32,
     pub title: String, // Changed from item_id
-    pub status: UserStatus,
+    pub status: i32,
     pub score: Option<i32>,
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct UserItemSummary {
-    pub status: UserStatus,
-    pub score: Option<i32>,
-}
-
 #[derive(Debug, Deserialize)]
 struct SchemaVersion {
-    version: Option<i32>,
+    version: i32,
 }
 
 #[async_trait(?Send)]
@@ -57,7 +45,6 @@ pub trait Database {
         username: &str,
         password_hash: Option<&str>,
         github_id: Option<&str>,
-        avatar_url: Option<&str>,
     ) -> Result<User>;
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>>;
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>>;
@@ -68,9 +55,7 @@ pub trait Database {
         id: i32,
         new_username: &str,
         new_email: Option<&str>,
-        new_avatar_url: Option<&str>,
     ) -> Result<()>;
-    async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()>;
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()>;
     async fn get_session(&self, token: &str) -> Result<Option<Session>>;
@@ -80,15 +65,11 @@ pub trait Database {
         &self,
         user_id: i32,
         title: &str,
-        status: UserStatus,
+        status: i32,
         score: Option<i32>,
     ) -> Result<()>;
     async fn get_user_item(&self, user_id: i32, title: &str) -> Result<Option<UserItem>>;
-    async fn get_user_items_by_titles(
-        &self,
-        user_id: i32,
-        titles: &[String],
-    ) -> Result<Vec<UserItem>>;
+    async fn get_all_user_items(&self, user_id: i32) -> Result<Vec<UserItem>>;
 }
 
 pub struct AppDatabase {
@@ -122,7 +103,7 @@ impl Database for AppDatabase {
             .prepare("SELECT MAX(version) as version FROM schema_migrations")
             .first::<SchemaVersion>(None)
             .await?
-            .and_then(|v| v.version)
+            .map(|v| v.version)
             .unwrap_or(0);
 
         // Define migrations
@@ -159,7 +140,6 @@ impl Database for AppDatabase {
                     "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
                 ],
             ),
-            (2, vec!["ALTER TABLE users ADD COLUMN avatar_url TEXT;"]),
         ];
 
         // Apply pending migrations
@@ -191,10 +171,9 @@ impl Database for AppDatabase {
         username: &str,
         password_hash: Option<&str>,
         github_id: Option<&str>,
-        avatar_url: Option<&str>,
     ) -> Result<User> {
         let created_at = Date::now().as_millis() as i64;
-        let query = "INSERT INTO users (email, username, password_hash, github_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *";
+        let query = "INSERT INTO users (email, username, password_hash, github_id, created_at) VALUES (?, ?, ?, ?, ?) RETURNING *";
 
         let password_val = if let Some(h) = password_hash {
             JsValue::from_str(h)
@@ -206,18 +185,12 @@ impl Database for AppDatabase {
         } else {
             JsValue::NULL
         };
-        let avatar_val = if let Some(a) = avatar_url {
-            JsValue::from_str(a)
-        } else {
-            JsValue::NULL
-        };
 
         let stmt = self.db.prepare(query).bind(&[
             JsValue::from_str(email),
             JsValue::from_str(username),
             password_val,
             github_val,
-            avatar_val,
             JsValue::from_f64(created_at as f64),
         ])?;
 
@@ -266,63 +239,29 @@ impl Database for AppDatabase {
         id: i32,
         new_username: &str,
         new_email: Option<&str>,
-        new_avatar_url: Option<&str>,
     ) -> Result<()> {
-        let email_part = if let Some(email) = new_email {
-            ("email = ?", JsValue::from_str(email))
+        if let Some(email) = new_email {
+            let query = "UPDATE users SET username = ?, email = ? WHERE id = ?";
+            self.db
+                .prepare(query)
+                .bind(&[
+                    JsValue::from_str(new_username),
+                    JsValue::from_str(email),
+                    JsValue::from_f64(id as f64),
+                ])?
+                .run()
+                .await?;
         } else {
-            ("", JsValue::NULL)
-        };
-
-        let avatar_part = if let Some(avatar) = new_avatar_url {
-            ("avatar_url = ?", JsValue::from_str(avatar))
-        } else {
-            ("", JsValue::NULL)
-        };
-
-        let mut query = "UPDATE users SET username = ?".to_string();
-        let mut bindings = vec![JsValue::from_str(new_username)];
-
-        if !email_part.0.is_empty() {
-            query.push_str(", ");
-            query.push_str(email_part.0);
-            bindings.push(email_part.1);
+            let query = "UPDATE users SET username = ? WHERE id = ?";
+            self.db
+                .prepare(query)
+                .bind(&[
+                    JsValue::from_str(new_username),
+                    JsValue::from_f64(id as f64),
+                ])?
+                .run()
+                .await?;
         }
-
-        if !avatar_part.0.is_empty() {
-            query.push_str(", ");
-            query.push_str(avatar_part.0);
-            bindings.push(avatar_part.1);
-        } else {
-            // If new_avatar_url is None, we might want to clear it?
-            // Or just leave it as is if it's not provided in the update.
-            // Let's assume Option<&str> means "set to this value (which could be None to clear)".
-            // Actually, let's treat it as "update if provided".
-            // If the user wants to clear, they send empty string? No, let's use Option properly.
-            // But how do we distinguish "don't update" vs "set to null"?
-            // Usually we set to null if it's explicitly passed as None in a Patch.
-            // For now, let's just update it every time.
-            query.push_str(", avatar_url = ?");
-            bindings.push(JsValue::NULL);
-        }
-
-        query.push_str(" WHERE id = ?");
-        bindings.push(JsValue::from_f64(id as f64));
-
-        self.db.prepare(&query).bind(&bindings)?.run().await?;
-        Ok(())
-    }
-
-    async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()> {
-        let query = "UPDATE users SET password_hash = ? WHERE id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_str(password_hash),
-                JsValue::from_f64(id as f64),
-            ])?
-            .run()
-            .await?;
         Ok(())
     }
 
@@ -364,7 +303,7 @@ impl Database for AppDatabase {
         &self,
         user_id: i32,
         title: &str,
-        status: UserStatus,
+        status: i32,
         score: Option<i32>,
     ) -> Result<()> {
         let updated_at = Date::now().as_millis() as i64;
@@ -384,7 +323,7 @@ impl Database for AppDatabase {
             .bind(&[
                 JsValue::from_f64(user_id as f64),
                 JsValue::from_str(title),
-                JsValue::from_f64(status as i32 as f64),
+                JsValue::from_f64(status as f64),
                 score_val,
                 JsValue::from_f64(updated_at as f64),
             ])?
@@ -402,39 +341,15 @@ impl Database for AppDatabase {
             .await
     }
 
-    async fn get_user_items_by_titles(
-        &self,
-        user_id: i32,
-        titles: &[String],
-    ) -> Result<Vec<UserItem>> {
-        if titles.is_empty() {
-            return Ok(Vec::new());
-        }
+    async fn get_all_user_items(&self, user_id: i32) -> Result<Vec<UserItem>> {
+        let query = "SELECT * FROM user_items_v2 WHERE user_id = ?";
+        let results = self
+            .db
+            .prepare(query)
+            .bind(&[JsValue::from_f64(user_id as f64)])?
+            .all()
+            .await?;
 
-        let mut all_results = Vec::new();
-        // Chunk to avoid "too many SQL variables" error (D1 limit is 100 per query)
-        for chunk in titles.chunks(50) {
-            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let query = format!(
-                "SELECT * FROM user_items_v2 WHERE user_id = ? AND title IN ({placeholders})"
-            );
-
-            let mut bindings = Vec::with_capacity(chunk.len() + 1);
-            bindings.push(JsValue::from_f64(user_id as f64));
-            for title in chunk {
-                bindings.push(JsValue::from_str(title));
-            }
-
-            let results: Vec<UserItem> = self
-                .db
-                .prepare(&query)
-                .bind(&bindings)?
-                .all()
-                .await?
-                .results()?;
-            all_results.extend(results);
-        }
-
-        Ok(all_results)
+        results.results()
     }
 }

@@ -75,7 +75,7 @@ impl MetadataProvider for JikanProvider {
         _year: Option<i32>,
     ) -> Result<UnifiedMetadata> {
         let mal_id = id.ok_or_else(|| Error::RustError("MAL ID required".into()))?;
-        let url = format!("https://api.jikan.moe/v4/anime/{mal_id}/full");
+        let url = format!("https://api.jikan.moe/v4/anime/{}/full", mal_id);
 
         let response: JikanResponse<JikanAnime> = utils::fetch_json(&url)
             .await?
@@ -87,7 +87,7 @@ impl MetadataProvider for JikanProvider {
 }
 
 pub async fn fetch_season(year: i32, season: &str) -> Result<Vec<Item>> {
-    let url = format!("https://api.jikan.moe/v4/seasons/{year}/{season}");
+    let url = format!("https://api.jikan.moe/v4/seasons/{}/{}", year, season);
     let response: Option<JikanResponse<Vec<JikanAnime>>> = utils::fetch_json(&url).await?;
 
     let items = response
@@ -176,6 +176,8 @@ fn convert_to_item(anime: JikanAnime) -> Item {
         comment,
         sites,
         broadcast: anime.broadcast.and_then(|b| b.string),
+        user_status: None,
+        user_score: None,
     }
 }
 

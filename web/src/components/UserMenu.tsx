@@ -1,8 +1,8 @@
-import { clsx } from "clsx";
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { twMerge } from "tailwind-merge";
+import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../contexts/AuthContext";
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 function cn(...inputs: (string | undefined | null | false)[]) {
   return twMerge(clsx(inputs));
@@ -26,21 +26,13 @@ export default function UserMenu({
       <motion.button
         onClick={() => onOpenChange(!isOpen)}
         className={cn(
-          "flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700",
+          "flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700",
           isOpen && "ring-2 ring-blue-500/20",
         )}
       >
-        {user?.avatar_url ? (
-          <img
-            src={user.avatar_url}
-            alt={user.username}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            {user?.username?.[0]?.toUpperCase() || <UserIcon size={16} />}
-          </span>
-        )}
+        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+          {user?.username?.[0]?.toUpperCase() || <UserIcon size={16} />}
+        </span>
       </motion.button>
 
       <AnimatePresence>

@@ -1,15 +1,14 @@
 import * as Select from "@radix-ui/react-select";
 import { clsx, type ClassValue } from "clsx";
-import { ChevronDown, Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { ChevronDown, Search, X, User as UserIcon } from "lucide-react";
 import { useState } from "react";
 import { twMerge } from "tailwind-merge";
-import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
-import { USER_STATUS_LABELS } from "../types";
 import AuthModal from "./AuthModal";
 import ProfileModal from "./ProfileModal";
 import UserMenu from "./UserMenu";
+import { useAuth } from "../contexts/AuthContext";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -131,12 +130,11 @@ export default function Header({
                     onValueChange={setSelectedStatus}
                     options={[
                       { value: "all", label: "全て" },
-                      ...Object.entries(USER_STATUS_LABELS).map(
-                        ([value, label]) => ({
-                          value,
-                          label: label as string,
-                        }),
-                      ),
+                      { value: "1", label: "見てる" },
+                      { value: "2", label: "見た" },
+                      { value: "3", label: "保留" },
+                      { value: "4", label: "切った" },
+                      { value: "5", label: "見たい" },
                     ]}
                     placeholder="状態"
                     isOpen={activeDropdown === "status"}
@@ -224,7 +222,7 @@ export default function Header({
               ) : (
                 <motion.button
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
                 >
                   <UserIcon
                     size={16}

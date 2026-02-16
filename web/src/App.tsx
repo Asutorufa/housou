@@ -6,16 +6,9 @@ import DetailsModal from "./components/DetailsModal";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
+import { AuthProvider } from "./contexts/AuthContext";
 import { STORAGE_KEY_SELECTIONS } from "./constants";
-import { useAuth } from "./contexts/AuthContext";
-import type {
-  AnimeItem,
-  Config,
-  DisplayAnimeItem,
-  Site,
-  UnifiedMetadata,
-  UserItemSummary,
-} from "./types";
+import type { AnimeItem, Config, UnifiedMetadata } from "./types";
 
 interface Selections {
   year: string;
@@ -90,46 +83,7 @@ export default function App() {
     isLoading: itemsLoading,
   } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
 
-  const { loggedIn, apiFetch } = useAuth();
-
-  // Fetch user statuses separately
-  const { data: userStatuses, mutate: mutateStatuses } = useSWR<
-    Record<string, UserItemSummary>
-  >(
-    loggedIn && config?.auth_enabled && itemsUrl && fetchedItems?.length
-      ? ["/api/user/status", itemsUrl]
-      : null,
-    async ([url]) => {
-      const res = await apiFetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(fetchedItems!.map((i) => i.title)),
-      });
-      if (!res.ok) {
-        throw new Error("Failed to fetch statuses");
-      }
-      return res.json();
-    },
-  );
-
-  const items = useMemo((): DisplayAnimeItem[] => {
-    if (!fetchedItems) return [];
-    if (!userStatuses) return fetchedItems;
-
-    return fetchedItems.map((item) => {
-      const summary = userStatuses[item.title];
-      if (summary) {
-        return {
-          ...item,
-          userStatus: summary.status,
-          userScore: summary.score ?? undefined,
-        };
-      }
-      return item;
-    });
-  }, [fetchedItems, userStatuses]);
-
+  const items = useMemo(() => fetchedItems || [], [fetchedItems]);
   const loading = initLoading || itemsLoading;
 
   const error =
@@ -174,7 +128,11 @@ export default function App() {
           return { year, season, site, status: status || "all" };
         });
       } catch (err) {
-        setInitError(err instanceof Error ? err.message : String(err));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const errObj = err as any;
+        setInitError(
+          errObj instanceof Error ? errObj.message : String(errObj),
+        );
       } finally {
         setInitLoading(false);
       }
@@ -188,16 +146,13 @@ export default function App() {
 
     if (selectedSite && selectedSite !== "all") {
       filtered = filtered.filter((item) =>
-        item.sites?.some((s: Site) => s.site === selectedSite),
+        item.sites?.some((s) => s.site === selectedSite),
       );
     }
 
     if (selectedStatus && selectedStatus !== "all") {
       const status = parseInt(selectedStatus);
-      filtered = filtered.filter((item) => {
-        const itemStatus = item.userStatus || 0;
-        return itemStatus === status;
-      });
+      filtered = filtered.filter((item) => item.userStatus === status);
     }
 
     if (searchQuery) {
@@ -213,9 +168,6 @@ export default function App() {
       });
     }
 
-    console.log(
-      `Filtered items: ${filtered.length}/${items.length} (Status: ${selectedStatus})`,
-    );
     return filtered;
   }, [items, selectedSite, selectedStatus, searchQuery]);
 
@@ -231,53 +183,54 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
-      <Header
-        config={config}
-        selectedYear={selectedYear}
-        setSelectedYear={setSelectedYear}
-        selectedSeason={selectedSeason}
-        setSelectedSeason={setSelectedSeason}
-        selectedSite={selectedSite}
-        setSelectedSite={setSelectedSite}
-        selectedStatus={selectedStatus}
-        setSelectedStatus={setSelectedStatus}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
+    <AuthProvider enabled={config?.auth_enabled}>
+      <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
+        <Header
+          config={config}
+          selectedYear={selectedYear}
+          setSelectedYear={setSelectedYear}
+          selectedSeason={selectedSeason}
+          setSelectedSeason={setSelectedSeason}
+          selectedSite={selectedSite}
+          setSelectedSite={setSelectedSite}
+          selectedStatus={selectedStatus}
+          setSelectedStatus={setSelectedStatus}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
 
-      <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
-          </div>
-        ) : (
-          <TabbedGrid
-            items={filteredItems}
-            siteMeta={config?.site_meta}
-            selectedSite={selectedSite}
-            onOpenModal={(title: string, info: UnifiedMetadata | null) =>
-              setSelectedAnime({ title, info })
-            }
-          />
-        )}
-        <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
-      </main>
+        <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
+            </div>
+          ) : (
+            <TabbedGrid
+              items={filteredItems}
+              siteMeta={config?.site_meta}
+              selectedSite={selectedSite}
+              onOpenModal={(title: string, info: UnifiedMetadata | null) =>
+                setSelectedAnime({ title, info })
+              }
+            />
+          )}
+          <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
+        </main>
 
-      <DetailsModal
-        isOpen={!!selectedAnime}
-        onClose={() => setSelectedAnime(null)}
-        anime={selectedAnime}
-        items={items}
-        siteMeta={config?.site_meta}
-        onUpdate={() => mutateStatuses()}
-      />
+        <DetailsModal
+          isOpen={!!selectedAnime}
+          onClose={() => setSelectedAnime(null)}
+          anime={selectedAnime}
+          items={items}
+          siteMeta={config?.site_meta}
+        />
 
-      <AttributionModal
-        isOpen={isAttributionOpen}
-        onClose={() => setIsAttributionOpen(false)}
-        config={config}
-      />
-    </div>
+        <AttributionModal
+          isOpen={isAttributionOpen}
+          onClose={() => setIsAttributionOpen(false)}
+          config={config}
+        />
+      </div>
+    </AuthProvider>
   );
 }

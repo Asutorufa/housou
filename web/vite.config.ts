@@ -13,26 +13,6 @@ export default defineConfig({
       },
     },
   },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          if (id.includes("node_modules")) {
-            if (id.includes("motion") || id.includes("framer-motion")) {
-              return "motion";
-            }
-            if (id.includes("lucide-react")) {
-              return "icons";
-            }
-            if (id.includes("@radix-ui")) {
-              return "ui";
-            }
-            return "vendor";
-          }
-        },
-      },
-    },
-  },
   test: {
     environment: "jsdom",
     setupFiles: "./vitest.setup.ts",
