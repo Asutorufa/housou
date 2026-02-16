@@ -16,11 +16,26 @@ vi.mock("./contexts/AuthContext", () => ({
   }),
 }));
 
+const getUrlFromFetchArgs = (args: any[]): string => {
+  const input = args[0];
+  if (typeof input === "string") {
+    return input;
+  }
+  if (input instanceof Request) {
+    return input.url;
+  }
+  if (input && typeof input === "object" && "url" in input) {
+    // Handle URL object or similar
+    return input.toString();
+  }
+  return String(input);
+};
+
 describe("App Component Caching", () => {
   beforeEach(() => {
     global.fetch = mockFetch;
-    mockFetch.mockImplementation(async (url) => {
-      const urlStr = url.toString();
+    mockFetch.mockImplementation(async (...args) => {
+      const urlStr = getUrlFromFetchArgs(args);
       if (urlStr.startsWith("/api/config")) {
         return {
           ok: true,
@@ -69,13 +84,15 @@ describe("App Component Caching", () => {
 
     const calls = mockFetch.mock.calls;
     // Find the call for config
-    const configCall = calls.find(
-      (call) =>
-        typeof call[0] === "string" && call[0].startsWith("/api/config"),
-    );
+    const configCall = calls.find((call) => {
+      const url = getUrlFromFetchArgs(call);
+      return url.startsWith("/api/config");
+    });
 
     expect(configCall).toBeDefined();
     // This assertion should fail if the timestamp is present
-    expect(configCall[0]).toBe("/api/config");
+    if (configCall) {
+      expect(getUrlFromFetchArgs(configCall)).toBe("/api/config");
+    }
   });
 });
