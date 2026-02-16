@@ -12,6 +12,7 @@ import type {
   AnimeItem,
   Config,
   DisplayAnimeItem,
+  Site,
   UnifiedMetadata,
   UserItemSummary,
 } from "./types";
@@ -187,7 +188,7 @@ export default function App() {
 
     if (selectedSite && selectedSite !== "all") {
       filtered = filtered.filter((item) =>
-        item.sites?.some((s: any) => s.site === selectedSite),
+        item.sites?.some((s: Site) => s.site === selectedSite),
       );
     }
 
