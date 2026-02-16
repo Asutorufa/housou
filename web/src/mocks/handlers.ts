@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { hashPassword } from "../utils/authUtils";
 
 export const handlers = [
   http.get("/api/config", () => {
@@ -103,9 +104,7 @@ export const handlers = [
       email: string;
       password?: string;
     };
-    // SHA-256 of "password"
-    const expectedHash =
-      "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8";
+    const expectedHash = await hashPassword("password");
 
     if (body.email === "user@example.com" && body.password === expectedHash) {
       return HttpResponse.json({

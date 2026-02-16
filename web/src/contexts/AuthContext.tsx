@@ -1,8 +1,7 @@
 import { createContext, useContext, type ReactNode, useCallback } from "react";
 import useSWR from "swr";
-import { blake3 } from "@noble/hashes/blake3.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import type { User, LoginData, RegisterData } from "../types";
+import { hashPassword } from "../utils/authUtils";
 
 interface AuthContextType {
   user: User | undefined;
@@ -21,11 +20,6 @@ class ApiError extends Error {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Frontend salt (pepper) to prevent rainbow tables on the network layer
-// ideally this should be complex and unique to the deployment
-const FRONTEND_SALT =
-  import.meta.env.VITE_PASSWORD_SALT || "housou-frontend-default-salt";
-
 const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (res.status === 401) {
@@ -36,15 +30,6 @@ const fetcher = async (url: string) => {
   if (!res.ok) throw new Error("Failed to fetch user");
   return res.json();
 };
-
-// Helper to hash password with BLAKE3
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  // Concatenate password and salt
-  const data = encoder.encode(password + FRONTEND_SALT);
-  const hash = blake3(data);
-  return bytesToHex(hash);
-}
 
 export function AuthProvider({
   children,
