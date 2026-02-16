@@ -89,14 +89,12 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
                 .next()
                 .ok_or_else(|| Error::RustError("Invalid TV ID format: missing ID".into()))?;
 
-            let mut season = 1;
-            if let Some("season") = parts.next() {
-                if let Some(season_str) = parts.next() {
-                    season = season_str
-                        .parse()
-                        .map_err(|_| Error::RustError("Invalid season number".into()))?;
-                }
-            }
+            let season = match (parts.next(), parts.next()) {
+                (Some("season"), Some(s)) => s
+                    .parse()
+                    .map_err(|_| Error::RustError("Invalid season number".into()))?,
+                _ => 1,
+            };
             let show_id_string = show_id.to_string();
             Ok((
                 show_id_string.clone(),
