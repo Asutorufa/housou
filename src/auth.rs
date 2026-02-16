@@ -138,10 +138,10 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
     let body: LoginRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    let user = match db.get_user_by_email(&body.email).await? {
-        Some(u) => u,
-        None => return Response::error("Invalid credentials", 401),
-    };
+    let user = db
+        .get_user_by_email(&body.email)
+        .await?
+        .ok_or_else(|| Error::RustError("Invalid credentials".to_string()))?;
 
     let valid = if let Some(hash_str) = &user.password_hash {
         verify(&body.password, hash_str).unwrap_or(false)
