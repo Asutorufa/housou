@@ -30,6 +30,8 @@ jobs:
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: "true"
 
       - name: Install wrangler
         run: npm install -g wrangler
@@ -49,8 +51,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web/package-lock.json
 
+      - name: Cache Frontend node_modules
+        uses: actions/cache@v4
+        id: npm-cache
+        with:
+          path: web/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Install Frontend Dependencies
+        working-directory: web
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
       - name: Build Frontend
         working-directory: web
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
