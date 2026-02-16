@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import AnimeCard from "./AnimeCard";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { SiteMeta, DisplayAnimeItem } from "../types";
 
 // Mock AuthContext if needed (AnimeCard doesn't use it directly but might have imports)
