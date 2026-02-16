@@ -36,8 +36,9 @@ function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
   return (
     <div
       onClick={() => isOverflowing && setIsExpanded(!isExpanded)}
-      className={`group/ep flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-sm transition-colors hover:bg-white dark:border-gray-700/50 dark:bg-gray-900/40 dark:hover:bg-gray-800 ${isExpanded ? "bg-white dark:bg-gray-800" : ""
-        } ${isOverflowing ? "cursor-pointer" : ""}`}
+      className={`group/ep flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-sm transition-colors hover:bg-white dark:border-gray-700/50 dark:bg-gray-900/40 dark:hover:bg-gray-800 ${
+        isExpanded ? "bg-white dark:bg-gray-800" : ""
+      } ${isOverflowing ? "cursor-pointer" : ""}`}
     >
       <div className="flex items-center gap-3">
         <span className="w-6 shrink-0 text-center font-black text-blue-600 dark:text-blue-400">
@@ -60,8 +61,9 @@ function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
           {isOverflowing && (
             <ChevronDown
               size={16}
-              className={`text-gray-400 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""
-                }`}
+              className={`text-gray-400 transition-transform duration-300 ${
+                isExpanded ? "rotate-180" : ""
+              }`}
             />
           )}
         </div>
@@ -187,7 +189,7 @@ export default function DetailsModal({
                       className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden bg-gray-100 md:aspect-auto md:w-2/5 dark:bg-gray-900"
                     >
                       {info?.coverImage?.extraLarge ||
-                        info?.coverImage?.large ? (
+                      info?.coverImage?.large ? (
                         <>
                           <img
                             src={
