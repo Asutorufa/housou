@@ -19,16 +19,16 @@ console_error_panic_hook = "0.1.7"
 worker-macros = "0.7.4"
 regex = "1.12.3"
 js-sys = "0.3.77"
-futures = "0.3.31"
-bcrypt = "0.15"
+futures = "0.3.32"
+bcrypt = "0.18"
 uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
-getrandom = { version = "0.2", features = ["js"] }
+getrandom = "0.4"
 async-trait = "0.1"
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
     "async",
 ] }
-rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "b1a982874ad1695b6e5d050a87abe776f7b356ab", default-features = false }
+rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074c0", default-features = false }
 
 [profile.release]
 opt-level = "z"
