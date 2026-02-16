@@ -307,10 +307,10 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
             let mut season_param = None;
 
             for (k, v) in url.query_pairs() {
-                if k == "year" {
-                    year_param = Some(v);
-                } else if k == "season" {
-                    season_param = Some(v);
+                match k.as_ref() {
+                    "year" => year_param = Some(v),
+                    "season" => season_param = Some(v),
+                    _ => {}
                 }
             }
 
