@@ -27,10 +27,10 @@ async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
         if cookie.name() == SESSION_COOKIE_NAME {
             let token = cookie.value();
-            if let Some(session) = db.get_session(token).await?
-                && let Some(user) = db.get_user_by_id(session.user_id).await?
-            {
-                return Ok(Some((user, token.to_string())));
+            if let Some(session) = db.get_session(token).await? {
+                if let Some(user) = db.get_user_by_id(session.user_id).await? {
+                    return Ok(Some((user, token.to_string())));
+                }
             }
         }
     }
@@ -99,6 +99,7 @@ struct LoginRequest {
 #[derive(Deserialize)]
 struct UpdateProfileRequest {
     username: String,
+    email: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -114,6 +115,9 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
 
     if (db.get_user_by_email(&body.email).await?).is_some() {
         return Response::error("Email already registered", 400);
+    }
+    if (db.get_user_by_username(&body.username).await?).is_some() {
+        return Response::error("Username already taken", 400);
     }
 
     let password_hash =
@@ -180,7 +184,28 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
     let body: UpdateProfileRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    db.update_username(user.id, &body.username).await?;
+    // Check unique username if changed
+    if body.username != user.username {
+        if let Some(existing) = db.get_user_by_username(&body.username).await? {
+            if existing.id != user.id {
+                return Response::error("Username already taken", 409);
+            }
+        }
+    }
+
+    // Check unique email if changed and provided
+    if let Some(email) = &body.email {
+        if email != &user.email {
+            if let Some(existing) = db.get_user_by_email(email).await? {
+                if existing.id != user.id {
+                    return Response::error("Email already in use", 409);
+                }
+            }
+        }
+    }
+
+    db.update_user_profile(user.id, &body.username, body.email.as_deref())
+        .await?;
 
     // Return updated user safely
     let updated_user = db
@@ -348,6 +373,9 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
             if (db.get_user_by_email(&email).await?).is_some() {
                 return Response::error("Email already in use", 400);
+            }
+            if (db.get_user_by_username(&gh_user.login).await?).is_some() {
+                return Response::error("Username already taken", 400);
             }
 
             db.create_user(&email, &gh_user.login, None, Some(&gh_id_str))

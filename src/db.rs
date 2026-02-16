@@ -49,7 +49,13 @@ pub trait Database {
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>>;
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>>;
     async fn get_user_by_github_id(&self, github_id: &str) -> Result<Option<User>>;
-    async fn update_username(&self, id: i32, new_username: &str) -> Result<()>;
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>>;
+    async fn update_user_profile(
+        &self,
+        id: i32,
+        new_username: &str,
+        new_email: Option<&str>,
+    ) -> Result<()>;
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()>;
     async fn get_session(&self, token: &str) -> Result<Option<Session>>;
@@ -130,6 +136,11 @@ impl Database for AppDatabase {
                         FOREIGN KEY(user_id) REFERENCES users(id)
                     );",
                 ],
+            ),
+            // Version 2: Add unique index on username
+            (
+                2,
+                vec!["CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"],
             ),
         ];
 
@@ -216,16 +227,43 @@ impl Database for AppDatabase {
             .await
     }
 
-    async fn update_username(&self, id: i32, new_username: &str) -> Result<()> {
-        let query = "UPDATE users SET username = ? WHERE id = ?";
+    async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
+        let query = "SELECT * FROM users WHERE username = ?";
         self.db
             .prepare(query)
-            .bind(&[
-                JsValue::from_str(new_username),
-                JsValue::from_f64(id as f64),
-            ])?
-            .run()
-            .await?;
+            .bind(&[JsValue::from_str(username)])?
+            .first(None)
+            .await
+    }
+
+    async fn update_user_profile(
+        &self,
+        id: i32,
+        new_username: &str,
+        new_email: Option<&str>,
+    ) -> Result<()> {
+        if let Some(email) = new_email {
+            let query = "UPDATE users SET username = ?, email = ? WHERE id = ?";
+            self.db
+                .prepare(query)
+                .bind(&[
+                    JsValue::from_str(new_username),
+                    JsValue::from_str(email),
+                    JsValue::from_f64(id as f64),
+                ])?
+                .run()
+                .await?;
+        } else {
+            let query = "UPDATE users SET username = ? WHERE id = ?";
+            self.db
+                .prepare(query)
+                .bind(&[
+                    JsValue::from_str(new_username),
+                    JsValue::from_f64(id as f64),
+                ])?
+                .run()
+                .await?;
+        }
         Ok(())
     }
 

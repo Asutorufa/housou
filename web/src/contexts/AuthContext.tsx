@@ -10,7 +10,7 @@ interface AuthContextType {
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { username: string }) => Promise<User>;
+  updateProfile: (data: { username: string; email?: string }) => Promise<User>;
 }
 
 // Separate Error type for API responses
@@ -108,13 +108,24 @@ export function AuthProvider({
   }, [mutate]);
 
   const updateProfile = useCallback(
-    async (data: { username: string }) => {
+    async (data: { username: string; email?: string }) => {
       const res = await fetch("/api/auth/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Update failed");
+      if (!res.ok) {
+         let message = "Update failed";
+         try {
+           const json = await res.json();
+           if (json.error) {
+             message = json.error;
+           }
+         } catch {
+             // Ignore
+         }
+         throw new Error(message);
+      }
       const user = await res.json();
       mutate(user, false);
       return user;
