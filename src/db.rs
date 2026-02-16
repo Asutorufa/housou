@@ -356,10 +356,7 @@ impl Database for AppDatabase {
         let query = "SELECT * FROM user_items_v2 WHERE user_id = ? AND title = ?";
         self.db
             .prepare(query)
-            .bind(&[
-                JsValue::from_f64(user_id as f64),
-                JsValue::from_str(title),
-            ])?
+            .bind(&[JsValue::from_f64(user_id as f64), JsValue::from_str(title)])?
             .first(None)
             .await
     }
