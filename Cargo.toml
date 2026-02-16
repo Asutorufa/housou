@@ -23,7 +23,8 @@ futures = "0.3.32"
 bcrypt = "0.18"
 uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
-getrandom = "0.4"
+getrandom = { version = "0.4", features = ["wasm_js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 async-trait = "0.1"
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
     "async",
