@@ -273,7 +273,6 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
 
     // Check if Auth is enabled (DB binding exists)
     let auth_enabled = env.d1("DB").is_ok();
-    console_log!("Auth enabled: {}", auth_enabled);
 
     match (method.clone(), path.as_str()) {
         (Method::Get, "/api/config") => {

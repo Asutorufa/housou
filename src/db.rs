@@ -73,7 +73,9 @@ pub trait Database {
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()>;
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()>;
+    #[allow(dead_code)]
     async fn get_session(&self, token: &str) -> Result<Option<Session>>;
+    async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>>;
     async fn delete_session(&self, token: &str) -> Result<()>;
 
     async fn update_user_item(
@@ -342,6 +344,16 @@ impl Database for AppDatabase {
 
     async fn get_session(&self, token: &str) -> Result<Option<Session>> {
         let query = "SELECT * FROM sessions WHERE token = ? AND expires_at > ?";
+        let now = Date::now().as_millis() as i64;
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
+            .first(None)
+            .await
+    }
+
+    async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>> {
+        let query = "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?";
         let now = Date::now().as_millis() as i64;
         self.db
             .prepare(query)

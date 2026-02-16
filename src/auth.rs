@@ -25,18 +25,13 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
     // Parse cookies more robustly using cookie crate
-    console_log!("Auth check. Cookies: {}", cookies_header);
     for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
         if cookie.name() == SESSION_COOKIE_NAME {
             let token = cookie.value();
-            if let Some(session) = db.get_session(token).await? {
-                if let Some(user) = db.get_user_by_id(session.user_id).await? {
-                    return Ok(Some((user, token.to_string())));
-                } else {
-                    console_log!("Session found but user not found for token: {}", token);
-                }
+            if let Some(user) = db.get_user_by_session_token(token).await? {
+                return Ok(Some((user, token.to_string())));
             } else {
-                console_log!("Session not found for token: {}", token);
+                console_log!("Auth failed for token: {}", token);
             }
         }
     }

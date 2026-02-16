@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
+import CustomSelect from "./CustomSelect";
 
 function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -124,10 +125,8 @@ export default function DetailsModal({
   // useSWR fetch removed as requested
   const currentStatus = localStatus ?? originalItem?.userStatus ?? 0;
 
-  const handleStatusChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const status = parseInt(e.target.value) as UserStatus;
+  const handleStatusChange = async (value: string) => {
+    const status = parseInt(value) as UserStatus;
     if (!title) return;
 
     // Optimistic update
@@ -233,26 +232,23 @@ export default function DetailsModal({
 
                         {/* Status Selector (Only if logged in) */}
                         {loggedIn && (
-                          <div className="mb-4 inline-flex items-center gap-2 relative">
-                            <div className="pointer-events-none absolute left-3 text-blue-600 dark:text-blue-400">
-                              <Bookmark size={16} />
-                            </div>
-                            <select
-                              value={currentStatus}
-                              onChange={handleStatusChange}
-                              className="appearance-none rounded-xl border border-blue-200 bg-blue-50 py-2 pl-9 pr-8 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30 cursor-pointer"
-                            >
-                              {Object.entries(USER_STATUS_LABELS).map(
-                                ([value, label]) => (
-                                  <option key={value} value={value}>
-                                    {value === "0" ? "リストに追加" : label}
-                                  </option>
-                                ),
+                          <div className="mb-4">
+                            <CustomSelect
+                              value={currentStatus.toString()}
+                              onValueChange={handleStatusChange}
+                              options={Object.entries(USER_STATUS_LABELS).map(
+                                ([value, label]) => ({
+                                  value,
+                                  label: (value === "0"
+                                    ? "リストに追加"
+                                    : label) as string,
+                                }),
                               )}
-                            </select>
-                            <div className="pointer-events-none absolute right-3 text-blue-600 dark:text-blue-400">
-                              <ChevronDown size={14} />
-                            </div>
+                              placeholder="状態を選択"
+                              icon={<Bookmark size={16} />}
+                              triggerClassName="bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:border-blue-900/50 dark:text-blue-300 dark:hover:bg-blue-900/30 font-bold py-2"
+                              contentClassName="z-[200]"
+                            />
                           </div>
                         )}
 

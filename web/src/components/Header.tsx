@@ -1,6 +1,5 @@
-import * as Select from "@radix-ui/react-select";
 import { clsx, type ClassValue } from "clsx";
-import { ChevronDown, Search, User as UserIcon, X } from "lucide-react";
+import { Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { twMerge } from "tailwind-merge";
@@ -8,6 +7,7 @@ import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import AuthModal from "./AuthModal";
+import CustomSelect from "./CustomSelect";
 import ProfileModal from "./ProfileModal";
 import UserMenu from "./UserMenu";
 
@@ -82,6 +82,8 @@ export default function Header({
                 placeholder="年"
                 isOpen={activeDropdown === "year"}
                 onOpenChange={(open) => handleDropdownChange("year", open)}
+                triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                contentClassName="z-[60]"
               />
 
               <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
@@ -100,6 +102,8 @@ export default function Header({
                 placeholder="シーズン"
                 isOpen={activeDropdown === "season"}
                 onOpenChange={(open) => handleDropdownChange("season", open)}
+                triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                contentClassName="z-[60]"
               />
 
               <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
@@ -120,6 +124,8 @@ export default function Header({
                 placeholder="サイト"
                 isOpen={activeDropdown === "site"}
                 onOpenChange={(open) => handleDropdownChange("site", open)}
+                triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                contentClassName="z-[60]"
               />
 
               {/* Status Select (Only if logged in) */}
@@ -143,6 +149,8 @@ export default function Header({
                     onOpenChange={(open) =>
                       handleDropdownChange("status", open)
                     }
+                    triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                    contentClassName="z-[60]"
                   />
                 </>
               )}
@@ -246,81 +254,5 @@ export default function Header({
         onClose={() => setIsProfileModalOpen(false)}
       />
     </header>
-  );
-}
-
-interface CustomSelectProps {
-  value: string;
-  onValueChange: (value: string) => void;
-  options: { value: string; label: string }[];
-  placeholder: string;
-  isOpen: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-function CustomSelect({
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  isOpen,
-  onOpenChange,
-}: CustomSelectProps) {
-  return (
-    <Select.Root
-      value={value}
-      onValueChange={onValueChange}
-      open={isOpen}
-      onOpenChange={onOpenChange}
-    >
-      <Select.Trigger asChild>
-        <motion.button
-          className={cn(
-            "inline-flex min-w-[80px] cursor-pointer items-center justify-between rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-700 transition-colors duration-200 sm:min-w-[90px] sm:text-sm dark:text-gray-200",
-            "ring-0 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none",
-            "hover:bg-gray-100 dark:hover:bg-gray-700/50", // Subtle hover bg instead of border
-            isOpen && "text-blue-600 dark:text-blue-400",
-          )}
-        >
-          <Select.Value placeholder={placeholder} />
-          <Select.Icon className="ml-1 text-gray-400">
-            <motion.div
-              animate={{ rotate: isOpen ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChevronDown size={14} />
-            </motion.div>
-          </Select.Icon>
-        </motion.button>
-      </Select.Trigger>
-
-      <Select.Portal>
-        <Select.Content
-          sideOffset={8}
-          position="popper"
-          align="start" // Align to start of trigger inside the pill
-          className="select-content z-[60] min-w-[120px] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-xl shadow-black/10 backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30"
-        >
-          <Select.Viewport className="custom-scrollbar scroll-fade max-h-[300px] overflow-y-auto p-1">
-            {options.map((opt) => (
-              <Select.Item
-                key={opt.value}
-                value={opt.value}
-                className={cn(
-                  "relative flex cursor-pointer items-center rounded-xl px-2 py-2 pl-8 text-sm text-gray-700 transition-colors outline-none select-none dark:text-gray-200",
-                  "focus:bg-blue-50 focus:text-blue-700 dark:focus:bg-blue-900/30 dark:focus:text-blue-200",
-                  "data-[state=checked]:font-semibold data-[state=checked]:text-blue-600 dark:data-[state=checked]:text-blue-400",
-                )}
-              >
-                <Select.ItemText>{opt.label}</Select.ItemText>
-                <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center justify-center text-blue-500">
-                  <div className="h-1.5 w-1.5 rounded-full bg-current" />
-                </Select.ItemIndicator>
-              </Select.Item>
-            ))}
-          </Select.Viewport>
-        </Select.Content>
-      </Select.Portal>
-    </Select.Root>
   );
 }
