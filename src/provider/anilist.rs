@@ -173,7 +173,7 @@ mod tests {
                     {
                         "node": {
                             "id": 1,
-                            "name": { "full": "Test Character" },
+                            "name": { "full": "Test Character", "alternative": [] },
                             "image": { "large": "", "medium": "" },
                             "description": "",
                             "siteUrl": ""
@@ -182,7 +182,7 @@ mod tests {
                         "voiceActors": [
                             {
                                 "id": 1,
-                                "name": { "full": "Test Voice Actor" },
+                                "name": { "full": "Test Voice Actor", "alternative": [] },
                                 "image": { "large": "", "medium": "" },
                                 "description": "",
                                 "siteUrl": "",
