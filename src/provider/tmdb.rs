@@ -381,8 +381,8 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         english: None,
         native: Some(format!(
             "{} : {}",
-            show.name.clone().unwrap_or_default(),
-            season.name.clone().unwrap_or_default()
+            show.name.as_deref().unwrap_or_default(),
+            season.name.as_deref().unwrap_or_default()
         )),
     };
 
