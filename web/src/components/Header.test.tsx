@@ -11,7 +11,6 @@ vi.mock("../contexts/AuthContext", () => ({
   }),
 }));
 
-
 const mockConfig: Config = {
   years: [2023, 2024],
   site_meta: {
