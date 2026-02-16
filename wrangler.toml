@@ -13,8 +13,14 @@ cargo install -q worker-build && \
 worker-build --release"""
 
 [env.dev]
+
 [env.dev.build]
 command = "cargo install -q worker-build && worker-build --release --features dev"
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "housou-db"
+database_id = "68203115-9797-422c-867b-94700951e496"
 
 [assets]
 directory = "./web/dist"

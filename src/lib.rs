@@ -72,15 +72,16 @@ struct TmdbAttribution {
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     // Migration Logic (Lazy)
     if let Ok(d1) = env.d1("DB")
-        && !MIGRATION_DONE.load(Ordering::Relaxed)
+        && MIGRATION_DONE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
     {
         let db = db::AppDatabase::new(d1);
         // We ignore migration errors here to not block the whole app,
         // but ideally we should log them.
         if let Err(e) = db.migrate().await {
             console_error!("Migration failed: {}", e);
-        } else {
-            MIGRATION_DONE.store(true, Ordering::Relaxed);
+            MIGRATION_DONE.store(false, Ordering::Relaxed);
         }
     }
 
@@ -152,7 +153,7 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
         async move {
             let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
                 .await?
-                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
+                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {url}")))?;
 
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
@@ -264,7 +265,7 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     Ok(all_items)
 }
 
-async fn router(req: Request, env: Env) -> Result<Response> {
+async fn router(mut req: Request, env: Env) -> Result<Response> {
     let method = req.method();
     let path = req.path();
     let url = req.url()?;
@@ -272,6 +273,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
     // Check if Auth is enabled (DB binding exists)
     let auth_enabled = env.d1("DB").is_ok();
+    console_log!("Auth enabled: {}", auth_enabled);
 
     match (method.clone(), path.as_str()) {
         (Method::Get, "/api/config") => {
@@ -316,29 +318,53 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 Some(s) => Some(s),
             };
 
-            let mut items = fetch_items_for_season(target_year, target_season).await?;
-
-            // Inject user status if authenticated
-            if auth_enabled
-                && let Ok(Some((user, _))) = auth::get_auth(&req, &env).await
-                && let Ok(db) = auth::get_db(&env)
-                && let Ok(user_items) = db.get_all_user_items(user.id).await
-            {
-                let status_map: std::collections::HashMap<_, _> = user_items
-                    .into_iter()
-                    .map(|ui| (ui.title, (ui.status, ui.score)))
-                    .collect();
-
-                for item in &mut items {
-                    if let Some((status, score)) = status_map.get(&item.title) {
-                        item.user_status = Some(*status);
-                        item.user_score = *score;
-                    }
-                }
-            }
-
+            let items = fetch_items_for_season(target_year, target_season).await?;
             Response::from_json(&items)?.add_cors(&env)
         }
+        (Method::Post, "/api/user/status") if auth_enabled => {
+            let titles: Vec<String> = match req.json().await {
+                Ok(t) => t,
+                Err(_) => {
+                    return Response::error("Bad Request: Body must be a list of strings", 400);
+                }
+            };
+
+            match auth::get_auth(&req, &env).await {
+                Ok(Some((user, _))) => match auth::get_db(&env) {
+                    Ok(db) => match db.get_user_items_by_titles(user.id, &titles).await {
+                        Ok(user_items) => {
+                            let status_map: std::collections::HashMap<_, _> = user_items
+                                .into_iter()
+                                .map(|ui| {
+                                    (
+                                        ui.title,
+                                        db::UserItemSummary {
+                                            status: ui.status,
+                                            score: ui.score,
+                                        },
+                                    )
+                                })
+                                .collect();
+                            Response::from_json(&status_map)?.add_cors(&env)
+                        }
+                        Err(e) => {
+                            console_error!("Failed to fetch user items: {}", e);
+                            Response::error("Internal Server Error", 500)
+                        }
+                    },
+                    Err(e) => {
+                        console_error!("Failed to get DB connection: {}", e);
+                        Response::error("Internal Server Error", 500)
+                    }
+                },
+                Ok(None) => Response::error("Unauthorized", 401),
+                Err(e) => {
+                    console_error!("Auth error: {}", e);
+                    Response::error("Internal Server Error", 500)
+                }
+            }
+        }
+
         (Method::Get, "/api/metadata") => {
             let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());
             let mal_id = query.get("mal_id").map(|s| s.as_str());
@@ -376,6 +402,11 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         }
         (Method::Put, "/api/auth/profile") if auth_enabled => {
             auth::handle_update_profile(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Put, "/api/auth/password") if auth_enabled => {
+            auth::handle_change_password(req, env.clone())
                 .await?
                 .add_cors(&env)
         }

@@ -74,5 +74,5 @@ fn create_response(
 
     Response::from_json(unified)?
         .add_cors(env)?
-        .add_header("Cache-Control", &format!("public, max-age={}", ttl))
+        .add_header("Cache-Control", &format!("public, max-age={ttl}"))
 }

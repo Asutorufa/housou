@@ -23,7 +23,26 @@ export interface AnimeItem {
   comment?: string;
   sites?: Site[];
   titleTranslate?: TitleTranslate;
-  userStatus?: number;
+}
+
+export type UserStatus = 0 | 1 | 2 | 3 | 4 | 5;
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  0: "未登録",
+  1: "見てる",
+  2: "見終わった",
+  3: "保留",
+  4: "切った",
+  5: "見たい",
+};
+
+export interface UserItemSummary {
+  status: UserStatus;
+  score: number | null;
+}
+
+export interface DisplayAnimeItem extends AnimeItem {
+  userStatus?: UserStatus;
   userScore?: number;
 }
 
@@ -55,7 +74,7 @@ export interface User {
   id: number;
   email: string;
   username: string;
-  github_id?: string;
+  avatar_url?: string;
   created_at: number;
 }
 

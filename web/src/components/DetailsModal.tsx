@@ -1,24 +1,25 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { AnimatePresence, motion } from "motion/react";
 import {
+  Bookmark,
   ChevronDown,
   Clock,
   ExternalLink,
   PlayCircle,
   Star,
   X,
-  Bookmark,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import useSWR from "swr";
 import { useAuth } from "../contexts/AuthContext";
 import type {
-  AnimeItem,
+  DisplayAnimeItem,
   SiteMeta,
   UnifiedMetadata,
   UniversalEpisode,
   UniversalStaff,
+  UserStatus,
 } from "../types";
+import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
 
 function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
@@ -90,8 +91,9 @@ interface DetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   anime: { title: string; info: UnifiedMetadata | null } | null;
-  items: AnimeItem[];
+  items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
+  onUpdate?: () => void;
 }
 
 export default function DetailsModal({
@@ -100,54 +102,49 @@ export default function DetailsModal({
   anime,
   items,
   siteMeta,
+  onUpdate,
 }: DetailsModalProps) {
-  const { loggedIn } = useAuth();
+  const { loggedIn, apiFetch } = useAuth();
   const { title, info } = anime || { title: "", info: null };
 
-  // Fetch user data for this item
-  const { data: userData, mutate: mutateUserData } = useSWR(
-    isOpen && loggedIn && title
-      ? `/api/user/item?title=${encodeURIComponent(title)}`
-      : null,
-    async (url) => {
-      const res = await fetch(url);
-      if (res.status === 404 || !res.ok) return null;
-      return res.json();
-    },
-  );
+  // Local state for immediate UI updates
+  const [localStatus, setLocalStatus] = useState<UserStatus | null>(null);
+
+  // Reset local state when the active anime changes
+  useEffect(() => {
+    setLocalStatus(null);
+  }, [title]);
+
+  // Find the original item to get site links and user status
+  const originalItem = items.find((i) => i.title === title);
+
+  // Determine effective status: local state > original item > default
+  // useSWR fetch removed as requested
+  const currentStatus = localStatus ?? originalItem?.userStatus ?? 0;
 
   const handleStatusChange = async (
     e: React.ChangeEvent<HTMLSelectElement>,
   ) => {
-    const status = parseInt(e.target.value);
+    const status = parseInt(e.target.value) as UserStatus;
     if (!title) return;
 
     // Optimistic update
-    const newData = { ...userData, status };
-    mutateUserData(newData, false);
+    setLocalStatus(status);
 
-    await fetch("/api/user/item", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, status, score: userData?.score }),
-    });
-
-    mutateUserData(newData);
+    try {
+      await apiFetch("/api/user/item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, status, score: originalItem?.userScore }),
+      });
+      // Optionally notify parent to refresh list
+      onUpdate?.();
+    } catch (err) {
+      console.error("Failed to update status", err);
+      // Revert on error if needed, for now simple optimistic
+    }
   };
 
-  const STATUS_LABELS: Record<number, string> = {
-    0: "リストに追加",
-    1: "見てる",
-    2: "見終わった",
-    3: "保留",
-    4: "切った",
-    5: "見たい",
-  };
-
-  const currentStatus = userData?.status || 0;
-
-  // Find the original item to get site links
-  const originalItem = items.find((i) => i.title === title);
   const sites = sortSites(originalItem?.sites || [], siteMeta);
 
   return (
@@ -243,10 +240,10 @@ export default function DetailsModal({
                               onChange={handleStatusChange}
                               className="appearance-none rounded-xl border border-blue-200 bg-blue-50 py-2 pl-9 pr-8 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/30 cursor-pointer"
                             >
-                              {Object.entries(STATUS_LABELS).map(
+                              {Object.entries(USER_STATUS_LABELS).map(
                                 ([value, label]) => (
                                   <option key={value} value={value}>
-                                    {label}
+                                    {value === "0" ? "リストに追加" : label}
                                   </option>
                                 ),
                               )}

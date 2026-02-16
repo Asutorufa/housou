@@ -1,5 +1,6 @@
 use crate::ResponseExt;
 use crate::db::{AppDatabase, Database, User};
+use crate::model::UserStatus;
 use bcrypt::{DEFAULT_COST, hash, verify};
 use cookie::{Cookie, SameSite, time::Duration};
 use serde::Deserialize;
@@ -24,13 +25,18 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
     // Parse cookies more robustly using cookie crate
+    console_log!("Auth check. Cookies: {}", cookies_header);
     for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
         if cookie.name() == SESSION_COOKIE_NAME {
             let token = cookie.value();
-            if let Some(session) = db.get_session(token).await?
-                && let Some(user) = db.get_user_by_id(session.user_id).await?
-            {
-                return Ok(Some((user, token.to_string())));
+            if let Some(session) = db.get_session(token).await? {
+                if let Some(user) = db.get_user_by_id(session.user_id).await? {
+                    return Ok(Some((user, token.to_string())));
+                } else {
+                    console_log!("Session found but user not found for token: {}", token);
+                }
+            } else {
+                console_log!("Session not found for token: {}", token);
             }
         }
     }
@@ -41,8 +47,8 @@ fn create_session_cookie(token: &str) -> String {
     Cookie::build((SESSION_COOKIE_NAME, token))
         .path("/")
         .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Strict)
+        .secure(false) // Changed for dev environment
+        .same_site(SameSite::Lax) // Changed to Lax for easier dev/redirects
         .max_age(Duration::days(SESSION_DURATION_DAYS))
         .to_string()
 }
@@ -51,8 +57,8 @@ fn clear_session_cookie() -> String {
     Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
         .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Strict)
+        .secure(false)
+        .same_site(SameSite::Lax)
         .max_age(Duration::seconds(0))
         .to_string()
 }
@@ -61,7 +67,7 @@ fn create_oauth_state_cookie(state: &str) -> String {
     Cookie::build((OAUTH_STATE_COOKIE_NAME, state))
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(false)
         .same_site(SameSite::Lax) // Lax needed for redirect flow
         .max_age(Duration::minutes(OAUTH_STATE_DURATION_MINUTES))
         .to_string()
@@ -71,7 +77,7 @@ fn clear_oauth_state_cookie() -> String {
     Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
         .path("/")
         .http_only(true)
-        .secure(true)
+        .secure(false)
         .same_site(SameSite::Lax)
         .max_age(Duration::seconds(0))
         .to_string()
@@ -100,12 +106,17 @@ struct LoginRequest {
 struct UpdateProfileRequest {
     username: String,
     email: Option<String>,
+    avatar_url: Option<String>,
 }
-
+#[derive(Deserialize)]
+struct ChangePasswordRequest {
+    old_password: Option<String>,
+    new_password: String,
+}
 #[derive(Deserialize)]
 struct UpdateItemRequest {
     title: String,
-    status: i32,
+    status: UserStatus,
     score: Option<i32>,
 }
 
@@ -123,7 +134,13 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let password_hash =
         hash(&body.password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
     let user = db
-        .create_user(&body.email, &body.username, Some(&password_hash), None)
+        .create_user(
+            &body.email,
+            &body.username,
+            Some(&password_hash),
+            None,
+            None,
+        )
         .await?;
 
     // Auto login
@@ -201,8 +218,13 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
         return Response::error("Email already in use", 409);
     }
 
-    db.update_user_profile(user.id, &body.username, body.email.as_deref())
-        .await?;
+    db.update_user_profile(
+        user.id,
+        &body.username,
+        body.email.as_deref(),
+        body.avatar_url.as_deref(),
+    )
+    .await?;
 
     // Return updated user safely
     let updated_user = db
@@ -210,6 +232,33 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
         .await?
         .ok_or_else(|| Error::RustError("User not found after update".to_string()))?;
     Response::from_json(&updated_user)
+}
+
+pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+    let body: ChangePasswordRequest = req.json().await?;
+
+    let db = get_db(&env)?;
+
+    // If user has a password (not GitHub-only), verify the old one
+    if let Some(hash_str) = &user.password_hash {
+        let old_password = body
+            .old_password
+            .ok_or_else(|| Error::RustError("Old password required".to_string()))?;
+        let valid = verify(&old_password, hash_str).unwrap_or(false);
+        if !valid {
+            return Response::error("Invalid old password", 401);
+        }
+    }
+
+    let new_password_hash =
+        hash(&body.new_password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
+    db.update_user_password(user.id, &new_password_hash).await?;
+
+    Response::ok("Password updated")
 }
 
 pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> {
@@ -254,6 +303,7 @@ struct GithubUser {
     id: i64,
     login: String, // username
     email: Option<String>,
+    avatar_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -264,14 +314,13 @@ struct GithubTokenResponse {
 pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response> {
     let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
     let base_url = get_base_url(&env);
-    let redirect_uri = format!("{}/api/auth/github/callback", base_url);
+    let redirect_uri = format!("{base_url}/api/auth/github/callback");
 
     // CSRF Protection: Generate State
     let state = Uuid::new_v4().to_string();
 
     let url = format!(
-        "https://github.com/login/oauth/authorize?client_id={}&redirect_uri={}&scope=user:email&state={}",
-        client_id, redirect_uri, state
+        "https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=user:email&state={state}"
     );
 
     Response::redirect(Url::parse(&url)?)?
@@ -375,8 +424,14 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
                 return Response::error("Username already taken", 400);
             }
 
-            db.create_user(&email, &gh_user.login, None, Some(&gh_id_str))
-                .await?
+            db.create_user(
+                &email,
+                &gh_user.login,
+                None,
+                Some(&gh_id_str),
+                gh_user.avatar_url.as_deref(),
+            )
+            .await?
         };
 
         // Create session

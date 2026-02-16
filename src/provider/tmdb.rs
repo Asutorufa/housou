@@ -129,7 +129,7 @@ async fn search_media(
         .search_api()
         .get_search_multi_paginated(&normalized, Some("ja-JP"), Some(1), Some(false), None)
         .await
-        .map_err(|e| Error::RustError(format!("TMDb search failed: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("TMDb search failed: {e}")))?;
 
     // Filter and find best match
     if let Some(results_vec) = results.results {
@@ -238,7 +238,7 @@ async fn get_movie_details(
         .movies_api()
         .get_movie_details(id, Some("ja-JP"), None, Some("release_dates,credits"))
         .await
-        .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {e}")))?;
 
     Ok(movie_to_unified(movie))
 }
@@ -260,13 +260,13 @@ async fn get_tv_details(
         .tv_api()
         .get_tv_details(id, Some("ja-JP"), None, Some("content_ratings,credits"))
         .await
-        .map_err(|e| Error::RustError(format!("Failed to fetch TV details: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Failed to fetch TV details: {e}")))?;
 
     let season = client
         .tv_seasons_api()
         .get_tv_season_details(id, season_number, Some("ja-JP"), None, Some("credits"))
         .await
-        .map_err(|e| Error::RustError(format!("Failed to fetch Season details: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Failed to fetch Season details: {e}")))?;
 
     Ok(tv_to_unified(show, season))
 }
@@ -284,11 +284,11 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
         large: movie
             .poster_path
             .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/w500{}", p)),
+            .map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
         extra_large: movie
             .poster_path
             .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/original{}", p)),
+            .map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
     };
 
     let genres = movie
@@ -390,10 +390,10 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let cover_image = UniversalCoverImage {
         large: poster_path
             .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/w500{}", p)),
+            .map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
         extra_large: poster_path
             .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/original{}", p)),
+            .map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
     };
 
     let genres = show
@@ -479,7 +479,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let season_num_val = season.season_number.unwrap_or(1);
 
     UnifiedMetadata {
-        id: format!("tv/{}/season/{}", show_id_val, season_num_val),
+        id: format!("tv/{show_id_val}/season/{season_num_val}"),
         title,
         cover_image,
         average_score: show.vote_average.map(|v| (v * 10.0) as i32),

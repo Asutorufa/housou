@@ -2,7 +2,8 @@ import { clsx, type ClassValue } from "clsx";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
-import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
 
 function cn(...inputs: ClassValue[]) {
@@ -10,7 +11,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 interface AnimeCardProps {
-  item: AnimeItem;
+  item: DisplayAnimeItem;
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
@@ -156,15 +157,7 @@ export default function AnimeCard({
                 },
               )}
             >
-              {
-                {
-                  1: "見てる",
-                  2: "見た",
-                  3: "保留",
-                  4: "切った",
-                  5: "見たい",
-                }[item.userStatus]
-              }
+              {USER_STATUS_LABELS[item.userStatus!]}
             </span>
           </div>
         )}

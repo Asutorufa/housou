@@ -1,6 +1,6 @@
-import { createContext, useContext, type ReactNode, useCallback } from "react";
+import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
-import type { User, LoginData, RegisterData } from "../types";
+import type { LoginData, RegisterData, User } from "../types";
 import { hashPassword } from "../utils/authUtils";
 
 interface AuthContextType {
@@ -10,7 +10,16 @@ interface AuthContextType {
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: { username: string; email?: string }) => Promise<User>;
+  updateProfile: (data: {
+    username: string;
+    email?: string;
+    avatar_url?: string;
+  }) => Promise<User>;
+  changePassword: (data: {
+    old_password?: string;
+    new_password: string;
+  }) => Promise<void>;
+  apiFetch: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
 // Separate Error type for API responses
@@ -102,14 +111,25 @@ export function AuthProvider({
     [mutate],
   );
 
+  const apiFetch = useCallback(
+    async (url: string, init?: RequestInit) => {
+      const res = await fetch(url, init);
+      if (res.status === 401) {
+        mutate(undefined, false);
+      }
+      return res;
+    },
+    [mutate],
+  );
+
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/api/auth/logout", { method: "POST" });
     mutate(undefined, false);
-  }, [mutate]);
+  }, [apiFetch, mutate]);
 
   const updateProfile = useCallback(
-    async (data: { username: string; email?: string }) => {
-      const res = await fetch("/api/auth/profile", {
+    async (data: { username: string; email?: string; avatar_url?: string }) => {
+      const res = await apiFetch("/api/auth/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -130,7 +150,39 @@ export function AuthProvider({
       mutate(user, false);
       return user;
     },
-    [mutate],
+    [apiFetch, mutate],
+  );
+
+  const changePassword = useCallback(
+    async (data: { old_password?: string; new_password: string }) => {
+      const hashedOld = data.old_password
+        ? await hashPassword(data.old_password)
+        : undefined;
+      const hashedNew = await hashPassword(data.new_password);
+
+      const res = await apiFetch("/api/auth/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          old_password: hashedOld,
+          new_password: hashedNew,
+        }),
+      });
+
+      if (!res.ok) {
+        let message = "Password update failed";
+        try {
+          const json = await res.json();
+          if (json.error) {
+            message = json.error;
+          }
+        } catch {
+          // Ignore
+        }
+        throw new Error(message);
+      }
+    },
+    [apiFetch],
   );
 
   return (
@@ -143,6 +195,8 @@ export function AuthProvider({
         register,
         logout,
         updateProfile,
+        changePassword,
+        apiFetch,
       }}
     >
       {children}
