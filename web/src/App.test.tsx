@@ -60,7 +60,7 @@ describe("App Component Caching", () => {
     render(
       <SWRConfig value={{ provider: () => new Map() }}>
         <App />
-      </SWRConfig>
+      </SWRConfig>,
     );
 
     await waitFor(() => {
@@ -69,7 +69,10 @@ describe("App Component Caching", () => {
 
     const calls = mockFetch.mock.calls;
     // Find the call for config
-    const configCall = calls.find((call) => typeof call[0] === 'string' && call[0].startsWith("/api/config"));
+    const configCall = calls.find(
+      (call) =>
+        typeof call[0] === "string" && call[0].startsWith("/api/config"),
+    );
 
     expect(configCall).toBeDefined();
     // This assertion should fail if the timestamp is present
