@@ -23,6 +23,8 @@ export interface AnimeItem {
   comment?: string;
   sites?: Site[];
   titleTranslate?: TitleTranslate;
+  userStatus?: number;
+  userScore?: number;
 }
 
 export interface SiteMetaItem {

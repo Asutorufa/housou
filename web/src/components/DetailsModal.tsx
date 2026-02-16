@@ -103,11 +103,12 @@ export default function DetailsModal({
 }: DetailsModalProps) {
   const { loggedIn } = useAuth();
   const { title, info } = anime || { title: "", info: null };
-  const itemId = info?.id;
 
   // Fetch user data for this item
   const { data: userData, mutate: mutateUserData } = useSWR(
-    isOpen && loggedIn && itemId ? `/api/user/item?item_id=${itemId}` : null,
+    isOpen && loggedIn && title
+      ? `/api/user/item?title=${encodeURIComponent(title)}`
+      : null,
     async (url) => {
       const res = await fetch(url);
       if (res.status === 404 || !res.ok) return null;
@@ -119,7 +120,7 @@ export default function DetailsModal({
     e: React.ChangeEvent<HTMLSelectElement>,
   ) => {
     const status = parseInt(e.target.value);
-    if (!itemId) return;
+    if (!title) return;
 
     // Optimistic update
     const newData = { ...userData, status };
@@ -128,7 +129,7 @@ export default function DetailsModal({
     await fetch("/api/user/item", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_id: itemId, status, score: userData?.score }),
+      body: JSON.stringify({ title, status, score: userData?.score }),
     });
 
     mutateUserData(newData);
@@ -232,7 +233,7 @@ export default function DetailsModal({
                         </Dialog.Title>
 
                         {/* Status Selector (Only if logged in) */}
-                        {loggedIn && itemId && (
+                        {loggedIn && (
                           <div className="mb-4 inline-flex items-center gap-2 relative">
                             <div className="pointer-events-none absolute left-3 text-blue-600 dark:text-blue-400">
                               <Bookmark size={16} />

@@ -141,6 +141,34 @@ export default function AnimeCard({
           )
         )}
 
+        {/* Status Badge */}
+        {item.userStatus && item.userStatus > 0 && (
+          <div className="absolute top-2 right-2 z-20">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm ring-1 ring-black/10",
+                {
+                  "bg-blue-500/90": item.userStatus === 1, // Watching
+                  "bg-green-500/90": item.userStatus === 2, // Completed
+                  "bg-yellow-500/90": item.userStatus === 3, // On Hold
+                  "bg-red-500/90": item.userStatus === 4, // Dropped
+                  "bg-purple-500/90": item.userStatus === 5, // Plan to Watch
+                },
+              )}
+            >
+              {
+                {
+                  1: "見てる",
+                  2: "見た",
+                  3: "保留",
+                  4: "切った",
+                  5: "見たい",
+                }[item.userStatus]
+              }
+            </span>
+          </div>
+        )}
+
         {/* Hover Overlay */}
         <div className="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/20" />
       </motion.div>

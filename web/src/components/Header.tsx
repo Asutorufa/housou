@@ -22,6 +22,8 @@ interface HeaderProps {
   setSelectedSeason: (season: string) => void;
   selectedSite: string;
   setSelectedSite: (site: string) => void;
+  selectedStatus: string;
+  setSelectedStatus: (status: string) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
 }
@@ -34,6 +36,8 @@ export default function Header({
   setSelectedSeason,
   selectedSite,
   setSelectedSite,
+  selectedStatus,
+  setSelectedStatus,
   searchQuery,
   setSearchQuery,
 }: HeaderProps) {
@@ -116,6 +120,30 @@ export default function Header({
                 isOpen={activeDropdown === "site"}
                 onOpenChange={(open) => handleDropdownChange("site", open)}
               />
+
+              {/* Status Select (Only if logged in) */}
+              {loggedIn && (
+                <>
+                  <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
+                  <CustomSelect
+                    value={selectedStatus}
+                    onValueChange={setSelectedStatus}
+                    options={[
+                      { value: "all", label: "全て" },
+                      { value: "1", label: "見てる" },
+                      { value: "2", label: "見た" },
+                      { value: "3", label: "保留" },
+                      { value: "4", label: "切った" },
+                      { value: "5", label: "見たい" },
+                    ]}
+                    placeholder="状態"
+                    isOpen={activeDropdown === "status"}
+                    onOpenChange={(open) =>
+                      handleDropdownChange("status", open)
+                    }
+                  />
+                </>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

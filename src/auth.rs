@@ -13,13 +13,13 @@ const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
 const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
 // Helper to get DB
-fn get_db(env: &Env) -> Result<AppDatabase> {
+pub fn get_db(env: &Env) -> Result<AppDatabase> {
     let d1 = env.d1("DB")?;
     Ok(AppDatabase::new(d1))
 }
 
 // Helper to get authenticated user
-async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
+pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     let db = get_db(env)?;
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
@@ -104,7 +104,7 @@ struct UpdateProfileRequest {
 
 #[derive(Deserialize)]
 struct UpdateItemRequest {
-    item_id: String,
+    title: String,
     status: i32,
     score: Option<i32>,
 }
@@ -221,7 +221,7 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
     let body: UpdateItemRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    db.update_user_item(user.id, &body.item_id, body.status, body.score)
+    db.update_user_item(user.id, &body.title, body.status, body.score)
         .await?;
     Response::ok("Updated")
 }
@@ -233,17 +233,17 @@ pub async fn handle_get_item(req: Request, env: Env) -> Result<Response> {
     };
 
     let url = req.url()?;
-    let item_id = url
+    let title = url
         .query_pairs()
-        .find(|(k, _)| k == "item_id")
+        .find(|(k, _)| k == "title")
         .map(|(_, v)| v.to_string());
 
-    if let Some(id) = item_id {
+    if let Some(t) = title {
         let db = get_db(&env)?;
-        let item = db.get_user_item(user.id, &id).await?;
+        let item = db.get_user_item(user.id, &t).await?;
         Response::from_json(&item)
     } else {
-        Response::error("Missing item_id", 400)
+        Response::error("Missing title", 400)
     }
 }
 

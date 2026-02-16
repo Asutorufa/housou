@@ -24,7 +24,7 @@ pub struct Session {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserItem {
     pub user_id: i32,
-    pub item_id: String,
+    pub title: String, // Changed from item_id
     pub status: i32,
     pub score: Option<i32>,
     pub updated_at: i64,
@@ -64,11 +64,12 @@ pub trait Database {
     async fn update_user_item(
         &self,
         user_id: i32,
-        item_id: &str,
+        title: &str,
         status: i32,
         score: Option<i32>,
     ) -> Result<()>;
-    async fn get_user_item(&self, user_id: i32, item_id: &str) -> Result<Option<UserItem>>;
+    async fn get_user_item(&self, user_id: i32, title: &str) -> Result<Option<UserItem>>;
+    async fn get_all_user_items(&self, user_id: i32) -> Result<Vec<UserItem>>;
 }
 
 pub struct AppDatabase {
@@ -141,6 +142,23 @@ impl Database for AppDatabase {
             (
                 2,
                 vec!["CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"],
+            ),
+            // Version 3: Switch to title based user_items
+            (
+                3,
+                vec![
+                    "DROP TABLE IF EXISTS user_items;", // Drop old table
+                    "CREATE TABLE IF NOT EXISTS user_items_v2 (
+                        user_id INTEGER,
+                        title TEXT,
+                        status INTEGER,
+                        score INTEGER,
+                        updated_at INTEGER,
+                        PRIMARY KEY (user_id, title),
+                        FOREIGN KEY(user_id) REFERENCES users(id)
+                    );",
+                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
+                ],
             ),
         ];
 
@@ -304,15 +322,15 @@ impl Database for AppDatabase {
     async fn update_user_item(
         &self,
         user_id: i32,
-        item_id: &str,
+        title: &str,
         status: i32,
         score: Option<i32>,
     ) -> Result<()> {
         let updated_at = Date::now().as_millis() as i64;
         // SQLite upsert
-        let query = "INSERT INTO user_items (user_id, item_id, status, score, updated_at)
+        let query = "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at)
                      VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(user_id, item_id) DO UPDATE SET status = excluded.status, score = excluded.score, updated_at = excluded.updated_at";
+                     ON CONFLICT(user_id, title) DO UPDATE SET status = excluded.status, score = excluded.score, updated_at = excluded.updated_at";
 
         let score_val = if let Some(s) = score {
             JsValue::from_f64(s as f64)
@@ -324,7 +342,7 @@ impl Database for AppDatabase {
             .prepare(query)
             .bind(&[
                 JsValue::from_f64(user_id as f64),
-                JsValue::from_str(item_id),
+                JsValue::from_str(title),
                 JsValue::from_f64(status as f64),
                 score_val,
                 JsValue::from_f64(updated_at as f64),
@@ -334,15 +352,27 @@ impl Database for AppDatabase {
         Ok(())
     }
 
-    async fn get_user_item(&self, user_id: i32, item_id: &str) -> Result<Option<UserItem>> {
-        let query = "SELECT * FROM user_items WHERE user_id = ? AND item_id = ?";
+    async fn get_user_item(&self, user_id: i32, title: &str) -> Result<Option<UserItem>> {
+        let query = "SELECT * FROM user_items_v2 WHERE user_id = ? AND title = ?";
         self.db
             .prepare(query)
             .bind(&[
                 JsValue::from_f64(user_id as f64),
-                JsValue::from_str(item_id),
+                JsValue::from_str(title),
             ])?
             .first(None)
             .await
+    }
+
+    async fn get_all_user_items(&self, user_id: i32) -> Result<Vec<UserItem>> {
+        let query = "SELECT * FROM user_items_v2 WHERE user_id = ?";
+        let results = self
+            .db
+            .prepare(query)
+            .bind(&[JsValue::from_f64(user_id as f64)])?
+            .all()
+            .await?;
+
+        results.results()
     }
 }

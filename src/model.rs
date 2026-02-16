@@ -69,6 +69,12 @@ pub struct Item {
     pub end: Option<String>,
     pub comment: Option<String>,
     pub sites: Vec<Site>,
+
+    // User status fields (transient)
+    #[serde(skip_deserializing)]
+    pub user_status: Option<i32>,
+    #[serde(skip_deserializing)]
+    pub user_score: Option<i32>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

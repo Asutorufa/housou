@@ -115,16 +115,16 @@ export function AuthProvider({
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-         let message = "Update failed";
-         try {
-           const json = await res.json();
-           if (json.error) {
-             message = json.error;
-           }
-         } catch {
-             // Ignore
-         }
-         throw new Error(message);
+        let message = "Update failed";
+        try {
+          const json = await res.json();
+          if (json.error) {
+            message = json.error;
+          }
+        } catch {
+          // Ignore
+        }
+        throw new Error(message);
       }
       const user = await res.json();
       mutate(user, false);

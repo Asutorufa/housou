@@ -14,6 +14,7 @@ interface Selections {
   year: string;
   season: string;
   site: string;
+  status?: string;
 }
 
 const fetcher = async (url: string) => {
@@ -37,6 +38,7 @@ export default function App() {
       year: "",
       season: "all",
       site: "all",
+      status: "all",
     },
   );
 
@@ -51,6 +53,10 @@ export default function App() {
   const selectedSite = selections.site;
   const setSelectedSite = (site: string) =>
     setSelections((prev) => ({ ...prev, site }));
+
+  const selectedStatus = selections.status || "all";
+  const setSelectedStatus = (status: string) =>
+    setSelections((prev) => ({ ...prev, status }));
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAnime, setSelectedAnime] = useState<{
@@ -100,7 +106,7 @@ export default function App() {
         // Validate or set defaults
         setSelections((prev) => {
           let { year, season } = prev;
-          const { site } = prev;
+          const { site, status } = prev;
           const isYearValid = year && data.years.includes(parseInt(year));
 
           if (!isYearValid) {
@@ -119,7 +125,7 @@ export default function App() {
             season = seasons[Math.floor(new Date().getMonth() / 3)];
           }
 
-          return { year, season, site };
+          return { year, season, site, status: status || "all" };
         });
       } catch (err) {
         setInitError(err instanceof Error ? err.message : String(err));
@@ -140,6 +146,11 @@ export default function App() {
       );
     }
 
+    if (selectedStatus && selectedStatus !== "all") {
+      const status = parseInt(selectedStatus);
+      filtered = filtered.filter((item) => item.userStatus === status);
+    }
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((item) => {
@@ -154,7 +165,7 @@ export default function App() {
     }
 
     return filtered;
-  }, [items, selectedSite, searchQuery]);
+  }, [items, selectedSite, selectedStatus, searchQuery]);
 
   if (error) {
     return (
@@ -178,6 +189,8 @@ export default function App() {
           setSelectedSeason={setSelectedSeason}
           selectedSite={selectedSite}
           setSelectedSite={setSelectedSite}
+          selectedStatus={selectedStatus}
+          setSelectedStatus={setSelectedStatus}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
         />

@@ -89,8 +89,18 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 
     // 1. Handle caching and routing
     let resp = if req.method() == Method::Get {
-        // Skip caching for auth routes
-        if url.path().starts_with("/api/auth") || url.path().starts_with("/api/user") {
+        // Skip caching for auth routes and items when auth is enabled (user specific data)
+        // Actually, we should check auth cookie presence before skipping cache, or make items endpoint handle caching carefully.
+        // For simplicity: skip caching items endpoint if auth cookie is present or if we want to be safe.
+        // But the router handles caching internally for items? No, router returns Response.
+        // The main block handles caching.
+
+        let is_auth_route = url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
+        // We also want to skip caching /api/items if the user is authenticated, because the response is personalized.
+        // Checking for cookie presence is a simple heuristic.
+        let has_session_cookie = req.headers().get("Cookie")?.unwrap_or_default().contains("housou_session");
+
+        if is_auth_route || (url.path() == "/api/items" && has_session_cookie) {
             router(req, env).await?
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
@@ -99,10 +109,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             // Generate new response
             let mut fresh_resp = router(req, env).await?;
 
-            // Cache successful GET responses (except auth)
+            // Cache successful GET responses (except auth and personalized items)
             if url.path().starts_with("/api")
-                && !url.path().starts_with("/api/auth")
-                && !url.path().starts_with("/api/user")
+                && !is_auth_route
+                && !(url.path() == "/api/items" && has_session_cookie)
                 && fresh_resp.status_code() == 200
             {
                 if !fresh_resp.headers().has("Cache-Control")? {
@@ -301,7 +311,27 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                 Some(s) => Some(s),
             };
 
-            let items = fetch_items_for_season(target_year, target_season).await?;
+            let mut items = fetch_items_for_season(target_year, target_season).await?;
+
+            // Inject user status if authenticated
+            if auth_enabled {
+                if let Ok(Some((user, _))) = auth::get_auth(&req, &env).await {
+                    if let Ok(db) = auth::get_db(&env) {
+                         if let Ok(user_items) = db.get_all_user_items(user.id).await {
+                             let status_map: std::collections::HashMap<_, _> = user_items.into_iter()
+                                 .map(|ui| (ui.title, (ui.status, ui.score)))
+                                 .collect();
+
+                             for item in &mut items {
+                                 if let Some((status, score)) = status_map.get(&item.title) {
+                                     item.user_status = Some(*status);
+                                     item.user_score = *score;
+                                 }
+                             }
+                         }
+                    }
+                }
+            }
 
             Response::from_json(&items)?.add_cors(&env)
         }

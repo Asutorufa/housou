@@ -18,8 +18,8 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
 
   useEffect(() => {
     if (user) {
-        setUsername(user.username);
-        setEmail(user.email);
+      setUsername(user.username);
+      setEmail(user.email);
     }
   }, [user]);
 
