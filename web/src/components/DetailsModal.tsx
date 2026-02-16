@@ -21,6 +21,7 @@ import type {
 } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
+import { isValidUrl } from "../utils/urlUtils";
 import CustomSelect from "./CustomSelect";
 
 function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
@@ -352,13 +353,14 @@ export default function DetailsModal({
                       </div>
 
                       {/* Links Section */}
-                      {originalItem?.officialSite && (
-                        <div className="mb-4">
-                          <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
-                            公式サイト
-                          </h4>
-                          <a
-                            href={originalItem.officialSite}
+                      {originalItem?.officialSite &&
+                        isValidUrl(originalItem.officialSite) && (
+                          <div className="mb-4">
+                            <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
+                              公式サイト
+                            </h4>
+                            <a
+                              href={originalItem.officialSite}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-1.5 text-sm font-bold text-purple-600 transition-colors hover:bg-purple-100 dark:border-purple-800/50 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/30"
@@ -414,7 +416,7 @@ export default function DetailsModal({
                                     "{{id}}",
                                     site.id || "",
                                   );
-                                if (!url) return null;
+                                if (!url || !isValidUrl(url)) return null;
 
                                 return (
                                   <a
