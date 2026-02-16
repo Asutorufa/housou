@@ -81,39 +81,52 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
     let id = id.trim_start_matches('/');
     // Strip episode part if present
     let id = id.split("/episode/").next().unwrap_or(id);
-    let parts: Vec<&str> = id.split('/').collect();
+    let mut parts = id.split('/');
 
-    if parts.is_empty() || (parts.len() == 1 && parts[0].is_empty()) {
-        return Err(Error::RustError("Empty ID".into()));
-    }
+    match parts.next() {
+        Some("tv") => {
+            let show_id = parts
+                .next()
+                .ok_or_else(|| Error::RustError("Invalid TV ID format: missing ID".into()))?;
 
-    if parts.first() == Some(&"tv") {
-        if parts.len() < 2 {
-            return Err(Error::RustError("Invalid TV ID format: missing ID".into()));
+            let season = if let Some(maybe_season) = parts.next() {
+                if maybe_season == "season" {
+                    if let Some(season_str) = parts.next() {
+                        season_str
+                            .parse()
+                            .map_err(|_| Error::RustError("Invalid season number".into()))?
+                    } else {
+                        1
+                    }
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
+            Ok((
+                show_id.to_string(),
+                MediaType::Tv {
+                    show_id: show_id.to_string(),
+                    season,
+                },
+            ))
         }
-        let show_id = parts[1].to_string();
-        let season = if parts.len() >= 4 && parts[2] == "season" {
-            parts[3]
-                .parse()
-                .map_err(|_| Error::RustError("Invalid season number".into()))?
-        } else {
-            1
-        };
-        Ok((show_id.clone(), MediaType::Tv { show_id, season }))
-    } else if parts.first() == Some(&"movie") {
-        if parts.len() < 2 {
-            return Err(Error::RustError(
-                "Invalid Movie ID format: missing ID".into(),
-            ));
+        Some("movie") => {
+            let movie_id = parts
+                .next()
+                .ok_or_else(|| Error::RustError("Invalid Movie ID format: missing ID".into()))?;
+            Ok((movie_id.to_string(), MediaType::Movie))
         }
-        let movie_id = parts[1].to_string();
-        Ok((movie_id, MediaType::Movie))
-    } else if parts.len() == 1 {
-        // Assume movie if ID is just a number/slug
-        let movie_id = parts[0].to_string();
-        Ok((movie_id, MediaType::Movie))
-    } else {
-        Err(Error::RustError("Unknown media type or format".into()))
+        Some(s) if !s.is_empty() => {
+            // Assume movie if ID is just a number/slug and no other parts exist
+            if parts.next().is_none() {
+                Ok((s.to_string(), MediaType::Movie))
+            } else {
+                Err(Error::RustError("Unknown media type or format".into()))
+            }
+        }
+        _ => Err(Error::RustError("Empty ID".into())),
     }
 }
 
