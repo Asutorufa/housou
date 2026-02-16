@@ -5,6 +5,7 @@ import { twMerge } from "tailwind-merge";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
+import { isValidUrl } from "../utils/urlUtils";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -221,7 +222,7 @@ export default function AnimeCard({
               const meta = siteMeta?.[site.site];
               const url =
                 site.url || meta?.urlTemplate?.replace("{{id}}", site.id || "");
-              if (!url) return null;
+              if (!url || !isValidUrl(url)) return null;
 
               return (
                 <a
