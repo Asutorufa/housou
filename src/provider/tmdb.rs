@@ -104,10 +104,11 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
             } else {
                 1
             };
+            let show_id_string = show_id.to_string();
             Ok((
-                show_id.to_string(),
+                show_id_string.clone(),
                 MediaType::Tv {
-                    show_id: show_id.to_string(),
+                    show_id: show_id_string,
                     season,
                 },
             ))
