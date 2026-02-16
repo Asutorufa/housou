@@ -258,9 +258,11 @@ mod tests {
 
         let translate = item.title_translate;
         assert_eq!(translate.ja, Some(vec!["カウボーイビバップ".to_string()]));
-        assert!(translate.en.is_some());
-        let en_titles = translate.en.unwrap();
-        assert!(en_titles.contains(&"Cowboy Bebop".to_string()));
+        // Check for exact equality to ensure no duplicates or unexpected entries
+        assert_eq!(
+            translate.en,
+            Some(vec!["Cowboy Bebop".to_string(), "Cowboy Bebop".to_string()])
+        );
 
         assert_eq!(item.sites.len(), 1);
         assert_eq!(item.sites[0].site, "mal");
