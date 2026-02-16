@@ -1,11 +1,15 @@
 use serde_derive::Serialize;
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use worker::*;
 
+mod auth;
 mod config;
+mod db;
 mod model;
 mod provider;
 mod utils;
+use db::Database; // Import Database trait
 use model::{Item, SiteMeta, SiteMetadata, SiteType};
 
 pub trait ResponseExt {
@@ -15,6 +19,7 @@ pub trait ResponseExt {
 }
 
 static CORS_ALLOWED_ORIGIN: OnceLock<String> = OnceLock::new();
+static MIGRATION_DONE: AtomicBool = AtomicBool::new(false);
 
 impl ResponseExt for Response {
     fn add_cors(mut self, env: &Env) -> Result<Response> {
@@ -48,6 +53,7 @@ struct ConfigResponse<'a> {
     site_meta: &'a SiteMeta,
     years: Vec<i32>,
     attribution: Attribution,
+    auth_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -64,20 +70,57 @@ struct TmdbAttribution {
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    // Migration Logic (Lazy)
+    if let Ok(d1) = env.d1("DB")
+        && MIGRATION_DONE
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    {
+        let db = db::AppDatabase::new(d1);
+        // We ignore migration errors here to not block the whole app,
+        // but ideally we should log them.
+        if let Err(e) = db.migrate().await {
+            console_error!("Migration failed: {}", e);
+            MIGRATION_DONE.store(false, Ordering::Relaxed);
+        }
+    }
+
     let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
     // 1. Handle caching and routing
     let resp = if req.method() == Method::Get {
-        if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
+        // Skip caching for auth routes and items when auth is enabled (user specific data)
+        // Actually, we should check auth cookie presence before skipping cache, or make items endpoint handle caching carefully.
+        // For simplicity: skip caching items endpoint if auth cookie is present or if we want to be safe.
+        // But the router handles caching internally for items? No, router returns Response.
+        // The main block handles caching.
+
+        let is_auth_route =
+            url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
+        // We also want to skip caching /api/items if the user is authenticated, because the response is personalized.
+        // Checking for cookie presence is a simple heuristic.
+        let has_session_cookie = req
+            .headers()
+            .get("Cookie")?
+            .unwrap_or_default()
+            .contains("housou_session");
+
+        if is_auth_route || (url.path() == "/api/items" && has_session_cookie) {
+            router(req, env).await?
+        } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()?
         } else {
             // Generate new response
             let mut fresh_resp = router(req, env).await?;
 
-            // Cache successful GET responses
-            if url.path().get(0..4).unwrap_or("") == "/api" && fresh_resp.status_code() == 200 {
+            // Cache successful GET responses (except auth and personalized items)
+            if url.path().starts_with("/api")
+                && !is_auth_route
+                && !(url.path() == "/api/items" && has_session_cookie)
+                && fresh_resp.status_code() == 200
+            {
                 if !fresh_resp.headers().has("Cache-Control")? {
                     fresh_resp = fresh_resp.add_header(
                         "Cache-Control",
@@ -110,7 +153,7 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
         async move {
             let mut data: std::collections::HashMap<String, SiteMetadata> = utils::fetch_json(&url)
                 .await?
-                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {}", url)))?;
+                .ok_or_else(|| Error::RustError(format!("Failed to fetch site meta: {url}")))?;
 
             for meta in data.values_mut() {
                 meta.type_field = Some(stype.clone());
@@ -155,25 +198,6 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     // Future if:
     // 1. Year > Current Year
     // 2. Year == Current Year AND Season > Current Season
-    // Note: If season is "all" (None), we treat it as future if year > current_year.
-    // If year == current_year and season is "all", we technically have mixed data (past seasons + future seasons).
-    // The current bangumi-data implementation for "all" fetches all months (1-12).
-    // If we want to strictly follow the requirement "use Jikan for future", we might need to mix sources for the current year "all" request,
-    // but the requirement says "to current time data from bangumi-data", "future from jikan".
-    // A simple split is:
-    // If year > current_year: Use Jikan (All seasons).
-    // If year == current_year:
-    //    If specific season requested:
-    //       If season > current_season: Use Jikan.
-    //       Else: Use Bangumi.
-    //    If "all" requested:
-    //       Use Bangumi (it covers 1-12, potentially empty for future months but usually pre-filled? No, bangumi-data updates periodically).
-    //       Actually, bangumi-data might not have future data yet.
-    //       Let's stick to the prompt: "Future upcoming data use Jikan API".
-    //       Ideally for "all" in current year, we'd fetch past/current from Bangumi and future from Jikan, but that's complex to merge.
-    //       Let's assume "all" for current year uses Bangumi (safe default).
-    //       Only if user explicitly selects a future season or a future year we switch to Jikan.
-
     let is_future = if year > current_year {
         true
     } else if year == current_year {
@@ -241,13 +265,17 @@ async fn fetch_items_for_season(year: i32, season: Option<&str>) -> Result<Vec<I
     Ok(all_items)
 }
 
-async fn router(req: Request, env: Env) -> Result<Response> {
+async fn router(mut req: Request, env: Env) -> Result<Response> {
     let method = req.method();
     let path = req.path();
     let url = req.url()?;
     let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
 
-    match (method, path.as_str()) {
+    // Check if Auth is enabled (DB binding exists)
+    let auth_enabled = env.d1("DB").is_ok();
+    console_log!("Auth enabled: {}", auth_enabled);
+
+    match (method.clone(), path.as_str()) {
         (Method::Get, "/api/config") => {
             let site_meta = fetch_site_meta().await?;
 
@@ -266,6 +294,7 @@ async fn router(req: Request, env: Env) -> Result<Response> {
                         logo_alt_long: config::TMDB_LOGO_ALT_LONG.to_string(),
                     },
                 },
+                auth_enabled,
             };
 
             Response::from_json(&config_resp)?
@@ -290,9 +319,52 @@ async fn router(req: Request, env: Env) -> Result<Response> {
             };
 
             let items = fetch_items_for_season(target_year, target_season).await?;
-
             Response::from_json(&items)?.add_cors(&env)
         }
+        (Method::Post, "/api/user/status") if auth_enabled => {
+            let titles: Vec<String> = match req.json().await {
+                Ok(t) => t,
+                Err(_) => {
+                    return Response::error("Bad Request: Body must be a list of strings", 400);
+                }
+            };
+
+            match auth::get_auth(&req, &env).await {
+                Ok(Some((user, _))) => match auth::get_db(&env) {
+                    Ok(db) => match db.get_user_items_by_titles(user.id, &titles).await {
+                        Ok(user_items) => {
+                            let status_map: std::collections::HashMap<_, _> = user_items
+                                .into_iter()
+                                .map(|ui| {
+                                    (
+                                        ui.title,
+                                        db::UserItemSummary {
+                                            status: ui.status,
+                                            score: ui.score,
+                                        },
+                                    )
+                                })
+                                .collect();
+                            Response::from_json(&status_map)?.add_cors(&env)
+                        }
+                        Err(e) => {
+                            console_error!("Failed to fetch user items: {}", e);
+                            Response::error("Internal Server Error", 500)
+                        }
+                    },
+                    Err(e) => {
+                        console_error!("Failed to get DB connection: {}", e);
+                        Response::error("Internal Server Error", 500)
+                    }
+                },
+                Ok(None) => Response::error("Unauthorized", 401),
+                Err(e) => {
+                    console_error!("Auth error: {}", e);
+                    Response::error("Internal Server Error", 500)
+                }
+            }
+        }
+
         (Method::Get, "/api/metadata") => {
             let tmdb_id = query.get("tmdb_id").map(|s| s.as_str());
             let mal_id = query.get("mal_id").map(|s| s.as_str());
@@ -313,6 +385,57 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
             provider::get_metadata(args, &env).await
         }
+        // Auth Routes (Only if enabled)
+        (Method::Post, "/api/auth/register") if auth_enabled => {
+            auth::handle_register(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Post, "/api/auth/login") if auth_enabled => {
+            auth::handle_login(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Post, "/api/auth/logout") if auth_enabled => {
+            auth::handle_logout(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Get, "/api/auth/me") if auth_enabled => {
+            auth::handle_me(req, env.clone()).await?.add_cors(&env)
+        }
+        (Method::Put, "/api/auth/profile") if auth_enabled => {
+            auth::handle_update_profile(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Put, "/api/auth/password") if auth_enabled => {
+            auth::handle_change_password(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/auth/github/authorize") if auth_enabled => {
+            auth::handle_github_authorize(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/auth/github/callback") if auth_enabled => {
+            auth::handle_github_callback(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+        (Method::Get, "/api/user/item") if auth_enabled => auth::handle_get_item(req, env.clone())
+            .await?
+            .add_cors(&env),
+        (Method::Post, "/api/user/item") if auth_enabled => {
+            auth::handle_update_item(req, env.clone())
+                .await?
+                .add_cors(&env)
+        }
+
+        // Handle Options for CORS on auth routes
+        (Method::Options, path)
+            if path.starts_with("/api/auth") || path.starts_with("/api/user") =>
+        {
+            Response::empty()?.add_cors(&env)
+        }
+
         _ => Response::error("Not Found", 404),
     }
 }

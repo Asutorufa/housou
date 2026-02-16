@@ -25,6 +25,27 @@ export interface AnimeItem {
   titleTranslate?: TitleTranslate;
 }
 
+export type UserStatus = 0 | 1 | 2 | 3 | 4 | 5;
+
+export const USER_STATUS_LABELS: Record<UserStatus, string> = {
+  0: "未登録",
+  1: "見てる",
+  2: "見終わった",
+  3: "保留",
+  4: "切った",
+  5: "見たい",
+};
+
+export interface UserItemSummary {
+  status: UserStatus;
+  score: number | null;
+}
+
+export interface DisplayAnimeItem extends AnimeItem {
+  userStatus?: UserStatus;
+  userScore?: number;
+}
+
 export interface SiteMetaItem {
   title: string;
   urlTemplate?: string;
@@ -46,6 +67,27 @@ export interface Config {
       logo_alt_long: string;
     };
   };
+  auth_enabled?: boolean;
+}
+
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  avatar_url?: string;
+  created_at: number;
+}
+
+// Define strict types for auth payloads
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
+  email: string;
+  username: string;
+  password: string;
 }
 
 export interface UniversalTitle {

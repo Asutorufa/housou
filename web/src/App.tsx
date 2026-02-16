@@ -7,12 +7,21 @@ import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
 import { STORAGE_KEY_SELECTIONS } from "./constants";
-import type { AnimeItem, Config, UnifiedMetadata } from "./types";
+import { useAuth } from "./contexts/AuthContext";
+import type {
+  AnimeItem,
+  Config,
+  DisplayAnimeItem,
+  Site,
+  UnifiedMetadata,
+  UserItemSummary,
+} from "./types";
 
 interface Selections {
   year: string;
   season: string;
   site: string;
+  status?: string;
 }
 
 const fetcher = async (url: string) => {
@@ -36,6 +45,7 @@ export default function App() {
       year: "",
       season: "all",
       site: "all",
+      status: "all",
     },
   );
 
@@ -50,6 +60,10 @@ export default function App() {
   const selectedSite = selections.site;
   const setSelectedSite = (site: string) =>
     setSelections((prev) => ({ ...prev, site }));
+
+  const selectedStatus = selections.status || "all";
+  const setSelectedStatus = (status: string) =>
+    setSelections((prev) => ({ ...prev, status }));
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAnime, setSelectedAnime] = useState<{
@@ -76,7 +90,46 @@ export default function App() {
     isLoading: itemsLoading,
   } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
 
-  const items = useMemo(() => fetchedItems || [], [fetchedItems]);
+  const { loggedIn, apiFetch } = useAuth();
+
+  // Fetch user statuses separately
+  const { data: userStatuses, mutate: mutateStatuses } = useSWR<
+    Record<string, UserItemSummary>
+  >(
+    loggedIn && config?.auth_enabled && itemsUrl && fetchedItems?.length
+      ? ["/api/user/status", itemsUrl]
+      : null,
+    async ([url]) => {
+      const res = await apiFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(fetchedItems!.map((i) => i.title)),
+      });
+      if (!res.ok) {
+        throw new Error("Failed to fetch statuses");
+      }
+      return res.json();
+    },
+  );
+
+  const items = useMemo((): DisplayAnimeItem[] => {
+    if (!fetchedItems) return [];
+    if (!userStatuses) return fetchedItems;
+
+    return fetchedItems.map((item) => {
+      const summary = userStatuses[item.title];
+      if (summary) {
+        return {
+          ...item,
+          userStatus: summary.status,
+          userScore: summary.score ?? undefined,
+        };
+      }
+      return item;
+    });
+  }, [fetchedItems, userStatuses]);
+
   const loading = initLoading || itemsLoading;
 
   const error =
@@ -99,7 +152,7 @@ export default function App() {
         // Validate or set defaults
         setSelections((prev) => {
           let { year, season } = prev;
-          const { site } = prev;
+          const { site, status } = prev;
           const isYearValid = year && data.years.includes(parseInt(year));
 
           if (!isYearValid) {
@@ -118,7 +171,7 @@ export default function App() {
             season = seasons[Math.floor(new Date().getMonth() / 3)];
           }
 
-          return { year, season, site };
+          return { year, season, site, status: status || "all" };
         });
       } catch (err) {
         setInitError(err instanceof Error ? err.message : String(err));
@@ -135,8 +188,16 @@ export default function App() {
 
     if (selectedSite && selectedSite !== "all") {
       filtered = filtered.filter((item) =>
-        item.sites?.some((s) => s.site === selectedSite),
+        item.sites?.some((s: Site) => s.site === selectedSite),
       );
+    }
+
+    if (selectedStatus && selectedStatus !== "all") {
+      const status = parseInt(selectedStatus);
+      filtered = filtered.filter((item) => {
+        const itemStatus = item.userStatus || 0;
+        return itemStatus === status;
+      });
     }
 
     if (searchQuery) {
@@ -152,8 +213,11 @@ export default function App() {
       });
     }
 
+    console.log(
+      `Filtered items: ${filtered.length}/${items.length} (Status: ${selectedStatus})`,
+    );
     return filtered;
-  }, [items, selectedSite, searchQuery]);
+  }, [items, selectedSite, selectedStatus, searchQuery]);
 
   if (error) {
     return (
@@ -176,6 +240,8 @@ export default function App() {
         setSelectedSeason={setSelectedSeason}
         selectedSite={selectedSite}
         setSelectedSite={setSelectedSite}
+        selectedStatus={selectedStatus}
+        setSelectedStatus={setSelectedStatus}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
       />
@@ -204,6 +270,7 @@ export default function App() {
         anime={selectedAnime}
         items={items}
         siteMeta={config?.site_meta}
+        onUpdate={() => mutateStatuses()}
       />
 
       <AttributionModal

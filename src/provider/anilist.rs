@@ -20,11 +20,11 @@ impl MetadataProvider for AnilistProvider {
             // AniList ID must be an integer
             let anime_id = i
                 .parse::<i64>()
-                .map_err(|e| Error::RustError(format!("Invalid AniList ID: {}", e)))?;
+                .map_err(|e| Error::RustError(format!("Invalid AniList ID: {e}")))?;
             client
                 .get_anime(anime_id)
                 .await
-                .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {}", e)))?
+                .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {e}")))?
         } else if let Some(t) = title {
             let results = client.search_anime(t, 1, 1).await;
 

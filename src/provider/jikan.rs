@@ -5,7 +5,7 @@ use crate::model::{
 use crate::provider::MetadataProvider;
 use crate::utils;
 use regex::Regex;
-use serde_derive::Deserialize;
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use worker::*;
@@ -28,7 +28,7 @@ struct JikanAnime {
     #[serde(rename = "type")]
     type_field: Option<String>,
     episodes: Option<i32>,
-    status: String,
+    status: Option<String>,
     aired: JikanAired,
     score: Option<f64>,
     synopsis: Option<String>,
@@ -75,7 +75,7 @@ impl MetadataProvider for JikanProvider {
         _year: Option<i32>,
     ) -> Result<UnifiedMetadata> {
         let mal_id = id.ok_or_else(|| Error::RustError("MAL ID required".into()))?;
-        let url = format!("https://api.jikan.moe/v4/anime/{}/full", mal_id);
+        let url = format!("https://api.jikan.moe/v4/anime/{mal_id}/full");
 
         let response: JikanResponse<JikanAnime> = utils::fetch_json(&url)
             .await?
@@ -87,7 +87,7 @@ impl MetadataProvider for JikanProvider {
 }
 
 pub async fn fetch_season(year: i32, season: &str) -> Result<Vec<Item>> {
-    let url = format!("https://api.jikan.moe/v4/seasons/{}/{}", year, season);
+    let url = format!("https://api.jikan.moe/v4/seasons/{year}/{season}");
     let response: Option<JikanResponse<Vec<JikanAnime>>> = utils::fetch_json(&url).await?;
 
     let items = response
@@ -124,11 +124,13 @@ fn convert_to_item(anime: JikanAnime) -> Item {
     let (title, title_translate) = if let Some(ja_title) = &anime.title_japanese {
         if !ja_title.is_empty() {
             // Main title is Japanese
-            let mut en = anime.title_english.map(|t| vec![t]).unwrap_or_default();
-            // If the default 'title' is different from Japanese title, add it to English/Romaji fallback
-            // Jikan's 'title' is usually Romaji.
+            let mut en = anime
+                .title_english
+                .clone()
+                .map(|t| vec![t])
+                .unwrap_or_default();
             if &anime.title != ja_title {
-                en.push(anime.title);
+                en.push(anime.title.clone());
             }
             (
                 ja_title.clone(),
@@ -139,11 +141,10 @@ fn convert_to_item(anime: JikanAnime) -> Item {
                 },
             )
         } else {
-            // Fallback to default title
             (
                 anime.title.clone(),
                 TitleTranslate {
-                    en: anime.title_english.map(|t| vec![t]),
+                    en: anime.title_english.clone().map(|t| vec![t]),
                     ..Default::default()
                 },
             )
@@ -152,16 +153,16 @@ fn convert_to_item(anime: JikanAnime) -> Item {
         (
             anime.title.clone(),
             TitleTranslate {
-                en: anime.title_english.map(|t| vec![t]),
+                en: anime.title_english.clone().map(|t| vec![t]),
                 ..Default::default()
             },
         )
     };
 
     // Strip HTML tags from synopsis
-    let comment = anime.synopsis.map(|s| {
+    let comment = anime.synopsis.as_ref().map(|s| {
         let regex = HTML_TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
-        regex.replace_all(&s, "").to_string()
+        regex.replace_all(s, "").to_string()
     });
 
     Item {
@@ -206,7 +207,7 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         characters: vec![],
         staff: vec![],
         episodes_list: vec![],
-        is_finished: anime.status == "Finished Airing",
+        is_finished: anime.status.as_deref() == Some("Finished Airing"),
         total_seasons: None,
         current_season: None,
         runtime: None,

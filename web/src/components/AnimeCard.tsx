@@ -2,7 +2,8 @@ import { clsx, type ClassValue } from "clsx";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
-import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import { USER_STATUS_LABELS } from "../types";
 import { sortSites } from "../utils/siteUtils";
 
 function cn(...inputs: ClassValue[]) {
@@ -10,7 +11,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 interface AnimeCardProps {
-  item: AnimeItem;
+  item: DisplayAnimeItem;
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
@@ -139,6 +140,26 @@ export default function AnimeCard({
               No image
             </div>
           )
+        )}
+
+        {/* Status Badge */}
+        {item.userStatus && item.userStatus > 0 && (
+          <div className="absolute top-2 right-2 z-20">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-1 text-[10px] font-bold text-white shadow-sm backdrop-blur-sm ring-1 ring-black/10",
+                {
+                  "bg-blue-500/90": item.userStatus === 1, // Watching
+                  "bg-green-500/90": item.userStatus === 2, // Completed
+                  "bg-yellow-500/90": item.userStatus === 3, // On Hold
+                  "bg-red-500/90": item.userStatus === 4, // Dropped
+                  "bg-purple-500/90": item.userStatus === 5, // Plan to Watch
+                },
+              )}
+            >
+              {USER_STATUS_LABELS[item.userStatus!]}
+            </span>
+          </div>
         )}
 
         {/* Hover Overlay */}

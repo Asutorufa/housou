@@ -1,6 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import DetailsModal from "./DetailsModal";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// Mock AuthContext
+vi.mock("../contexts/AuthContext", () => ({
+  useAuth: () => ({
+    loggedIn: false,
+    user: null,
+  }),
+}));
 
 // Mock anime data
 const mockAnime = {

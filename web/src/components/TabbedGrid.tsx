@@ -3,7 +3,7 @@ import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { twMerge } from "tailwind-merge";
-import type { AnimeItem, SiteMeta, UnifiedMetadata } from "../types";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import AnimeCard from "./AnimeCard";
 
 function cn(...inputs: ClassValue[]) {
@@ -13,7 +13,7 @@ function cn(...inputs: ClassValue[]) {
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土", "他"];
 
 interface TabbedGridProps {
-  items: AnimeItem[];
+  items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
@@ -74,7 +74,7 @@ export default function TabbedGrid({
   };
 
   const groupedItems = useMemo(() => {
-    const groups: { item: AnimeItem; time: number }[][] = Array.from(
+    const groups: { item: DisplayAnimeItem; time: number }[][] = Array.from(
       { length: 8 },
       () => [],
     );
@@ -101,7 +101,10 @@ export default function TabbedGrid({
   const dayItems = groupedItems[dayIndex];
 
   // Distribute items into columns for horizontal masonry feel
-  const columns: AnimeItem[][] = Array.from({ length: columnCount }, () => []);
+  const columns: DisplayAnimeItem[][] = Array.from(
+    { length: columnCount },
+    () => [],
+  );
   dayItems.forEach((item, idx) => {
     columns[idx % columnCount].push(item);
   });
