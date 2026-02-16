@@ -214,3 +214,148 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         content_rating: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::from_str;
+
+    // Helper to create a minimal JikanAnime struct from JSON
+    fn create_anime(json: &str) -> JikanAnime {
+        from_str(json).expect("Failed to parse JSON")
+    }
+
+    #[test]
+    fn test_convert_to_item_basic() {
+        let json = r#"{
+            "mal_id": 1,
+            "url": "https://myanimelist.net/anime/1/Cowboy_Bebop",
+            "images": { "jpg": { "image_url": "url", "large_image_url": "large_url" } },
+            "title": "Cowboy Bebop",
+            "title_english": "Cowboy Bebop",
+            "title_japanese": "カウボーイビバップ",
+            "type": "TV",
+            "episodes": 26,
+            "status": "Finished Airing",
+            "aired": { "from": "1998-04-03T00:00:00+00:00", "to": "1999-04-24T00:00:00+00:00" },
+            "score": 8.75,
+            "synopsis": "In the year 2071...",
+            "studios": [{ "name": "Sunrise" }],
+            "genres": [{ "name": "Action" }]
+        }"#;
+
+        let anime = create_anime(json);
+        let item = convert_to_item(anime);
+
+        assert_eq!(item.title, "カウボーイビバップ");
+        assert_eq!(item.type_field, ItemType::Tv);
+        assert_eq!(item.official_site, "https://myanimelist.net/anime/1/Cowboy_Bebop");
+        assert_eq!(item.begin.as_deref(), Some("1998-04-03T00:00:00+00:00"));
+        assert_eq!(item.end.as_deref(), Some("1999-04-24T00:00:00+00:00"));
+
+        let translate = item.title_translate;
+        assert_eq!(translate.ja, Some(vec!["カウボーイビバップ".to_string()]));
+        assert!(translate.en.is_some());
+        let en_titles = translate.en.unwrap();
+        assert!(en_titles.contains(&"Cowboy Bebop".to_string()));
+
+        assert_eq!(item.sites.len(), 1);
+        assert_eq!(item.sites[0].site, "mal");
+        assert_eq!(item.sites[0].id, Some("1".to_string()));
+    }
+
+    #[test]
+    fn test_convert_to_item_title_fallback() {
+        // Case 1: No Japanese title
+        let json = r#"{
+            "mal_id": 2,
+            "url": "https://example.com",
+            "images": {},
+            "title": "Main Title",
+            "title_english": "English Title",
+            "title_japanese": null,
+            "type": "TV",
+            "aired": {},
+            "studios": [],
+            "genres": []
+        }"#;
+        let item = convert_to_item(create_anime(json));
+        assert_eq!(item.title, "Main Title");
+
+        // Case 2: Empty Japanese title
+        let json2 = r#"{
+            "mal_id": 3,
+            "url": "https://example.com",
+            "images": {},
+            "title": "Main Title",
+            "title_english": null,
+            "title_japanese": "",
+            "type": "TV",
+            "aired": {},
+            "studios": [],
+            "genres": []
+        }"#;
+        let item2 = convert_to_item(create_anime(json2));
+        assert_eq!(item2.title, "Main Title");
+    }
+
+    #[test]
+    fn test_convert_to_item_types() {
+        let types = vec![
+            ("TV", ItemType::Tv),
+            ("Movie", ItemType::Movie),
+            ("OVA", ItemType::Ova),
+            ("ONA", ItemType::Web),
+            ("Special", ItemType::Tv), // Default fallback
+        ];
+
+        for (jikan_type, item_type) in types {
+            let json = format!(r#"{{
+                "mal_id": 1,
+                "url": "url",
+                "images": {{}},
+                "title": "Title",
+                "type": "{}",
+                "aired": {{}},
+                "studios": [],
+                "genres": []
+            }}"#, jikan_type);
+
+            let item = convert_to_item(create_anime(&json));
+            assert_eq!(item.type_field, item_type, "Failed for type: {}", jikan_type);
+        }
+    }
+
+    #[test]
+    fn test_convert_to_item_synopsis_cleaning() {
+        let json = r#"{
+            "mal_id": 1,
+            "url": "url",
+            "images": {},
+            "title": "Title",
+            "synopsis": "This is <b>bold</b> and <i>italic</i>.<br>New line.",
+            "aired": {},
+            "studios": [],
+            "genres": []
+        }"#;
+        let item = convert_to_item(create_anime(json));
+        assert_eq!(item.comment.as_deref(), Some("This is bold and italic.New line."));
+    }
+
+    #[test]
+    fn test_convert_to_item_minimal() {
+        let json = r#"{
+            "mal_id": 1,
+            "url": "url",
+            "images": {},
+            "title": "Title",
+            "aired": {},
+            "studios": [],
+            "genres": []
+        }"#;
+        // Should not panic even with many missing optional fields
+        let item = convert_to_item(create_anime(json));
+        assert_eq!(item.title, "Title");
+        assert_eq!(item.type_field, ItemType::Tv); // Default
+    }
+}
