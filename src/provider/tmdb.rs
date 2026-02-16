@@ -13,7 +13,7 @@ pub struct TmdbProvider<'a> {
 }
 
 thread_local! {
-    static TMDB_CLIENT: OnceCell<Option<Rc<AsyncAPIClient>>> = OnceCell::new();
+    static TMDB_CLIENT: OnceCell<Option<Rc<AsyncAPIClient>>> = const { OnceCell::new() };
 }
 
 impl<'a> TmdbProvider<'a> {
