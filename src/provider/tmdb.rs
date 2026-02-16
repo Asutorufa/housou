@@ -376,14 +376,17 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
 fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> model::UnifiedMetadata {
     use model::*;
 
+    let native_title = match (show.name.as_deref(), season.name.as_deref()) {
+        (Some(show_name), Some(season_name)) => Some(format!("{} : {}", show_name, season_name)),
+        (Some(show_name), None) => Some(show_name.to_string()),
+        (None, Some(season_name)) => Some(season_name.to_string()),
+        (None, None) => None,
+    };
+
     let title = UniversalTitle {
         romaji: None,
         english: None,
-        native: Some(format!(
-            "{} : {}",
-            show.name.clone().unwrap_or_default(),
-            season.name.clone().unwrap_or_default()
-        )),
+        native: native_title,
     };
 
     let poster_path = season.poster_path.or(show.poster_path.clone());
@@ -1051,5 +1054,52 @@ mod tests_tv_transformation {
         };
         let result2 = tv_to_unified(show_no_runtime, season);
         assert_eq!(result2.runtime, None);
+    }
+}
+
+#[cfg(test)]
+mod tests_tv_title_formatting {
+    use super::*;
+    use tmdb_client::models;
+
+    #[test]
+    fn test_tv_to_unified_title_formatting() {
+        // Case 1: Both present
+        let show = models::TvDetails {
+            name: Some("Show".to_string()),
+            ..Default::default()
+        };
+        let season = models::SeasonDetails {
+            name: Some("Season".to_string()),
+            ..Default::default()
+        };
+        let result = tv_to_unified(show.clone(), season.clone());
+        assert_eq!(result.title.native, Some("Show : Season".to_string()));
+
+        // Case 2: Only Show present
+        let season_none = models::SeasonDetails {
+            name: None,
+            ..Default::default()
+        };
+        let result = tv_to_unified(show.clone(), season_none);
+        assert_eq!(result.title.native, Some("Show".to_string()));
+
+        // Case 3: Only Season present
+        let show_none = models::TvDetails {
+            name: None,
+            ..Default::default()
+        };
+        let result = tv_to_unified(show_none.clone(), season.clone());
+        assert_eq!(result.title.native, Some("Season".to_string()));
+
+        // Case 4: Neither present
+        let result = tv_to_unified(
+            show_none,
+            models::SeasonDetails {
+                name: None,
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.title.native, None);
     }
 }
