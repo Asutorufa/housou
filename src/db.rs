@@ -108,7 +108,7 @@ impl Database for AppDatabase {
 
         // Define migrations
         let migrations = vec![
-            // Version 1: Initial schema
+            // Version 1: Initial schema + Updates
             (
                 1,
                 vec![
@@ -127,27 +127,7 @@ impl Database for AppDatabase {
                         expires_at INTEGER,
                         FOREIGN KEY(user_id) REFERENCES users(id)
                     );",
-                    "CREATE TABLE IF NOT EXISTS user_items (
-                        user_id INTEGER,
-                        item_id TEXT,
-                        status INTEGER,
-                        score INTEGER,
-                        updated_at INTEGER,
-                        PRIMARY KEY (user_id, item_id),
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                ],
-            ),
-            // Version 2: Add unique index on username
-            (
-                2,
-                vec!["CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"],
-            ),
-            // Version 3: Switch to title based user_items
-            (
-                3,
-                vec![
-                    "DROP TABLE IF EXISTS user_items;", // Drop old table
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
                     "CREATE TABLE IF NOT EXISTS user_items_v2 (
                         user_id INTEGER,
                         title TEXT,
