@@ -144,7 +144,7 @@ export default function App() {
   useEffect(() => {
     async function init() {
       try {
-        const response = await fetch(`/api/config?v=${new Date().getTime()}`);
+        const response = await fetch(`/api/config`);
         if (!response.ok) throw new Error("Config fetch failed");
         const data: Config = await response.json();
         setConfig(data);
