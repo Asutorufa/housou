@@ -16,7 +16,7 @@ vi.mock("./contexts/AuthContext", () => ({
   }),
 }));
 
-const getUrlFromFetchArgs = (args: any[]): string => {
+const getUrlFromFetchArgs = (args: unknown[]): string => {
   const input = args[0];
   if (typeof input === "string") {
     return input;
