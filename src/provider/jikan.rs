@@ -270,8 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_to_item_title_fallback() {
-        // Case 1: No Japanese title
+    fn test_title_fallback_with_null_japanese_title() {
         let json = r#"{
             "mal_id": 2,
             "url": "https://example.com",
@@ -286,9 +285,11 @@ mod tests {
         }"#;
         let item = convert_to_item(create_anime(json));
         assert_eq!(item.title, "Main Title");
+    }
 
-        // Case 2: Empty Japanese title
-        let json2 = r#"{
+    #[test]
+    fn test_title_fallback_with_empty_japanese_title() {
+        let json = r#"{
             "mal_id": 3,
             "url": "https://example.com",
             "images": {},
@@ -300,8 +301,8 @@ mod tests {
             "studios": [],
             "genres": []
         }"#;
-        let item2 = convert_to_item(create_anime(json2));
-        assert_eq!(item2.title, "Main Title");
+        let item = convert_to_item(create_anime(json));
+        assert_eq!(item.title, "Main Title");
     }
 
     #[test]
