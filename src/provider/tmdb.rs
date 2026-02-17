@@ -435,29 +435,36 @@ fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<String>
 fn extract_credits(
     credits: Option<models::Credits>,
 ) -> (Vec<model::UniversalCharacter>, Vec<model::UniversalStaff>) {
-    let mut characters = Vec::new();
-    let mut staff = Vec::new();
+    const MAX_CAST_MEMBERS: usize = 6;
+    const MAX_CREW_MEMBERS: usize = 10;
+    const CAST_ROLE: &str = "Cast";
 
-    if let Some(credits) = credits {
-        if let Some(cast) = credits.cast {
-            for member in cast.into_iter().take(6) {
-                characters.push(model::UniversalCharacter {
-                    name: member.character.unwrap_or_default(),
-                    voice_actor: member.name,
-                    role: Some("Cast".to_string()),
-                });
-            }
-        }
-        if let Some(crew) = credits.crew {
-            for member in crew.into_iter().take(10) {
-                staff.push(model::UniversalStaff {
-                    name: member.name.unwrap_or_default(),
-                    role: member.job.unwrap_or_default(),
-                    department: member.department,
-                });
-            }
-        }
-    }
+    let credits = credits.unwrap_or_default();
+
+    let characters = credits
+        .cast
+        .unwrap_or_default()
+        .into_iter()
+        .take(MAX_CAST_MEMBERS)
+        .map(|member| model::UniversalCharacter {
+            name: member.character.unwrap_or_default(),
+            voice_actor: member.name,
+            role: Some(CAST_ROLE.to_string()),
+        })
+        .collect();
+
+    let staff = credits
+        .crew
+        .unwrap_or_default()
+        .into_iter()
+        .take(MAX_CREW_MEMBERS)
+        .map(|member| model::UniversalStaff {
+            name: member.name.unwrap_or_default(),
+            role: member.job.unwrap_or_default(),
+            department: member.department,
+        })
+        .collect();
+
     (characters, staff)
 }
 
