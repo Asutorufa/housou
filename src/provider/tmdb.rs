@@ -76,44 +76,36 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
     let id = id.trim_start_matches('/');
     // Strip episode part if present
     let id = id.split("/episode/").next().unwrap_or(id);
-    let mut parts = id.split('/');
+    let parts: Vec<&str> = id.split('/').collect();
 
-    match parts.next() {
-        Some("tv") => {
-            let show_id = parts
-                .next()
-                .ok_or_else(|| Error::RustError("Invalid TV ID format: missing ID".into()))?;
-
-            let season = match (parts.next(), parts.next()) {
-                (Some("season"), Some(s)) => s
-                    .parse()
-                    .map_err(|_| Error::RustError("Invalid season number".into()))?,
-                _ => 1,
-            };
-            let show_id_string = show_id.to_string();
+    match parts.as_slice() {
+        ["tv", show_id, "season", season_num, ..] => {
+            let season = season_num
+                .parse()
+                .map_err(|_| Error::RustError("Invalid season number".into()))?;
             Ok((
-                show_id_string.clone(),
+                show_id.to_string(),
                 MediaType::Tv {
-                    show_id: show_id_string,
+                    show_id: show_id.to_string(),
                     season,
                 },
             ))
         }
-        Some("movie") => {
-            let movie_id = parts
-                .next()
-                .ok_or_else(|| Error::RustError("Invalid Movie ID format: missing ID".into()))?;
-            Ok((movie_id.to_string(), MediaType::Movie))
-        }
-        Some(s) if !s.is_empty() => {
-            // Assume movie if ID is just a number/slug and no other parts exist
-            if parts.next().is_none() {
-                Ok((s.to_string(), MediaType::Movie))
-            } else {
-                Err(Error::RustError("Unknown media type or format".into()))
-            }
-        }
-        _ => Err(Error::RustError("Empty ID".into())),
+        ["tv", show_id, ..] => Ok((
+            show_id.to_string(),
+            MediaType::Tv {
+                show_id: show_id.to_string(),
+                season: 1,
+            },
+        )),
+        ["tv"] => Err(Error::RustError("Invalid TV ID format: missing ID".into())),
+        ["movie", movie_id, ..] => Ok((movie_id.to_string(), MediaType::Movie)),
+        // "movie" alone shouldn't match the generic single-ID case below
+        ["movie"] => Err(Error::RustError(
+            "Invalid Movie ID format: missing ID".into(),
+        )),
+        [id] if !id.is_empty() => Ok((id.to_string(), MediaType::Movie)),
+        _ => Err(Error::RustError("Unknown media type or format".into())),
     }
 }
 
@@ -622,6 +614,14 @@ mod tests {
 
         // Edge Cases
         assert!(parse_tmdb_id("tv").is_err());
+        assert!(parse_tmdb_id("movie").is_err());
+
+        // Regression test for implicit ID with episode suffix
+        assert_eq!(
+            parse_tmdb_id("12345/episode/1").unwrap(),
+            ("12345".to_string(), MediaType::Movie)
+        );
+
         // tv/abc is now valid because we don't extract int. "abc" is a valid ID string.
         // But "tv/123/season/abc" should still fail because season must be int.
         assert_eq!(
