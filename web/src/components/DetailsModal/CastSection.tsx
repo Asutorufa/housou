@@ -13,9 +13,9 @@ export default function CastSection({
         キャスト
       </h4>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {characters.slice(0, 6).map((char, idx: number) => (
+        {characters.slice(0, 6).map((char) => (
           <div
-            key={idx}
+            key={char.name}
             className="group flex flex-col rounded-2xl border border-gray-100 bg-gray-50 p-3 transition-colors hover:border-blue-200 dark:border-gray-700/50 dark:bg-gray-900/40 dark:hover:border-blue-900/50"
           >
             <div className="truncate font-bold text-gray-800 transition-colors group-hover:text-blue-600 dark:text-gray-100 dark:group-hover:text-blue-400">
