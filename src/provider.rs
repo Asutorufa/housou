@@ -1,5 +1,6 @@
 pub mod anilist;
 pub mod jikan;
+pub mod season;
 pub mod tmdb;
 
 use crate::{ResponseExt, model};
