@@ -24,12 +24,10 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
             let tasks = seasons
                 .iter()
                 .map(|s| provider::jikan::fetch_season(year, s));
-            let results = futures::future::join_all(tasks).await;
-            let mut all_items = Vec::new();
-            for items in results.into_iter().flatten() {
-                all_items.extend(items);
-            }
-            return Ok(all_items);
+
+            let results: Result<Vec<Vec<Item>>, _> =
+                futures::future::join_all(tasks).await.into_iter().collect();
+            return Ok(results?.into_iter().flatten().collect());
         }
     }
 
@@ -42,7 +40,6 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
         _ => (1..=12).collect(),
     };
 
-    let mut all_items = Vec::new();
     let mut futures = Vec::new();
 
     for &month in &months {
@@ -59,22 +56,24 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
         });
     }
 
-    let results = futures::future::join_all(futures).await;
-    for result in results {
-        all_items.extend(result?);
-    }
-    Ok(all_items)
+    let results: Result<Vec<Vec<Item>>, _> =
+        futures::future::join_all(futures).await.into_iter().collect();
+    Ok(results?.into_iter().flatten().collect())
 }
 
-fn get_current_season() -> &'static str {
-    let month = js_sys::Date::new_0().get_month() + 1;
+fn get_season_from_month(month: u32) -> &'static str {
     match month {
         1..=3 => "Winter",
         4..=6 => "Spring",
         7..=9 => "Summer",
         10..=12 => "Autumn",
-        _ => "Winter",
+        _ => unreachable!("Month should be between 1 and 12"),
     }
+}
+
+fn get_current_season() -> &'static str {
+    let month = js_sys::Date::new_0().get_month() + 1;
+    get_season_from_month(month)
 }
 
 fn season_to_num(season: &str) -> i32 {
@@ -93,17 +92,11 @@ fn is_future_season(
     current_year: i32,
     current_season: &str,
 ) -> bool {
-    if year > current_year {
-        true
-    } else if year == current_year {
-        if let Some(s) = season {
-            season_to_num(s) > season_to_num(current_season)
-        } else {
-            false
-        }
-    } else {
-        false
-    }
+    year > current_year
+        || (year == current_year
+            && season.map_or(false, |s| {
+                season_to_num(s) > season_to_num(current_season)
+            }))
 }
 
 #[cfg(test)]
@@ -142,5 +135,23 @@ mod tests {
 
         // Current year, all seasons (None) -> defaults to false (Bangumi data)
         assert!(!is_future_season(2024, None, 2024, "Winter"));
+    }
+
+    #[test]
+    fn test_get_season_from_month() {
+        assert_eq!(get_season_from_month(1), "Winter");
+        assert_eq!(get_season_from_month(3), "Winter");
+        assert_eq!(get_season_from_month(4), "Spring");
+        assert_eq!(get_season_from_month(6), "Spring");
+        assert_eq!(get_season_from_month(7), "Summer");
+        assert_eq!(get_season_from_month(9), "Summer");
+        assert_eq!(get_season_from_month(10), "Autumn");
+        assert_eq!(get_season_from_month(12), "Autumn");
+    }
+
+    #[test]
+    #[should_panic(expected = "Month should be between 1 and 12")]
+    fn test_get_season_from_month_panic() {
+        get_season_from_month(13);
     }
 }
