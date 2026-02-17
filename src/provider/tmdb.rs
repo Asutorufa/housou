@@ -61,7 +61,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
         // 2. Fetch Details based on type
         match media_type {
             MediaType::Movie(id) => get_movie_details(&client, &id).await,
-            MediaType::Tv { show_id, season } => get_tv_details(&client, show_id, season).await,
+            MediaType::Tv { show_id, season } => get_tv_details(&client, &show_id, season).await,
         }
     }
 }
@@ -235,14 +235,14 @@ async fn get_movie_details(
 
 async fn get_tv_details(
     client: &AsyncAPIClient,
-    show_id: String,
+    show_id: &str,
     season_number: i32,
 ) -> Result<model::UnifiedMetadata> {
     // Extract ID if it contains a slug
     let id: i32 = show_id
         .split('-')
         .next()
-        .unwrap_or(&show_id)
+        .unwrap_or(show_id)
         .parse()
         .map_err(|_| Error::RustError("Invalid show ID format".into()))?;
 
