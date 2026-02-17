@@ -1,53 +1,31 @@
-import { useEffect, useMemo, useState } from "react";
-import useSWR from "swr";
-import { useLocalStorage } from "usehooks-ts";
+import { useState } from "react";
 import AttributionModal from "./components/AttributionModal";
 import DetailsModal from "./components/DetailsModal";
 import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
-import { STORAGE_KEY_SELECTIONS } from "./constants";
-import { useAuth } from "./contexts/AuthContext";
-import type {
-  AnimeItem,
-  Config,
-  DisplayAnimeItem,
-  Site,
-  UnifiedMetadata,
-  UserItemSummary,
-} from "./types";
-
-interface Selections {
-  year: string;
-  season: string;
-  site: string;
-  status?: string;
-}
-
-const fetcher = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Items fetch failed: ${response.status} ${response.statusText}`,
-    );
-  }
-  return response.json();
-};
+import { useAnimeData } from "./hooks/useAnimeData";
+import type { UnifiedMetadata } from "./types";
 
 export default function App() {
-  const [config, setConfig] = useState<Config | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
-  const [initLoading, setInitLoading] = useState(true);
+  const {
+    config,
+    selections,
+    setSelections,
+    searchQuery,
+    setSearchQuery,
+    items,
+    filteredItems,
+    loading,
+    error,
+    mutateStatuses,
+  } = useAnimeData();
 
-  const [selections, setSelections] = useLocalStorage<Selections>(
-    STORAGE_KEY_SELECTIONS,
-    {
-      year: "",
-      season: "all",
-      site: "all",
-      status: "all",
-    },
-  );
+  const [selectedAnime, setSelectedAnime] = useState<{
+    title: string;
+    info: UnifiedMetadata | null;
+  } | null>(null);
+  const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
   const selectedYear = selections.year;
   const setSelectedYear = (year: string) =>
@@ -64,160 +42,6 @@ export default function App() {
   const selectedStatus = selections.status || "all";
   const setSelectedStatus = (status: string) =>
     setSelections((prev) => ({ ...prev, status }));
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedAnime, setSelectedAnime] = useState<{
-    title: string;
-    info: UnifiedMetadata | null;
-  } | null>(null);
-  const [isAttributionOpen, setIsAttributionOpen] = useState(false);
-
-  // Use SWR directly for fetching items
-  const itemsUrl = useMemo(() => {
-    if (!selectedYear) return null;
-
-    const params = new URLSearchParams({ year: selectedYear });
-    if (selectedSeason && selectedSeason !== "all") {
-      params.append("season", selectedSeason);
-    }
-
-    return `/api/items?${params.toString()}`;
-  }, [selectedYear, selectedSeason]);
-
-  const {
-    data: fetchedItems,
-    error: itemsError,
-    isLoading: itemsLoading,
-  } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
-
-  const { loggedIn, apiFetch } = useAuth();
-
-  // Fetch user statuses separately
-  const { data: userStatuses, mutate: mutateStatuses } = useSWR<
-    Record<string, UserItemSummary>
-  >(
-    loggedIn && config?.auth_enabled && itemsUrl && fetchedItems?.length
-      ? ["/api/user/status", itemsUrl]
-      : null,
-    async ([url]) => {
-      const res = await apiFetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(fetchedItems!.map((i) => i.title)),
-      });
-      if (!res.ok) {
-        throw new Error("Failed to fetch statuses");
-      }
-      return res.json();
-    },
-  );
-
-  const items = useMemo((): DisplayAnimeItem[] => {
-    if (!fetchedItems) return [];
-    if (!userStatuses) return fetchedItems;
-
-    return fetchedItems.map((item) => {
-      const summary = userStatuses[item.title];
-      if (summary) {
-        return {
-          ...item,
-          userStatus: summary.status,
-          userScore: summary.score ?? undefined,
-        };
-      }
-      return item;
-    });
-  }, [fetchedItems, userStatuses]);
-
-  const loading = initLoading || itemsLoading;
-
-  const error =
-    initError ||
-    (itemsError
-      ? itemsError instanceof Error
-        ? itemsError.message
-        : String(itemsError)
-      : null);
-
-  // Initialization
-  useEffect(() => {
-    async function init() {
-      try {
-        const response = await fetch(`/api/config?v=${new Date().getTime()}`);
-        if (!response.ok) throw new Error("Config fetch failed");
-        const data: Config = await response.json();
-        setConfig(data);
-
-        // Validate or set defaults
-        setSelections((prev) => {
-          let { year, season } = prev;
-          const { site, status } = prev;
-          const isYearValid = year && data.years.includes(parseInt(year));
-
-          if (!isYearValid) {
-            // Apply defaults
-            const currentYear = new Date().getFullYear().toString();
-            if (data.years.includes(parseInt(currentYear))) {
-              year = currentYear;
-            } else if (data.years.length > 0) {
-              year = data.years[data.years.length - 1].toString();
-            } else {
-              year = "";
-            }
-
-            // Get current season
-            const seasons = ["Winter", "Spring", "Summer", "Autumn"];
-            season = seasons[Math.floor(new Date().getMonth() / 3)];
-          }
-
-          return { year, season, site, status: status || "all" };
-        });
-      } catch (err) {
-        setInitError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setInitLoading(false);
-      }
-    }
-    init();
-  }, [setSelections]);
-
-  // Filter items
-  const filteredItems = useMemo(() => {
-    let filtered = items;
-
-    if (selectedSite && selectedSite !== "all") {
-      filtered = filtered.filter((item) =>
-        item.sites?.some((s: Site) => s.site === selectedSite),
-      );
-    }
-
-    if (selectedStatus && selectedStatus !== "all") {
-      const status = parseInt(selectedStatus);
-      filtered = filtered.filter((item) => {
-        const itemStatus = item.userStatus || 0;
-        return itemStatus === status;
-      });
-    }
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter((item) => {
-        if (item.title.toLowerCase().includes(query)) return true;
-        if (item.titleTranslate) {
-          return Object.values(item.titleTranslate).some((ts) =>
-            ts?.some((t) => t.toLowerCase().includes(query)),
-          );
-        }
-        return false;
-      });
-    }
-
-    console.log(
-      `Filtered items: ${filtered.length}/${items.length} (Status: ${selectedStatus})`,
-    );
-    return filtered;
-  }, [items, selectedSite, selectedStatus, searchQuery]);
 
   if (error) {
     return (
