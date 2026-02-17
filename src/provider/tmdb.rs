@@ -50,7 +50,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
         let client = self.get_client()?;
 
         // 1. Resolve ID (Search if needed)
-        let (media_id, media_type) = if let Some(id) = id {
+        let media_type = if let Some(id) = id {
             parse_tmdb_id(id)?
         } else if let Some(search_title) = title {
             search_media(&client, search_title, year).await?
@@ -60,19 +60,19 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
 
         // 2. Fetch Details based on type
         match media_type {
-            MediaType::Movie => get_movie_details(&client, media_id).await,
-            MediaType::Tv { show_id, season } => get_tv_details(&client, show_id, season).await,
+            MediaType::Movie(id) => get_movie_details(&client, &id).await,
+            MediaType::Tv { show_id, season } => get_tv_details(&client, &show_id, season).await,
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 enum MediaType {
-    Movie,
+    Movie(String),
     Tv { show_id: String, season: i32 },
 }
 
-fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
+fn parse_tmdb_id(id: &str) -> Result<MediaType> {
     let id = id.trim_start_matches('/');
     // Strip episode part if present
     let id = id.split("/episode/").next().unwrap_or(id);
@@ -90,25 +90,21 @@ fn parse_tmdb_id(id: &str) -> Result<(String, MediaType)> {
                     .map_err(|_| Error::RustError("Invalid season number".into()))?,
                 _ => 1,
             };
-            let show_id_string = show_id.to_string();
-            Ok((
-                show_id_string.clone(),
-                MediaType::Tv {
-                    show_id: show_id_string,
-                    season,
-                },
-            ))
+            Ok(MediaType::Tv {
+                show_id: show_id.to_string(),
+                season,
+            })
         }
         Some("movie") => {
             let movie_id = parts
                 .next()
                 .ok_or_else(|| Error::RustError("Invalid Movie ID format: missing ID".into()))?;
-            Ok((movie_id.to_string(), MediaType::Movie))
+            Ok(MediaType::Movie(movie_id.to_string()))
         }
         Some(s) if !s.is_empty() => {
             // Assume movie if ID is just a number/slug and no other parts exist
             if parts.next().is_none() {
-                Ok((s.to_string(), MediaType::Movie))
+                Ok(MediaType::Movie(s.to_string()))
             } else {
                 Err(Error::RustError("Unknown media type or format".into()))
             }
@@ -121,7 +117,7 @@ async fn search_media(
     client: &AsyncAPIClient,
     title: &str,
     year: Option<i32>,
-) -> Result<(String, MediaType)> {
+) -> Result<MediaType> {
     // Try normalized title search
     let normalized = normalize_title(title);
 
@@ -148,10 +144,10 @@ async fn search_media(
                             if let Some(date_str) = release_date
                                 && date_str.starts_with(&y.to_string())
                             {
-                                return Ok((id_str, MediaType::Movie));
+                                return Ok(MediaType::Movie(id_str));
                             }
                         } else {
-                            return Ok((id_str, MediaType::Movie));
+                            return Ok(MediaType::Movie(id_str));
                         }
                     }
                 }
@@ -166,22 +162,16 @@ async fn search_media(
                             if let Some(date_str) = first_air_date
                                 && date_str.starts_with(&y.to_string())
                             {
-                                return Ok((
-                                    id_str.clone(),
-                                    MediaType::Tv {
-                                        show_id: id_str,
-                                        season: 1,
-                                    },
-                                ));
-                            }
-                        } else {
-                            return Ok((
-                                id_str.clone(),
-                                MediaType::Tv {
+                                return Ok(MediaType::Tv {
                                     show_id: id_str,
                                     season: 1,
-                                },
-                            ));
+                                });
+                            }
+                        } else {
+                            return Ok(MediaType::Tv {
+                                show_id: id_str,
+                                season: 1,
+                            });
                         }
                     }
                 }
@@ -224,13 +214,13 @@ fn normalize_title(title: &str) -> String {
 
 async fn get_movie_details(
     client: &AsyncAPIClient,
-    movie_id: String,
+    movie_id: &str,
 ) -> Result<model::UnifiedMetadata> {
     // Extract ID if it contains a slug (fallback to parsing the whole string if no slug)
     let id: i32 = movie_id
         .split('-')
         .next()
-        .unwrap_or(&movie_id)
+        .unwrap_or(movie_id)
         .parse()
         .map_err(|_| Error::RustError("Invalid movie ID format".into()))?;
 
@@ -245,14 +235,14 @@ async fn get_movie_details(
 
 async fn get_tv_details(
     client: &AsyncAPIClient,
-    show_id: String,
+    show_id: &str,
     season_number: i32,
 ) -> Result<model::UnifiedMetadata> {
     // Extract ID if it contains a slug
     let id: i32 = show_id
         .split('-')
         .next()
-        .unwrap_or(&show_id)
+        .unwrap_or(show_id)
         .parse()
         .map_err(|_| Error::RustError("Invalid show ID format".into()))?;
 
@@ -536,87 +526,69 @@ mod tests {
         // TV Show Cases
         assert_eq!(
             parse_tmdb_id("tv/123").unwrap(),
-            (
-                "123".to_string(),
-                MediaType::Tv {
-                    show_id: "123".to_string(),
-                    season: 1
-                }
-            )
+            MediaType::Tv {
+                show_id: "123".to_string(),
+                season: 1
+            }
         );
         assert_eq!(
             parse_tmdb_id("tv/123/season/2").unwrap(),
-            (
-                "123".to_string(),
-                MediaType::Tv {
-                    show_id: "123".to_string(),
-                    season: 2
-                }
-            )
+            MediaType::Tv {
+                show_id: "123".to_string(),
+                season: 2
+            }
         );
         assert_eq!(
             parse_tmdb_id("/tv/123/season/2").unwrap(),
-            (
-                "123".to_string(),
-                MediaType::Tv {
-                    show_id: "123".to_string(),
-                    season: 2
-                }
-            )
+            MediaType::Tv {
+                show_id: "123".to_string(),
+                season: 2
+            }
         );
         assert_eq!(
             parse_tmdb_id("tv/123/season/2/episode/5").unwrap(),
-            (
-                "123".to_string(),
-                MediaType::Tv {
-                    show_id: "123".to_string(),
-                    season: 2
-                }
-            )
+            MediaType::Tv {
+                show_id: "123".to_string(),
+                season: 2
+            }
         );
 
         // Movie Cases
         assert_eq!(
             parse_tmdb_id("movie/456").unwrap(),
-            ("456".to_string(), MediaType::Movie)
+            MediaType::Movie("456".to_string())
         );
         assert_eq!(
             parse_tmdb_id("456").unwrap(),
-            ("456".to_string(), MediaType::Movie)
+            MediaType::Movie("456".to_string())
         );
         assert_eq!(
             parse_tmdb_id("/movie/456").unwrap(),
-            ("456".to_string(), MediaType::Movie)
+            MediaType::Movie("456".to_string())
         );
 
         // Slugged ID Cases
         assert_eq!(
             parse_tmdb_id("tv/123-show-name").unwrap(),
-            (
-                "123-show-name".to_string(),
-                MediaType::Tv {
-                    show_id: "123-show-name".to_string(),
-                    season: 1
-                }
-            )
+            MediaType::Tv {
+                show_id: "123-show-name".to_string(),
+                season: 1
+            }
         );
         assert_eq!(
             parse_tmdb_id("tv/123-show-name/season/2").unwrap(),
-            (
-                "123-show-name".to_string(),
-                MediaType::Tv {
-                    show_id: "123-show-name".to_string(),
-                    season: 2
-                }
-            )
+            MediaType::Tv {
+                show_id: "123-show-name".to_string(),
+                season: 2
+            }
         );
         assert_eq!(
             parse_tmdb_id("movie/456-movie-name").unwrap(),
-            ("456-movie-name".to_string(), MediaType::Movie)
+            MediaType::Movie("456-movie-name".to_string())
         );
         assert_eq!(
             parse_tmdb_id("456-movie-name").unwrap(),
-            ("456-movie-name".to_string(), MediaType::Movie)
+            MediaType::Movie("456-movie-name".to_string())
         );
 
         // Edge Cases
@@ -625,13 +597,10 @@ mod tests {
         // But "tv/123/season/abc" should still fail because season must be int.
         assert_eq!(
             parse_tmdb_id("tv/abc").unwrap(),
-            (
-                "abc".to_string(),
-                MediaType::Tv {
-                    show_id: "abc".to_string(),
-                    season: 1
-                }
-            )
+            MediaType::Tv {
+                show_id: "abc".to_string(),
+                season: 1
+            }
         );
         assert!(parse_tmdb_id("tv/123/season/abc").is_err());
         assert!(parse_tmdb_id("").is_err());
