@@ -1,10 +1,11 @@
+import React from "react";
 import { render, screen } from "@testing-library/react";
-import DetailsModal from "./DetailsModal";
+import DetailsModal from ".";
 import { describe, it, expect, vi } from "vitest";
-import { SiteMeta, DisplayAnimeItem, UnifiedMetadata } from "../types";
+import { SiteMeta, DisplayAnimeItem, UnifiedMetadata } from "../../types";
 
 // Mock AuthContext
-vi.mock("../contexts/AuthContext", () => ({
+vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
     loggedIn: false,
     user: null,
