@@ -376,11 +376,10 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
 fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> model::UnifiedMetadata {
     use model::*;
 
-    let native_title = match (show.name.as_deref(), season.name.as_deref()) {
+    let native_title = match (show.name, season.name) {
         (Some(show_name), Some(season_name)) => Some(format!("{} : {}", show_name, season_name)),
-        (Some(show_name), None) => Some(show_name.to_string()),
-        (None, Some(season_name)) => Some(season_name.to_string()),
-        (None, None) => None,
+        (Some(show_name), None) => Some(show_name),
+        (None, season_name) => season_name,
     };
 
     let title = UniversalTitle {
