@@ -379,8 +379,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let native_title = match (show.name, season.name) {
         (Some(show_name), Some(season_name)) => Some(format!("{} : {}", show_name, season_name)),
         (Some(show_name), None) => Some(show_name),
-        (None, Some(season_name)) => Some(season_name),
-        (None, None) => None,
+        (None, season_name) => season_name,
     };
 
     let title = UniversalTitle {
