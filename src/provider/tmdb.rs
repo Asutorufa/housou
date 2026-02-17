@@ -60,7 +60,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
 
         // 2. Fetch Details based on type
         match media_type {
-            MediaType::Movie(id) => get_movie_details(&client, id).await,
+            MediaType::Movie(id) => get_movie_details(&client, &id).await,
             MediaType::Tv { show_id, season } => get_tv_details(&client, show_id, season).await,
         }
     }
@@ -214,13 +214,13 @@ fn normalize_title(title: &str) -> String {
 
 async fn get_movie_details(
     client: &AsyncAPIClient,
-    movie_id: String,
+    movie_id: &str,
 ) -> Result<model::UnifiedMetadata> {
     // Extract ID if it contains a slug (fallback to parsing the whole string if no slug)
     let id: i32 = movie_id
         .split('-')
         .next()
-        .unwrap_or(&movie_id)
+        .unwrap_or(movie_id)
         .parse()
         .map_err(|_| Error::RustError("Invalid movie ID format".into()))?;
 
