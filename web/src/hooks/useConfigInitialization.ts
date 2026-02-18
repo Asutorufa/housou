@@ -10,9 +10,13 @@ export function useConfigInitialization(
 
   // Initialization
   useEffect(() => {
+    const controller = new AbortController();
+
     async function init() {
       try {
-        const response = await fetch(`/api/config?v=${new Date().getTime()}`);
+        const response = await fetch(`/api/config?v=${new Date().getTime()}`, {
+          signal: controller.signal,
+        });
         if (!response.ok) throw new Error("Config fetch failed");
         const data: Config = await response.json();
         setConfig(data);
@@ -42,12 +46,19 @@ export function useConfigInitialization(
           return { year, season, site, status: status || "all" };
         });
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
         setInitError(err instanceof Error ? err.message : String(err));
       } finally {
-        setInitLoading(false);
+        if (!controller.signal.aborted) {
+          setInitLoading(false);
+        }
       }
     }
     init();
+
+    return () => {
+      controller.abort();
+    };
   }, [setSelections]);
 
   return { config, initError, initLoading };
