@@ -170,6 +170,92 @@ fn get_rp_name() -> String {
     "Housou".to_string()
 }
 
+// Helper structs and functions
+#[derive(Deserialize)]
+struct ClientDataJson {
+    challenge: String,
+    origin: String,
+    #[serde(rename = "type")]
+    type_: String,
+}
+
+struct AuthData {
+    rp_id_hash: Vec<u8>,
+    flags: u8,
+    sign_count: u32,
+    credential_data: Option<Vec<u8>>,
+}
+
+fn verify_client_data(
+    client_data_json_b64: &str,
+    expected_challenge: &str,
+    env: &Env,
+    expected_type: &str,
+) -> Result<ClientDataJson> {
+    let client_data_bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(client_data_json_b64)
+        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {}", e)))?;
+    let client_data: ClientDataJson = serde_json::from_slice(&client_data_bytes)?;
+
+    if client_data.challenge != expected_challenge {
+        return Err(Error::RustError("Challenge mismatch".to_string()));
+    }
+
+    let expected_origin = env
+        .var("BASE_URL")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|_| "http://localhost:8787".to_string());
+    let expected_origin = expected_origin.trim_end_matches('/');
+
+    if client_data.origin != expected_origin {
+        return Err(Error::RustError(format!(
+            "Origin mismatch: expected {}, got {}",
+            expected_origin, client_data.origin
+        )));
+    }
+
+    if client_data.type_ != expected_type {
+        return Err(Error::RustError("Invalid operation type".to_string()));
+    }
+
+    Ok(client_data)
+}
+
+fn parse_auth_data(auth_data_bytes: &[u8]) -> Result<AuthData> {
+    if auth_data_bytes.len() < 37 {
+        return Err(Error::RustError("authData too short".to_string()));
+    }
+
+    let rp_id_hash = auth_data_bytes[0..32].to_vec();
+    let flags = auth_data_bytes[32];
+    let sign_count_bytes: [u8; 4] = auth_data_bytes[33..37].try_into().unwrap();
+    let sign_count = u32::from_be_bytes(sign_count_bytes);
+
+    let credential_data = if (flags & 0x40) != 0 {
+        Some(auth_data_bytes[37..].to_vec())
+    } else {
+        None
+    };
+
+    Ok(AuthData {
+        rp_id_hash,
+        flags,
+        sign_count,
+        credential_data,
+    })
+}
+
+fn verify_rp_id_hash(rp_id_hash: &[u8], env: &Env) -> Result<()> {
+    let expected_rp_id = get_rp_id(env);
+    let mut hasher = Sha256::new();
+    hasher.update(expected_rp_id.as_bytes());
+    let expected_hash = hasher.finalize();
+    if rp_id_hash != expected_hash.as_slice() {
+        return Err(Error::RustError("RP ID Hash mismatch".to_string()));
+    }
+    Ok(())
+}
+
 // Start Registration
 pub async fn start_registration<D: Database>(
     db: &D,
@@ -251,15 +337,6 @@ pub async fn start_registration<D: Database>(
     Ok(options)
 }
 
-// Finish Registration
-#[derive(Deserialize)]
-struct ClientDataJson {
-    challenge: String,
-    origin: String,
-    #[serde(rename = "type")]
-    type_: String,
-}
-
 pub async fn finish_registration<D: Database>(
     db: &D,
     user: &User,
@@ -274,39 +351,15 @@ pub async fn finish_registration<D: Database>(
         .ok_or_else(|| Error::RustError("Registration session expired or invalid".to_string()))?;
     let state: RegistrationState = serde_json::from_str(&state_record.state_json)?;
 
-    // 2. Parse ClientDataJSON
-    let client_data_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&response.response.client_data_json)
-        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {}", e)))?;
-    let client_data: ClientDataJson = serde_json::from_slice(&client_data_bytes)?;
+    // 2. Parse & Verify ClientDataJSON
+    let _client_data = verify_client_data(
+        &response.response.client_data_json,
+        &state.challenge,
+        env,
+        "webauthn.create",
+    )?;
 
-    // 3. Verify Challenge
-    if client_data.challenge != state.challenge {
-        return Err(Error::RustError("Challenge mismatch".to_string()));
-    }
-
-    // 4. Verify Origin
-    let origin = client_data.origin;
-    let expected_origin = env
-        .var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
-
-    // Simple origin check (remove trailing slash if needed)
-    let expected_origin = expected_origin.trim_end_matches('/');
-    if origin != expected_origin {
-        return Err(Error::RustError(format!(
-            "Origin mismatch: expected {}, got {}",
-            expected_origin, origin
-        )));
-    }
-
-    // 5. Verify Type
-    if client_data.type_ != "webauthn.create" {
-        return Err(Error::RustError("Invalid operation type".to_string()));
-    }
-
-    // 6. Parse AttestationObject (CBOR)
+    // 3. Parse AttestationObject (CBOR)
     let att_obj_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.attestation_object)
         .map_err(|e| Error::RustError(format!("Invalid attestationObject base64: {}", e)))?;
@@ -331,62 +384,33 @@ pub async fn finish_registration<D: Database>(
         }
     };
 
-    // Parse AuthData
-    // https://www.w3.org/TR/webauthn-2/#sctn-authenticator-data
-    // 32 bytes rpIdHash
-    // 1 byte flags
-    // 4 bytes signCount
-    // attestedCredentialData (variable)
-    if auth_data_bytes.len() < 37 {
-        return Err(Error::RustError("authData too short".to_string()));
-    }
-
-    let rp_id_hash = &auth_data_bytes[0..32];
-    let flags = auth_data_bytes[32];
-    let sign_count_bytes: [u8; 4] = auth_data_bytes[33..37].try_into().unwrap();
-    let sign_count = u32::from_be_bytes(sign_count_bytes);
-
-    // Verify RP ID Hash
-    let expected_rp_id = get_rp_id(env);
-    let mut hasher = Sha256::new();
-    hasher.update(expected_rp_id.as_bytes());
-    let expected_hash = hasher.finalize();
-    if rp_id_hash != expected_hash.as_slice() {
-        return Err(Error::RustError("RP ID Hash mismatch".to_string()));
-    }
+    // 4. Parse & Verify AuthData
+    let auth_data = parse_auth_data(auth_data_bytes)?;
+    verify_rp_id_hash(&auth_data.rp_id_hash, env)?;
 
     // Verify User Present flag (bit 0)
-    if (flags & 0x01) == 0 {
+    if (auth_data.flags & 0x01) == 0 {
         return Err(Error::RustError("User Present flag not set".to_string()));
     }
 
     // Extract AttestedCredentialData
-    // Present if bit 6 (AT) is set
-    if (flags & 0x40) == 0 {
-        return Err(Error::RustError(
-            "Attested Credential Data missing".to_string(),
-        ));
-    }
+    let credential_data_bytes = auth_data
+        .credential_data
+        .ok_or_else(|| Error::RustError("Attested Credential Data missing".to_string()))?;
 
-    let credential_data = &auth_data_bytes[37..];
-    // 16 bytes AAGUID
-    // 2 bytes credentialIdLength (L)
-    // L bytes credentialId
-    // credentialPublicKey (variable CBOR)
-
-    if credential_data.len() < 18 {
+    if credential_data_bytes.len() < 18 {
         return Err(Error::RustError("Credential Data too short".to_string()));
     }
 
-    let cred_id_len_bytes: [u8; 2] = credential_data[16..18].try_into().unwrap();
+    let cred_id_len_bytes: [u8; 2] = credential_data_bytes[16..18].try_into().unwrap();
     let cred_id_len = u16::from_be_bytes(cred_id_len_bytes) as usize;
 
-    if credential_data.len() < 18 + cred_id_len {
+    if credential_data_bytes.len() < 18 + cred_id_len {
         return Err(Error::RustError("Credential ID incomplete".to_string()));
     }
 
-    let credential_id = &credential_data[18..18 + cred_id_len];
-    let public_key_cbor = &credential_data[18 + cred_id_len..];
+    let credential_id = &credential_data_bytes[18..18 + cred_id_len];
+    let public_key_cbor = &credential_data_bytes[18 + cred_id_len..];
 
     // Validate Public Key (Basic check that it parses)
     let _cose_key: CoseKey = CoseKey::from_slice(public_key_cbor)
@@ -405,7 +429,7 @@ pub async fn finish_registration<D: Database>(
         &cred_id_str,
         &pub_key_str,
         &name,
-        sign_count as i64,
+        auth_data.sign_count as i64,
     )
     .await?;
 
@@ -465,60 +489,28 @@ pub async fn finish_login<D: Database>(db: &D, env: &Env, response: LoginRespons
     })?;
     let state: LoginState = serde_json::from_str(&state_record.state_json)?;
 
-    // 2. Verify Challenge
-    if client_data.challenge != state.challenge {
-        return Err(Error::RustError("Challenge mismatch".to_string()));
-    }
+    // 2. Parse & Verify ClientDataJSON
+    let _client_data = verify_client_data(
+        &response.response.client_data_json,
+        &state.challenge,
+        env,
+        "webauthn.get",
+    )?;
 
-    // 3. Verify Origin
-    let origin = client_data.origin;
-    let expected_origin = env
-        .var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
-
-    let expected_origin = expected_origin.trim_end_matches('/');
-    if origin != expected_origin {
-        return Err(Error::RustError(format!(
-            "Origin mismatch: expected {}, got {}",
-            expected_origin, origin
-        )));
-    }
-
-    // 4. Verify Type
-    if client_data.type_ != "webauthn.get" {
-        return Err(Error::RustError("Invalid operation type".to_string()));
-    }
-
-    // 5. Parse AuthenticatorData
+    // 3. Parse & Verify AuthenticatorData
     let auth_data_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.authenticator_data)
         .map_err(|e| Error::RustError(format!("Invalid authenticatorData base64: {}", e)))?;
 
-    if auth_data_bytes.len() < 37 {
-        return Err(Error::RustError("authData too short".to_string()));
-    }
-
-    let rp_id_hash = &auth_data_bytes[0..32];
-    let flags = auth_data_bytes[32];
-    let sign_count_bytes: [u8; 4] = auth_data_bytes[33..37].try_into().unwrap();
-    let sign_count = u32::from_be_bytes(sign_count_bytes);
-
-    // Verify RP ID Hash
-    let expected_rp_id = get_rp_id(env);
-    let mut hasher = Sha256::new();
-    hasher.update(expected_rp_id.as_bytes());
-    let expected_hash = hasher.finalize();
-    if rp_id_hash != expected_hash.as_slice() {
-        return Err(Error::RustError("RP ID Hash mismatch".to_string()));
-    }
+    let auth_data = parse_auth_data(&auth_data_bytes)?;
+    verify_rp_id_hash(&auth_data.rp_id_hash, env)?;
 
     // Verify User Present flag
-    if (flags & 0x01) == 0 {
+    if (auth_data.flags & 0x01) == 0 {
         return Err(Error::RustError("User Present flag not set".to_string()));
     }
 
-    // 6. Verify Signature
+    // 4. Verify Signature
     // Retrieve Passkey from DB
     let passkey = db
         .get_passkey(&response.id)
@@ -591,26 +583,28 @@ pub async fn finish_login<D: Database>(db: &D, env: &Env, response: LoginRespons
     // Verify
     verifying_key
         .verify(&signed_data, &signature)
-        .map_err(|e| Error::RustError(format!("Signature verification failed: {}", e)))?;
+        .map_err(|e| {
+            console_error!("Signature verification failed: {}", e);
+            Error::RustError("Signature verification failed".to_string())
+        })?;
 
     // 7. Counter Check (Clone Protection)
-    if sign_count <= passkey.counter as u32 && sign_count != 0 {
+    if auth_data.sign_count <= passkey.counter as u32 && auth_data.sign_count != 0 {
         // Note: Some authenticators return 0. If it was non-zero before and now 0 or less, it's suspicious.
         // But for simplicity, we just enforce strictly increasing if stored is > 0
         if passkey.counter > 0 {
-            console_warn!(
+            console_error!(
                 "Signature counter regression! Stored: {}, Received: {}",
                 passkey.counter,
-                sign_count
+                auth_data.sign_count
             );
-            // In strict mode we should fail.
-            // return Err(Error::RustError("Signature counter regression".to_string()));
+            return Err(Error::RustError("Signature counter regression".to_string()));
         }
     }
 
     // Update counter and last used
     let now = Date::now().as_millis() as i64;
-    db.update_passkey_counter(&passkey.cred_id, sign_count as i64, now)
+    db.update_passkey_counter(&passkey.cred_id, auth_data.sign_count as i64, now)
         .await?;
 
     // Cleanup state
