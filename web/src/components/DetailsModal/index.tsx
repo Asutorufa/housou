@@ -62,12 +62,14 @@ export default function DetailsModal(props: DetailsModalProps) {
 }
 
 function DetailsModalContent({
+  isOpen: _isOpen,
   onClose,
   anime,
   items,
   siteMeta,
   onUpdate,
-}: DetailsModalProps) {
+  ...radixProps
+}: DetailsModalProps & Record<string, unknown>) {
   const { loggedIn, apiFetch } = useAuth();
   const { title, info } = anime || { title: "", info: null };
 
@@ -105,6 +107,7 @@ function DetailsModalContent({
 
   return (
     <div
+      {...radixProps}
       className="fixed inset-0 z-[110] flex cursor-pointer items-center justify-center overflow-y-auto p-4 sm:p-6"
       onClick={onClose}
     >
