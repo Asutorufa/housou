@@ -2,8 +2,8 @@ use crate::ResponseExt;
 use crate::db::{AppDatabase, Database, User};
 use crate::model::UserStatus;
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use cookie::{Cookie, SameSite, time::Duration};
 use serde::Deserialize;
@@ -270,8 +270,7 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
     }
 
     let new_password_hash = hash_password(&body.new_password).map_err(Error::RustError)?;
-    db.update_user_password(user.id, &new_password_hash)
-        .await?;
+    db.update_user_password(user.id, &new_password_hash).await?;
 
     Response::ok("Password updated")
 }
@@ -484,6 +483,9 @@ mod tests {
     #[test]
     fn test_verify_invalid_hash() {
         assert!(!verify_password("password", "invalidhash"));
-        assert!(!verify_password("password", "$2y$12$invalidbcrpythashformat"));
+        assert!(!verify_password(
+            "password",
+            "$2y$12$invalidbcrpythashformat"
+        ));
     }
 }
