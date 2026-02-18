@@ -17,6 +17,9 @@ pub const SESSION_DURATION_DAYS: i64 = 30;
 const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
 const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
+const EMAIL_IN_USE_ERR: &str = "Email already in use";
+const USERNAME_TAKEN_ERR: &str = "Username already taken";
+
 // Helper to get DB
 pub fn get_db(env: &Env) -> Result<AppDatabase> {
     let d1 = env.d1("DB")?;
@@ -355,13 +358,7 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
         .add_header("Set-Cookie", &create_oauth_state_cookie(&state, secure))
 }
 
-pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
-    let url = req.url()?;
-    let query_params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
-    let code = query_params.get("code").cloned();
-    let state = query_params.get("state").cloned();
-
-    // Verify State (CSRF)
+fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
     let mut stored_state = None;
 
@@ -372,7 +369,114 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         }
     }
 
-    if state.is_none() || stored_state.is_none() || state != stored_state {
+    if query_state.is_none() || stored_state.is_none() || query_state != stored_state.as_deref() {
+        return Err(Error::RustError(
+            "Invalid or missing OAuth state".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn exchange_code_for_token(
+    code: &str,
+    client_id: &str,
+    client_secret: &str,
+) -> Result<String> {
+    let token_url = "https://github.com/login/oauth/access_token";
+    let body = serde_json::json!({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code
+    });
+
+    let headers = Headers::new();
+    headers.set("Accept", "application/json")?;
+    headers.set("Content-Type", "application/json")?;
+    headers.set("User-Agent", "housou-worker")?;
+
+    let mut init = RequestInit::new();
+    init.with_method(Method::Post);
+    init.with_headers(headers);
+    init.with_body(Some(JsValue::from_str(&body.to_string())));
+
+    let req_post = Request::new_with_init(token_url, &init)?;
+    let mut resp = Fetch::Request(req_post).send().await?;
+
+    if resp.status_code() != 200 {
+        return Err(Error::RustError(format!(
+            "GitHub Token Error: {}",
+            resp.status_code()
+        )));
+    }
+
+    let token_data: GithubTokenResponse = resp.json().await?;
+    Ok(token_data.access_token)
+}
+
+async fn fetch_github_user(access_token: &str) -> Result<GithubUser> {
+    let user_url = "https://api.github.com/user";
+    let headers = Headers::new();
+    headers.set("Authorization", &format!("Bearer {}", access_token))?;
+    headers.set("User-Agent", "housou-worker")?;
+    headers.set("Accept", "application/json")?;
+
+    let mut init = RequestInit::new();
+    init.with_method(Method::Get);
+    init.with_headers(headers);
+
+    let req_get = Request::new_with_init(user_url, &init)?;
+    let mut user_resp = Fetch::Request(req_get).send().await?;
+
+    if user_resp.status_code() != 200 {
+        return Err(Error::RustError(format!(
+            "GitHub User Error: {}",
+            user_resp.status_code()
+        )));
+    }
+
+    let gh_user: GithubUser = user_resp.json().await?;
+    Ok(gh_user)
+}
+
+async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> Result<User> {
+    let gh_id_str = gh_user.id.to_string();
+
+    if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
+        Ok(u)
+    } else {
+        let email = gh_user
+            .email
+            .clone()
+            .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
+
+        if (db.get_user_by_email(&email).await?).is_some() {
+            return Err(Error::RustError(EMAIL_IN_USE_ERR.to_string()));
+        }
+        if (db.get_user_by_username(&gh_user.login).await?).is_some() {
+            return Err(Error::RustError(USERNAME_TAKEN_ERR.to_string()));
+        }
+
+        let user = db
+            .create_user(
+                &email,
+                &gh_user.login,
+                None,
+                Some(&gh_id_str),
+                gh_user.avatar_url.as_deref(),
+            )
+            .await?;
+        Ok(user)
+    }
+}
+
+pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
+    let url = req.url()?;
+    let query_params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+    let code = query_params.get("code").cloned();
+    let state = query_params.get("state").cloned();
+
+    // Verify State (CSRF)
+    if verify_oauth_state(&req, state.as_deref()).is_err() {
         return Response::error("Invalid or missing OAuth state", 403);
     }
 
@@ -380,86 +484,20 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
         let client_secret = env.var("GITHUB_CLIENT_SECRET")?.to_string();
 
-        // Exchange code for token
-        let token_url = "https://github.com/login/oauth/access_token";
-        let body = serde_json::json!({
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": code
-        });
-
-        let headers = Headers::new();
-        headers.set("Accept", "application/json")?;
-        headers.set("Content-Type", "application/json")?;
-        headers.set("User-Agent", "housou-worker")?;
-
-        let mut init = RequestInit::new();
-        init.with_method(Method::Post);
-        init.with_headers(headers);
-        init.with_body(Some(JsValue::from_str(&body.to_string())));
-
-        let req_post = Request::new_with_init(token_url, &init)?;
-        let mut resp = Fetch::Request(req_post).send().await?;
-
-        if resp.status_code() != 200 {
-            return Response::error(format!("GitHub Token Error: {}", resp.status_code()), 500);
-        }
-
-        let token_data: GithubTokenResponse = resp.json().await?;
-
-        // Get user info
-        let user_url = "https://api.github.com/user";
-        let headers = Headers::new();
-        headers.set(
-            "Authorization",
-            &format!("Bearer {}", token_data.access_token),
-        )?;
-        headers.set("User-Agent", "housou-worker")?;
-        headers.set("Accept", "application/json")?;
-
-        let mut init = RequestInit::new();
-        init.with_method(Method::Get);
-        init.with_headers(headers);
-
-        let req_get = Request::new_with_init(user_url, &init)?;
-        let mut user_resp = Fetch::Request(req_get).send().await?;
-
-        if user_resp.status_code() != 200 {
-            return Response::error(
-                format!("GitHub User Error: {}", user_resp.status_code()),
-                500,
-            );
-        }
-
-        let gh_user: GithubUser = user_resp.json().await?;
-        let gh_id_str = gh_user.id.to_string();
+        let access_token = exchange_code_for_token(&code, &client_id, &client_secret).await?;
+        let gh_user = fetch_github_user(&access_token).await?;
 
         let db = get_db(&env)?;
 
-        // Find or create user
-        let user = if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
-            u
-        } else {
-            let email = gh_user
-                .email
-                .clone()
-                .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
-
-            if (db.get_user_by_email(&email).await?).is_some() {
-                return Response::error("Email already in use", 400);
+        let user = match find_or_create_github_user(&db, &gh_user).await {
+            Ok(u) => u,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains(EMAIL_IN_USE_ERR) || msg.contains(USERNAME_TAKEN_ERR) {
+                    return Response::error(msg, 400);
+                }
+                return Err(e);
             }
-            if (db.get_user_by_username(&gh_user.login).await?).is_some() {
-                return Response::error("Username already taken", 400);
-            }
-
-            db.create_user(
-                &email,
-                &gh_user.login,
-                None,
-                Some(&gh_id_str),
-                gh_user.avatar_url.as_deref(),
-            )
-            .await?
         };
 
         // Create session
