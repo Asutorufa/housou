@@ -127,8 +127,7 @@ fn get_argon2_instance() -> &'static Argon2<'static> {
 
 pub fn hash_password(password: &str) -> std::result::Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = get_argon2_instance();
-    argon2
+    get_argon2_instance()
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
         .map_err(|e| e.to_string())
