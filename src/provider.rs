@@ -36,29 +36,38 @@ pub trait MetadataProvider {
 
 /// Helper to generate a cache key URL for a request
 fn get_cache_key(req: &MetadataRequest, host: &str) -> String {
-    let mut params = url::form_urlencoded::Serializer::new(String::new());
-    if let Some(ref t) = req.title {
-        params.append_pair("title", t);
-    }
-    if let Some(ref id) = req.tmdb_id {
-        params.append_pair("tmdb_id", id);
+    let mut params_map = std::collections::BTreeMap::new();
+
+    if let Some(ref id) = req.anilist_id {
+        params_map.insert("anilist_id", id.as_str());
     }
     if let Some(ref id) = req.mal_id {
-        params.append_pair("mal_id", id);
+        params_map.insert("mal_id", id.as_str());
     }
-    if let Some(ref id) = req.anilist_id {
-        params.append_pair("anilist_id", id);
+    if let Some(ref t) = req.title {
+        params_map.insert("title", t.as_str());
     }
+    if let Some(ref id) = req.tmdb_id {
+        params_map.insert("tmdb_id", id.as_str());
+    }
+    let year_str; // Define lifetime outside
     if let Some(y) = req.year {
-        params.append_pair("year", &y.to_string());
+        year_str = y.to_string();
+        params_map.insert("year", year_str.as_str());
     }
+
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (k, v) in params_map {
+        serializer.append_pair(k, v);
+    }
+
     // "begin" was also used in handlers.rs logic to derive year, but here we just use year.
     // We should ensure the key matches what GET /api/metadata generates if we want shared cache.
     // But since we are creating a new internal cache path for consistency, let's stick to this.
     // Ideally we match `handlers::handle_metadata` URL construction.
     // But `handlers::handle_metadata` uses incoming request URL which might have extra params or different order.
     // For now, consistent internal key is sufficient.
-    format!("https://{}/api/metadata?{}", host, params.finish())
+    format!("https://{}/api/metadata?{}", host, serializer.finish())
 }
 
 pub async fn fetch_metadata(
