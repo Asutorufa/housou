@@ -32,9 +32,10 @@ interface AuthContextType {
   }) => Promise<void>;
   apiFetch: (url: string, init?: RequestInit) => Promise<Response>;
   loginPasskey: () => Promise<void>;
-  registerPasskey: () => Promise<void>;
+  registerPasskey: (name?: string) => Promise<void>;
   listPasskeys: () => Promise<PasskeySummary[]>;
   deletePasskey: (id: string) => Promise<void>;
+  renamePasskey: (id: string, name: string) => Promise<void>;
 }
 
 // Separate Error type for API responses
@@ -233,7 +234,7 @@ export function AuthProvider({
     mutate(user, false);
   }, [mutate]);
 
-  const registerPasskey = useCallback(async () => {
+  const registerPasskey = useCallback(async (name?: string) => {
     const resp = await fetch("/api/auth/passkey/register/start", {
       method: "POST",
     });
@@ -251,7 +252,7 @@ export function AuthProvider({
     const verificationResp = await fetch("/api/auth/passkey/register/finish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(attResp),
+      body: JSON.stringify({ ...attResp, name }),
     });
 
     if (!verificationResp.ok) {
@@ -273,6 +274,15 @@ export function AuthProvider({
     if (!res.ok) throw new Error("Failed to delete passkey");
   }, []);
 
+  const renamePasskey = useCallback(async (id: string, name: string) => {
+    const res = await fetch("/api/auth/passkey", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name }),
+    });
+    if (!res.ok) throw new Error("Failed to rename passkey");
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -289,6 +299,7 @@ export function AuthProvider({
         registerPasskey,
         listPasskeys,
         deletePasskey,
+        renamePasskey,
       }}
     >
       {children}

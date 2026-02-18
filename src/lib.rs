@@ -368,6 +368,9 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
         (Method::Delete, "/api/auth/passkey") if auth_enabled => {
             passkey::handle_delete(req, env.clone()).await
         }
+        (Method::Patch, "/api/auth/passkey") if auth_enabled => {
+            passkey::handle_rename(req, env.clone()).await
+        }
 
         // Handle Options for CORS on auth routes
         (Method::Options, path)

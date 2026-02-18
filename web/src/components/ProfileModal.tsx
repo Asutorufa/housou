@@ -1,6 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Eye, EyeOff, KeyRound, Lock, User, X } from "lucide-react";
+import {
+  Check,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Lock,
+  Pencil,
+  User,
+  X,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type PasskeySummary, useAuth } from "../contexts/AuthContext";
@@ -252,10 +261,13 @@ function SecurityTab() {
 }
 
 function PasskeyTab() {
-  const { registerPasskey, listPasskeys, deletePasskey } = useAuth();
+  const { registerPasskey, listPasskeys, deletePasskey, renamePasskey } =
+    useAuth();
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
 
   const loadPasskeys = useCallback(async () => {
     try {
@@ -270,16 +282,63 @@ function PasskeyTab() {
     loadPasskeys();
   }, [loadPasskeys]);
 
+  const getDeviceName = () => {
+    const ua = navigator.userAgent;
+    let os = "Unknown OS";
+    if (ua.includes("Mac")) os = "macOS";
+    else if (ua.includes("Win")) os = "Windows";
+    else if (ua.includes("iPhone")) os = "iPhone";
+    else if (ua.includes("iPad")) os = "iPad";
+    else if (ua.includes("Android")) os = "Android";
+    else if (ua.includes("Linux")) os = "Linux";
+
+    let browser = "Unknown Browser";
+    if (ua.includes("Edg")) browser = "Edge";
+    else if (ua.includes("Chrome")) browser = "Chrome";
+    else if (ua.includes("Firefox")) browser = "Firefox";
+    else if (ua.includes("Safari")) browser = "Safari";
+
+    return `${os} (${browser})`;
+  };
+
   const handleAdd = async () => {
     setLoading(true);
     setError(null);
     try {
-      await registerPasskey();
+      await registerPasskey(getDeviceName());
       await loadPasskeys();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add passkey");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startEdit = (pk: PasskeySummary) => {
+    setEditingId(pk.id);
+    setEditName(pk.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditName("");
+  };
+
+  const saveEdit = async (id: string) => {
+    if (
+      !editName.trim() ||
+      editName === passkeys.find((p) => p.id === id)?.name
+    ) {
+      cancelEdit();
+      return;
+    }
+
+    try {
+      await renamePasskey(id, editName);
+      setEditingId(null);
+      await loadPasskeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rename passkey");
     }
   };
 
@@ -329,29 +388,77 @@ function PasskeyTab() {
               key={pk.id}
               className="flex items-center justify-between rounded-lg border border-gray-200 p-3 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/50"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-900/20">
+              <div className="flex items-center gap-3 flex-1">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-900/20">
                   <KeyRound
                     size={14}
                     className="text-blue-600 dark:text-blue-400"
                   />
                 </div>
-                <div>
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {pk.name}
+                {editingId === pk.id ? (
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full max-w-[200px] rounded-md border border-gray-300 bg-transparent px-2 py-1 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:text-gray-100"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveEdit(pk.id);
+                      if (e.key === "Escape") cancelEdit();
+                    }}
+                  />
+                ) : (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {pk.name}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      登録日: {new Date(pk.createdAt).toLocaleDateString()}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    登録日: {new Date(pk.createdAt).toLocaleDateString()}
-                  </div>
-                </div>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(pk.id)}
-                className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
-              >
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                {editingId === pk.id ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => saveEdit(pk.id)}
+                      className="rounded-full p-1.5 text-green-600 transition-colors hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+                      title="保存"
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                      title="キャンセル"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(pk)}
+                      className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                      title="名前を変更"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(pk.id)}
+                      className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                      title="削除"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           ))}
         </div>

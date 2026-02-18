@@ -55,6 +55,7 @@ pub trait PasskeyStore {
         new_counter: i64,
         last_used_at: i64,
     ) -> Result<()>;
+    async fn update_passkey_name(&self, cred_id: &str, new_name: &str) -> Result<()>;
 
     // Ephemeral state (challenge ↔ session)
     async fn save_state(&self, id: &str, state_json: &str, expires_at: i64) -> Result<()>;
@@ -189,6 +190,8 @@ pub struct RegistrationResponse {
     pub response: AttestationResponse,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_extension_results: Option<serde_json::Value>,
+    // Extension: Allow defining a name for the credential
+    pub name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -505,6 +508,19 @@ pub async fn finish_registration<S: PasskeyStore>(
         .ok_or_else(|| Error::RustError("Attested Credential Data missing".into()))?;
     let (cred_id, pub_key_cbor) = extract_credential(&cred_bytes)?;
 
+    // Extract AAGUID from credential data (first 16 bytes)
+    let aaguid = if cred_bytes.len() >= 16 {
+        let aaguid_bytes: [u8; 16] = cred_bytes[0..16].try_into().unwrap();
+        let uuid = uuid::Uuid::from_bytes(aaguid_bytes);
+        if uuid.is_nil() {
+            None
+        } else {
+            Some(uuid.to_string())
+        }
+    } else {
+        None
+    };
+
     // Validate the public key parses
     CoseKey::from_slice(pub_key_cbor)
         .map_err(|e| Error::RustError(format!("Invalid Public Key CBOR: {e}")))?;
@@ -512,12 +528,20 @@ pub async fn finish_registration<S: PasskeyStore>(
     // 6. Store credential
     let cred_id_b64 = BASE64_URL_SAFE_NO_PAD.encode(cred_id);
     let pub_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(pub_key_cbor);
+
+    let passkey_name = match (response.name.as_deref(), aaguid) {
+        (Some(name), Some(id)) => format!("{}-{}", name, id),
+        (Some(name), None) => name.to_string(),
+        (None, Some(id)) => format!("Passkey-{}", id),
+        (None, None) => "Passkey".to_string(),
+    };
+
     store
         .create_passkey(
             user.id,
             &cred_id_b64,
             &pub_key_b64,
-            "Passkey",
+            &passkey_name,
             auth_data.sign_count as i64,
         )
         .await?;
@@ -620,7 +644,7 @@ pub async fn finish_login<S: PasskeyStore + UserLookup>(
     verify_p256_signature(&pub_key_bytes, &signed_data, &sig_bytes)?;
 
     // 7. Counter check (clone detection)
-    if auth_data.sign_count <= passkey.counter as u32
+    if (auth_data.sign_count as i64) <= passkey.counter
         && auth_data.sign_count != 0
         && passkey.counter > 0
     {
@@ -749,5 +773,32 @@ pub async fn handle_delete(req: Request, env: Env) -> Result<Response> {
             Response::ok("Deleted")
         }
         None => Response::error("Missing id", 400),
+    }
+}
+
+pub async fn handle_rename(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match auth::get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    #[derive(Deserialize)]
+    struct RenameRequest {
+        id: String,
+        name: String,
+    }
+
+    let body: RenameRequest = req.json().await?;
+    let db = auth::get_db(&env)?;
+
+    // Verify ownership and existence
+    let passkey = db.get_passkey(&body.id).await?;
+    match passkey {
+        Some(pk) if pk.user_id == user.id => {
+            db.update_passkey_name(&body.id, &body.name).await?;
+            Response::ok("Renamed")
+        }
+        Some(_) => Response::error("Unauthorized", 401),
+        None => Response::error("Passkey not found", 404),
     }
 }
