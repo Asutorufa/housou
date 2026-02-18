@@ -7,6 +7,7 @@ use argon2::{
 };
 use cookie::{Cookie, SameSite, time::Duration};
 use serde::Deserialize;
+use std::sync::OnceLock;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
 use worker::*;
@@ -118,9 +119,15 @@ struct UpdateItemRequest {
     score: Option<i32>,
 }
 
+static ARGON2_INSTANCE: OnceLock<Argon2> = OnceLock::new();
+
+fn get_argon2_instance() -> &'static Argon2<'static> {
+    ARGON2_INSTANCE.get_or_init(Argon2::default)
+}
+
 pub fn hash_password(password: &str) -> std::result::Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
+    let argon2 = get_argon2_instance();
     argon2
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
@@ -132,7 +139,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         Ok(h) => h,
         Err(_) => return false,
     };
-    Argon2::default()
+    get_argon2_instance()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok()
 }
