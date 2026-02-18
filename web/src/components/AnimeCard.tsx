@@ -58,24 +58,26 @@ export default function AnimeCard({
         (s) => s.site === "aniList" || s.site === "anilist",
       );
 
-      let url = `/api/metadata?title=${encodeURIComponent(item.title)}`;
+      const params = new URLSearchParams();
+      params.append("title", item.title);
 
       if (tmdbSite?.id) {
-        url += `&tmdb_id=${encodeURIComponent(tmdbSite.id)}`;
+        params.append("tmdb_id", tmdbSite.id);
       }
 
       if (malSite?.id) {
-        url += `&mal_id=${encodeURIComponent(malSite.id)}`;
+        params.append("mal_id", malSite.id);
       }
 
       if (anilistSite?.id) {
-        url += `&anilist_id=${encodeURIComponent(anilistSite.id)}`;
+        params.append("anilist_id", anilistSite.id);
       }
 
       if (item.begin) {
-        url += `&begin=${encodeURIComponent(item.begin)}`;
+        params.append("begin", item.begin);
       }
 
+      const url = `/api/metadata?${params.toString()}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error("Metadata fetch failed");
       const data = await response.json();
