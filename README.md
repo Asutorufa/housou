@@ -4,16 +4,18 @@
 
 **Housou (放送)** is a high-performance, modern web application for tracking anime broadcast schedules. Built with a **Rust-based backend** deployed on **Cloudflare Workers** and a fluid **React frontend**, it provides a seamless experience for discovering what's airing now and where to watch it.
 
-Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bangumi-data), Housou automatically enriches schedules with high-quality metadata from **TMDb** and **AniList**, ensuring you always have access to the latest cast, staff, and episode details.
+Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bangumi-data), Housou automatically enriches schedules with high-quality metadata from **TMDb**, **AniList**, and **MyAnimeList (Jikan)**, ensuring you always have access to the latest cast, staff, and episode details.
 
 ## Features
 
 - 📅 **Weekly Schedule**: Fluid day-of-week navigation with grid view.
 - 🔍 **Smart Filtering**: Filter by year, season, and streaming platform.
-- 🎭 **Rich Metadata**: Automatically fetches cast, staff, and episodes from TMDb or AniList.
+- 🎭 **Rich Metadata**: Automatically fetches cast, staff, and episodes from **TMDb**, **AniList**, or **MyAnimeList (via Jikan)**.
 - ⚡ **Edge-Optimized**: Serverless architecture using Cloudflare Workers and Rust (Wasm).
 - 🗄️ **Intelligent Caching**: Adaptive caching logic (7 days for ongoing, 30 days for finished titles).
+- 📅 **Future Schedules**: Automatically switches to **Jikan API** for future or newly announced seasons not yet in bangumi-data.
 - 🌙 **Modern Design**: Responsive UI with automatic dark mode and smooth animations.
+- 🔑 **Secure Auth**: Support for GitHub OAuth and Passkeys (WebAuthn).
 
 ## Screenshots
 
@@ -23,120 +25,123 @@ Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bang
 
 ## Environment Variables
 
-Create `.dev.vars` for local development:
+Create `.dev.vars` for local development. For production, use `npx wrangler secret put <NAME>`.
 
-```bash
-TMDB_TOKEN=your_tmdb_api_token
-```
+| Variable | Description | Required |
+| :--- | :--- | :--- |
+| `TMDB_TOKEN` | TMDb API Read Access Token (v4). | Yes |
+| `BASE_URL` | The base URL of your application (e.g., `https://housou.pages.dev`). | No* |
+| `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID. | For Auth |
+| `GITHUB_CLIENT_SECRET` | GitHub OAuth App Client Secret. | For Auth |
+| `CORS_ALLOWED_ORIGIN` | Allowed origin for CORS (default: `*`). | No |
 
-For production, set the secret via Wrangler:
-
-```bash
-npx wrangler secret put TMDB_TOKEN
-```
+*\* Defaults to `http://localhost:8787` if not set.*
 
 ## Local Development
 
 ```bash
-# Install web dependencies
+# 1. Install dependencies
+npm install
 cd web && npm install && cd ..
 
-# Start dev server
+# 2. Configure secrets
+echo "TMDB_TOKEN=your_token_here" > .dev.vars
+
+# 3. Start dev server
 npx wrangler dev
 ```
 
-## Manual Deploy
+## Authentication & Database
 
-```bash
-# Build the frontend
-cd web && npm run build && cd ..
-
-# Deploy to Cloudflare
-npx wrangler deploy
-```
-
-## Authentication & Database (Optional)
-
-Housou supports optional user accounts for tracking watch status (Watching, Completed, etc.). This feature requires Cloudflare D1 and GitHub OAuth.
+Housou supports optional user accounts for tracking watch status (Watching, Completed, etc.). This feature requires a Cloudflare D1 database.
 
 ### 1. Create D1 Database
-
-Create a new D1 database:
 
 ```bash
 npx wrangler d1 create housou-db
 ```
 
-Copy the output (binding configuration) and paste it into your `wrangler.toml` file:
+Update `wrangler.toml` with your `database_id`:
 
 ```toml
 [[d1_databases]]
-binding = "DB" # Must be "DB"
+binding = "DB"
 database_name = "housou-db"
-database_id = "your-database-id-here"
+database_id = "xxxx-xxxx-xxxx"
 ```
 
 ### 2. Configure GitHub OAuth
 
-1.  Register a new OAuth App on GitHub.
-    *   **Homepage URL**: `https://your-worker.workers.dev` (or your custom domain)
-    *   **Authorization callback URL**: `https://your-worker.workers.dev/api/auth/github/callback`
-2.  Set the client ID and secret:
+To enable GitHub login:
 
-```bash
-npx wrangler secret put GITHUB_CLIENT_ID
-npx wrangler secret put GITHUB_CLIENT_SECRET
-```
+1.  Go to **GitHub Settings** > **Developer settings** > **OAuth Apps** > **New OAuth App**.
+2.  Set **Homepage URL** to your application's domain (e.g., `https://housou.pages.dev`).
+3.  Set **Authorization callback URL** to `{BASE_URL}/api/auth/github/callback`.
+4.  Generate a **Client Secret**.
+5.  Add the ID and Secret to your environment:
+    ```bash
+    npx wrangler secret put GITHUB_CLIENT_ID
+    npx wrangler secret put GITHUB_CLIENT_SECRET
+    ```
 
-### 3. Deploy
+### 3. Passkey Support (WebAuthn)
 
-Deploy the worker. The database tables will be automatically created on the first request.
-
-```bash
-npx wrangler deploy
-```
-
-If you do not configure the `DB` binding, the authentication features will be automatically disabled and hidden from the UI.
-
-## Project Structure
-
-```text
-├── src/
-│   ├── lib.rs           # Worker entry + Router
-│   ├── model.rs         # Shared data models
-│   ├── provider.rs      # Metadata provider orchestration
-│   └── provider/
-│       ├── tmdb.rs      # TMDb (Movie Database) integration
-│       └── anilist.rs   # AniList GraphQL integration
-├── web/
-│   ├── src/
-│   │   ├── App.tsx              # Main entry point
-│   │   └── components/
-│   │       ├── AnimeCard.tsx    # Card component with layout animations
-│   │       ├── DetailsModal.tsx # Comprehensive info popup
-│   │       ├── Header.tsx       # Navigation and filters
-│   │       ├── TabbedGrid.tsx   # Schedule tabs and layout
-│   │       ├── Footer.tsx       # Site-wide footer
-│   │       └── AttributionModal.tsx # Data source attribution
-├── wrangler.toml        # Cloudflare Workers configuration
-└── Cargo.toml           # Rust/Wasm dependencies
-```
+Once logged in via GitHub, users can register Passkeys (TouchID, FaceID, Yubikey) for faster, passwordless logins on subsequent visits. This is handled via the `/api/auth/passkey/*` endpoints.
 
 ## API Endpoints
 
-### `GET /api/config`
-Retrieve site metadata (streaming platforms), available years, and attribution info.
+### Core API
 
-### `GET /api/items`
-Fetch anime list for a specific season.
-- `year` (required): The year (e.g., `2025`).
-- `season` (optional): `Winter`, `Spring`, `Summer`, `Autumn`.
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/config` | `GET` | Site config, streaming services, and attribution. |
+| `/api/items` | `GET` | List anime for a specific year/season (Bangumi-data / Jikan). |
+| `/api/metadata` | `GET/POST` | Detailed metadata for a specific title (TMDB/AniList/MAL). |
 
-### `GET /api/metadata`
-Fetch detailed metadata for a specific title.
-- `tmdb_id` (optional): TMDb ID for direct lookup.
-- `title` (optional): Anime title for search fallback.
-- `begin` (optional): Start date (ISO format) to refine search.
+### Authentication
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/auth/me` | `GET` | Get current authenticated user info. |
+| `/api/auth/register` | `POST` | Register a new user with email/password. |
+| `/api/auth/login` | `POST` | Login with email/password. |
+| `/api/auth/logout` | `POST` | Log out and clear session. |
+| `/api/auth/profile` | `PUT` | Update user profile (username, avatar). |
+| `/api/auth/password` | `PUT` | Change user password. |
+
+### GitHub OAuth
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/auth/github/authorize` | `GET` | Start GitHub OAuth flow. |
+| `/api/auth/github/callback` | `GET` | GitHub OAuth callback handler. |
+| `/api/auth/github/bind` | `GET` | Link GitHub account to current user. |
+| `/api/auth/github` | `DELETE` | Unlink GitHub account. |
+
+### Passkeys (WebAuthn)
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/auth/passkey/register/*` | `POST` | Register a new Passkey (Start/Finish). |
+| `/api/auth/passkey/login/*` | `POST` | Login with a Passkey (Start/Finish). |
+| `/api/auth/passkey` | `GET` | List user's registered Passkeys. |
+| `/api/auth/passkey` | `DELETE` | Delete a Passkey. |
+| `/api/auth/passkey` | `PATCH` | Rename a Passkey. |
+
+### User Data
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/user/item` | `GET` | Get watch status and score for a specific title. |
+| `/api/user/item` | `POST` | Update watch status and score for a title. |
+| `/api/user/status` | `POST` | Update simple watch status. |
+
+## Project Structure
+
+- `src/`: Rust backend (Cloudflare Worker).
+  - `auth/`: Authentication logic (GitHub OAuth, Passkeys).
+  - `provider/`: Metadata integrations (TMDb, AniList, Jikan).
+- `web/`: React frontend (Vite + Radix UI + Framer Motion).
 
 ## License
 
