@@ -442,25 +442,20 @@ fn extract_movie_content_rating(
                 &results,
                 |r| r.iso_3166_1.as_deref(),
                 |r| {
-                    r.release_dates
-                        .as_ref()
-                        .and_then(|d| {
-                            d.iter()
-                                .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
+                    r.release_dates.as_ref().and_then(|d| {
+                        d.iter().find_map(|x| {
+                            x.certification
+                                .as_ref()
+                                .filter(|c| !c.is_empty())
+                                .cloned()
                         })
-                        .and_then(|x| x.certification.clone())
+                    })
                 },
             )
         })
     });
 
-    content_rating.or_else(|| {
-        if adult == Some(true) {
-            Some("R18".to_string())
-        } else {
-            None
-        }
-    })
+    content_rating.or_else(|| (adult == Some(true)).then_some("R18".to_string()))
 }
 
 fn extract_tv_content_rating(
@@ -477,13 +472,7 @@ fn extract_tv_content_rating(
         })
     });
 
-    content_rating.or_else(|| {
-        if adult == Some(true) {
-            Some("R18".to_string())
-        } else {
-            None
-        }
-    })
+    content_rating.or_else(|| (adult == Some(true)).then_some("R18".to_string()))
 }
 
 fn find_best_rating<T, FCountry, FRating>(
