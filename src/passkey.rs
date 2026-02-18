@@ -1,6 +1,6 @@
 use crate::ResponseExt;
 use crate::auth;
-use crate::db::{Database, PasskeyState, User};
+use crate::db::{Database, User};
 use base64::prelude::*;
 use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
@@ -295,15 +295,10 @@ pub async fn finish_registration<D: Database>(
     // Simple origin check (remove trailing slash if needed)
     let expected_origin = expected_origin.trim_end_matches('/');
     if origin != expected_origin {
-        // Allow localhost development variations if needed, but strict for now
-        // Actually, if expected is http://localhost:8787, origin might be same.
-        // In production it should match exactly.
-        if origin != expected_origin {
-            return Err(Error::RustError(format!(
-                "Origin mismatch: expected {}, got {}",
-                expected_origin, origin
-            )));
-        }
+        return Err(Error::RustError(format!(
+            "Origin mismatch: expected {}, got {}",
+            expected_origin, origin
+        )));
     }
 
     // 5. Verify Type
@@ -484,12 +479,10 @@ pub async fn finish_login<D: Database>(db: &D, env: &Env, response: LoginRespons
 
     let expected_origin = expected_origin.trim_end_matches('/');
     if origin != expected_origin {
-        if origin != expected_origin {
-            return Err(Error::RustError(format!(
-                "Origin mismatch: expected {}, got {}",
-                expected_origin, origin
-            )));
-        }
+        return Err(Error::RustError(format!(
+            "Origin mismatch: expected {}, got {}",
+            expected_origin, origin
+        )));
     }
 
     // 4. Verify Type
