@@ -165,22 +165,24 @@ impl Database for AppDatabase {
         ];
 
         // Apply pending migrations
+        const INSERT_MIGRATION_QUERY: &str =
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)";
+
         for (version, queries) in migrations {
             if version > current_version {
                 console_log!("Applying migration version {}", version);
+                let mut statements = Vec::with_capacity(queries.len() + 1);
                 for query in queries {
-                    self.db.prepare(query).run().await?;
+                    statements.push(self.db.prepare(query));
                 }
 
                 let now = Date::now().as_millis() as i64;
-                self.db
-                    .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-                    .bind(&[
-                        JsValue::from_f64(version as f64),
-                        JsValue::from_f64(now as f64),
-                    ])?
-                    .run()
-                    .await?;
+                statements.push(self.db.prepare(INSERT_MIGRATION_QUERY).bind(&[
+                    JsValue::from_f64(version as f64),
+                    JsValue::from_f64(now as f64),
+                ])?);
+
+                self.db.batch(statements).await?;
             }
         }
 
