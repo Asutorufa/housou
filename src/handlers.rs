@@ -6,8 +6,8 @@ use crate::model::{SiteMeta, SiteMetadata, SiteType};
 use crate::{ResponseExt, auth, config, db, provider, utils};
 
 #[derive(Serialize)]
-pub struct ConfigResponse<'a> {
-    pub site_meta: &'a SiteMeta,
+pub struct ConfigResponse {
+    pub site_meta: SiteMeta,
     pub years: Vec<i32>,
     pub attribution: Attribution,
     pub auth_enabled: bool,
@@ -65,7 +65,7 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
     let years: Vec<i32> = (config::START_YEAR..=current_year + 1).rev().collect();
 
     let config_resp = ConfigResponse {
-        site_meta: &site_meta,
+        site_meta,
         years,
         attribution: Attribution {
             tmdb: TmdbAttribution {
