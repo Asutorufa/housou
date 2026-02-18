@@ -776,6 +776,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tmdb_client",
+ "url",
  "uuid",
  "worker",
  "worker-macros",

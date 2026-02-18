@@ -12,6 +12,7 @@ dev = []     # Use local data.json instead of fetching from GitHub
 
 [dependencies]
 worker = { version = "0.7.4", features = ["d1"] }
+url = "2.5"
 serde = "1.0.228"
 serde_derive = "1.0.228"
 serde_json = "1.0.149"
