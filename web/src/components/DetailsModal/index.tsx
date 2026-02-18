@@ -3,11 +3,7 @@ import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
-import type {
-  DisplayAnimeItem,
-  SiteMeta,
-  UnifiedMetadata,
-} from "../../types";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
 import { sortSites } from "../../utils/siteUtils";
 import CustomSelect from "../CustomSelect";
