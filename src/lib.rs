@@ -134,7 +134,6 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
 async fn router(req: Request, env: Env) -> Result<Response> {
     let method = req.method();
     let path = req.path();
-    // let url = req.url()?;
 
     // Check if Auth is enabled (DB binding exists)
     let auth_enabled = env.d1("DB").is_ok();
