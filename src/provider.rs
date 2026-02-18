@@ -79,10 +79,10 @@ pub async fn fetch_metadata(
     let cache_key = get_cache_key(req, host);
 
     // 1. Check Cache
-    if let Ok(Some(mut resp)) = cache.get(&cache_key, true).await {
-        if let Ok(unified) = resp.json::<model::UnifiedMetadata>().await {
-            return Ok(unified);
-        }
+    if let Ok(Some(mut resp)) = cache.get(&cache_key, true).await
+        && let Ok(unified) = resp.json::<model::UnifiedMetadata>().await
+    {
+        return Ok(unified);
     }
 
     // 2. Fetch from Providers
