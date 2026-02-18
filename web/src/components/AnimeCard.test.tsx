@@ -96,12 +96,10 @@ describe("AnimeCard fetchMetadata", () => {
     } as unknown as typeof IntersectionObserver;
 
     // Mock fetch
-    global.fetch = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({}),
-      } as Response),
-    );
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    } as Response);
   });
 
   afterEach(() => {
