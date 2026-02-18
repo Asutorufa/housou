@@ -1,12 +1,12 @@
+use crate::ResponseExt;
 use crate::auth;
 use crate::db::{Database, PasskeyState, User};
-use crate::ResponseExt;
 use base64::prelude::*;
 use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
+use p256::EncodedPoint;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
-use p256::EncodedPoint;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -105,7 +105,7 @@ pub struct RegistrationResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAttestationResponse {
-    pub client_data_json: String, // Base64url encoded
+    pub client_data_json: String,   // Base64url encoded
     pub attestation_object: String, // Base64url encoded
 }
 
@@ -124,9 +124,9 @@ pub struct LoginResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAssertionResponse {
-    pub client_data_json: String, // Base64url encoded
+    pub client_data_json: String,   // Base64url encoded
     pub authenticator_data: String, // Base64url encoded
-    pub signature: String, // Base64url encoded
+    pub signature: String,          // Base64url encoded
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_handle: Option<String>, // Base64url encoded
 }
@@ -295,12 +295,15 @@ pub async fn finish_registration<D: Database>(
     // Simple origin check (remove trailing slash if needed)
     let expected_origin = expected_origin.trim_end_matches('/');
     if origin != expected_origin {
-         // Allow localhost development variations if needed, but strict for now
-         // Actually, if expected is http://localhost:8787, origin might be same.
-         // In production it should match exactly.
-         if origin != expected_origin {
-             return Err(Error::RustError(format!("Origin mismatch: expected {}, got {}", expected_origin, origin)));
-         }
+        // Allow localhost development variations if needed, but strict for now
+        // Actually, if expected is http://localhost:8787, origin might be same.
+        // In production it should match exactly.
+        if origin != expected_origin {
+            return Err(Error::RustError(format!(
+                "Origin mismatch: expected {}, got {}",
+                expected_origin, origin
+            )));
+        }
     }
 
     // 5. Verify Type
@@ -318,12 +321,19 @@ pub async fn finish_registration<D: Database>(
 
     // Extract authData
     let auth_data_bytes = match &att_obj {
-        Value::Map(m) => {
-             m.iter().find(|(k, _)| k.as_text().map(|s| s == "authData").unwrap_or(false))
-                .map(|(_, v)| v.as_bytes().ok_or(Error::RustError("authData not bytes".into())))
-                .unwrap_or(Err(Error::RustError("authData missing".into())))?
-        },
-        _ => return Err(Error::RustError("Invalid attestation object structure".into())),
+        Value::Map(m) => m
+            .iter()
+            .find(|(k, _)| k.as_text().map(|s| s == "authData").unwrap_or(false))
+            .map(|(_, v)| {
+                v.as_bytes()
+                    .ok_or(Error::RustError("authData not bytes".into()))
+            })
+            .unwrap_or(Err(Error::RustError("authData missing".into())))?,
+        _ => {
+            return Err(Error::RustError(
+                "Invalid attestation object structure".into(),
+            ));
+        }
     };
 
     // Parse AuthData
@@ -347,7 +357,7 @@ pub async fn finish_registration<D: Database>(
     hasher.update(expected_rp_id.as_bytes());
     let expected_hash = hasher.finalize();
     if rp_id_hash != expected_hash.as_slice() {
-         return Err(Error::RustError("RP ID Hash mismatch".to_string()));
+        return Err(Error::RustError("RP ID Hash mismatch".to_string()));
     }
 
     // Verify User Present flag (bit 0)
@@ -358,7 +368,9 @@ pub async fn finish_registration<D: Database>(
     // Extract AttestedCredentialData
     // Present if bit 6 (AT) is set
     if (flags & 0x40) == 0 {
-         return Err(Error::RustError("Attested Credential Data missing".to_string()));
+        return Err(Error::RustError(
+            "Attested Credential Data missing".to_string(),
+        ));
     }
 
     let credential_data = &auth_data_bytes[37..];
@@ -375,7 +387,7 @@ pub async fn finish_registration<D: Database>(
     let cred_id_len = u16::from_be_bytes(cred_id_len_bytes) as usize;
 
     if credential_data.len() < 18 + cred_id_len {
-         return Err(Error::RustError("Credential ID incomplete".to_string()));
+        return Err(Error::RustError("Credential ID incomplete".to_string()));
     }
 
     let credential_id = &credential_data[18..18 + cred_id_len];
@@ -393,7 +405,14 @@ pub async fn finish_registration<D: Database>(
     // Use a default name, user can rename later
     let name = "Passkey".to_string();
 
-    db.create_passkey(user.id, &cred_id_str, &pub_key_str, &name, sign_count as i64).await?;
+    db.create_passkey(
+        user.id,
+        &cred_id_str,
+        &pub_key_str,
+        &name,
+        sign_count as i64,
+    )
+    .await?;
 
     // Cleanup state
     db.delete_passkey_state(&state_id).await?;
@@ -436,11 +455,7 @@ pub async fn start_login<D: Database>(
 }
 
 // Finish Login
-pub async fn finish_login<D: Database>(
-    db: &D,
-    env: &Env,
-    response: LoginResponse,
-) -> Result<User> {
+pub async fn finish_login<D: Database>(db: &D, env: &Env, response: LoginResponse) -> Result<User> {
     // 1. Retrieve state using challenge from response (insecure to trust client data blindly? No, we verify signature later)
     // But we need the challenge to look up the state.
     // We can parse clientDataJSON first to get the challenge.
@@ -469,9 +484,12 @@ pub async fn finish_login<D: Database>(
 
     let expected_origin = expected_origin.trim_end_matches('/');
     if origin != expected_origin {
-         if origin != expected_origin {
-             return Err(Error::RustError(format!("Origin mismatch: expected {}, got {}", expected_origin, origin)));
-         }
+        if origin != expected_origin {
+            return Err(Error::RustError(format!(
+                "Origin mismatch: expected {}, got {}",
+                expected_origin, origin
+            )));
+        }
     }
 
     // 4. Verify Type
@@ -516,14 +534,15 @@ pub async fn finish_login<D: Database>(
 
     // Verify User Handle if present
     if let Some(user_handle_b64) = &response.response.user_handle {
-         let user_handle_bytes = BASE64_URL_SAFE_NO_PAD.decode(user_handle_b64)
+        let user_handle_bytes = BASE64_URL_SAFE_NO_PAD
+            .decode(user_handle_b64)
             .map_err(|e| Error::RustError(format!("Invalid userHandle base64: {}", e)))?;
-         let user_id_str = String::from_utf8(user_handle_bytes)
+        let user_id_str = String::from_utf8(user_handle_bytes)
             .map_err(|_| Error::RustError("Invalid userHandle utf8".to_string()))?;
 
-         if user_id_str != passkey.user_id.to_string() {
-             return Err(Error::RustError("User Handle mismatch".to_string()));
-         }
+        if user_id_str != passkey.user_id.to_string() {
+            return Err(Error::RustError("User Handle mismatch".to_string()));
+        }
     }
 
     // Parse Public Key (COSE)
@@ -577,29 +596,37 @@ pub async fn finish_login<D: Database>(
         .map_err(|e| Error::RustError(format!("Invalid signature DER: {}", e)))?;
 
     // Verify
-    verifying_key.verify(&signed_data, &signature)
+    verifying_key
+        .verify(&signed_data, &signature)
         .map_err(|e| Error::RustError(format!("Signature verification failed: {}", e)))?;
 
     // 7. Counter Check (Clone Protection)
     if sign_count <= passkey.counter as u32 && sign_count != 0 {
-         // Note: Some authenticators return 0. If it was non-zero before and now 0 or less, it's suspicious.
-         // But for simplicity, we just enforce strictly increasing if stored is > 0
-         if passkey.counter > 0 {
-             console_warn!("Signature counter regression! Stored: {}, Received: {}", passkey.counter, sign_count);
-             // In strict mode we should fail.
-             // return Err(Error::RustError("Signature counter regression".to_string()));
-         }
+        // Note: Some authenticators return 0. If it was non-zero before and now 0 or less, it's suspicious.
+        // But for simplicity, we just enforce strictly increasing if stored is > 0
+        if passkey.counter > 0 {
+            console_warn!(
+                "Signature counter regression! Stored: {}, Received: {}",
+                passkey.counter,
+                sign_count
+            );
+            // In strict mode we should fail.
+            // return Err(Error::RustError("Signature counter regression".to_string()));
+        }
     }
 
     // Update counter and last used
     let now = Date::now().as_millis() as i64;
-    db.update_passkey_counter(&passkey.cred_id, sign_count as i64, now).await?;
+    db.update_passkey_counter(&passkey.cred_id, sign_count as i64, now)
+        .await?;
 
     // Cleanup state
     db.delete_passkey_state(&state_id).await?;
 
     // Return User
-    let user = db.get_user_by_id(passkey.user_id).await?
+    let user = db
+        .get_user_by_id(passkey.user_id)
+        .await?
         .ok_or_else(|| Error::RustError("User not found".to_string()))?;
 
     Ok(user)
@@ -671,11 +698,13 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
 
     // Create session
     let token = uuid::Uuid::new_v4().to_string();
-    let expires_at = Date::now().as_millis() as i64 + (auth::SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    let expires_at =
+        Date::now().as_millis() as i64 + (auth::SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
     let secure = auth::is_secure(&env);
-    Response::from_json(&user)?.add_header("Set-Cookie", &auth::create_session_cookie(&token, secure))
+    Response::from_json(&user)?
+        .add_header("Set-Cookie", &auth::create_session_cookie(&token, secure))
 }
 
 pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
@@ -694,14 +723,17 @@ pub async fn handle_delete(req: Request, env: Env) -> Result<Response> {
         None => return Response::error("Unauthorized", 401),
     };
     let url = req.url()?;
-    let id = url.query_pairs().find(|(k, _)| k == "id").map(|(_, v)| v.to_string());
+    let id = url
+        .query_pairs()
+        .find(|(k, _)| k == "id")
+        .map(|(_, v)| v.to_string());
 
     match id {
         Some(cred_id) => {
             let db = auth::get_db(&env)?;
             delete_user_passkey(&db, user.id, &cred_id).await?;
             Response::ok("Deleted")
-        },
-        None => Response::error("Missing id", 400)
+        }
+        None => Response::error("Missing id", 400),
     }
 }
