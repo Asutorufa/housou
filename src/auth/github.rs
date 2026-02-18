@@ -1,14 +1,14 @@
-use worker::*;
-use uuid::Uuid;
-use serde::Deserialize;
-use worker::wasm_bindgen::JsValue;
-use crate::db::{AppDatabase, Database, User};
 use crate::auth::{
-    get_base_url, create_oauth_state_cookie, clear_oauth_state_cookie, verify_oauth_state,
-    create_session_cookie, get_db, SESSION_DURATION_DAYS, EMAIL_IN_USE_ERR, USERNAME_TAKEN_ERR,
-    create_oauth_action_cookie, clear_oauth_action_cookie, get_auth
+    EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR, clear_oauth_action_cookie,
+    clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
+    create_session_cookie, get_auth, get_base_url, get_db, verify_oauth_state,
 };
+use crate::db::{AppDatabase, Database, User};
 use cookie::Cookie;
+use serde::Deserialize;
+use uuid::Uuid;
+use worker::wasm_bindgen::JsValue;
+use worker::*;
 
 #[derive(Deserialize)]
 pub struct GithubUser {
@@ -37,9 +37,11 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
 
     let secure = base_url.starts_with("https");
     let mut resp = Response::redirect(Url::parse(&url)?)?;
-    resp.headers_mut().append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
+    resp.headers_mut()
+        .append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
     // Clear action cookie just in case
-    resp.headers_mut().append("Set-Cookie", &clear_oauth_action_cookie(secure))?;
+    resp.headers_mut()
+        .append("Set-Cookie", &clear_oauth_action_cookie(secure))?;
     Ok(resp)
 }
 
@@ -60,8 +62,10 @@ pub async fn handle_github_bind_authorize(req: Request, env: Env) -> Result<Resp
 
     let secure = base_url.starts_with("https");
     let mut resp = Response::redirect(Url::parse(&url)?)?;
-    resp.headers_mut().append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
-    resp.headers_mut().append("Set-Cookie", &create_oauth_action_cookie("bind", secure))?;
+    resp.headers_mut()
+        .append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
+    resp.headers_mut()
+        .append("Set-Cookie", &create_oauth_action_cookie("bind", secure))?;
     Ok(resp)
 }
 
@@ -72,7 +76,10 @@ pub async fn handle_github_unbind(req: Request, env: Env) -> Result<Response> {
     };
 
     if user.password_hash.is_none() {
-         return Response::error("Password not set. Please set a password before disconnecting GitHub.", 400);
+        return Response::error(
+            "Password not set. Please set a password before disconnecting GitHub.",
+            400,
+        );
     }
 
     let db = get_db(&env)?;
@@ -174,7 +181,12 @@ async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> R
 }
 
 fn get_oauth_action(req: &Request) -> Option<String> {
-    let cookies_header = req.headers().get("Cookie").ok().flatten().unwrap_or_default();
+    let cookies_header = req
+        .headers()
+        .get("Cookie")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
         if cookie.name() == "oauth_action" {
             return Some(cookie.value().to_string());
@@ -219,18 +231,23 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
             // Check if GitHub ID is already used
             if let Some(existing_user) = db.get_user_by_github_id(&gh_id_str).await? {
                 if existing_user.id != current_user.id {
-                    return Response::error("GitHub account already connected to another user", 409);
+                    return Response::error(
+                        "GitHub account already connected to another user",
+                        409,
+                    );
                 }
             } else {
                 // Update user
-                db.update_user_github_id(current_user.id, Some(&gh_id_str)).await?;
+                db.update_user_github_id(current_user.id, Some(&gh_id_str))
+                    .await?;
             }
 
             let mut resp = Response::redirect(Url::parse(&base_url)?)?;
-            resp.headers_mut().append("Set-Cookie", &clear_oauth_state_cookie(secure))?;
-            resp.headers_mut().append("Set-Cookie", &clear_oauth_action_cookie(secure))?;
+            resp.headers_mut()
+                .append("Set-Cookie", &clear_oauth_state_cookie(secure))?;
+            resp.headers_mut()
+                .append("Set-Cookie", &clear_oauth_action_cookie(secure))?;
             Ok(resp)
-
         } else {
             // Login/Register flow
             let user = match find_or_create_github_user(&db, &gh_user).await {
