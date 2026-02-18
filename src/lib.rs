@@ -107,13 +107,13 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .contains("housou_session");
 
         if is_auth_route || (url.path() == "/api/items" && has_session_cookie) {
-            router(req, env).await?
+            router(req, env.clone()).await?
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()?
         } else {
             // Generate new response
-            let mut fresh_resp = router(req, env).await?;
+            let mut fresh_resp = router(req, env.clone()).await?;
 
             // Cache successful GET responses (except auth and personalized items)
             if url.path().starts_with("/api")
@@ -132,11 +132,11 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             fresh_resp
         }
     } else {
-        router(req, env).await?
+        router(req, env.clone()).await?
     };
 
     // Add security headers to ALL responses
-    resp.add_security_headers()
+    resp.add_security_headers()?.add_cors(&env)
 }
 
 async fn fetch_site_meta() -> Result<SiteMeta> {
@@ -199,12 +199,10 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
                 auth_enabled,
             };
 
-            Response::from_json(&config_resp)?
-                .add_cors(&env)?
-                .add_header(
-                    "Cache-Control",
-                    &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
-                )
+            Response::from_json(&config_resp)?.add_header(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_CONFIG),
+            )
         }
         (Method::Get, "/api/items") => {
             let mut year_param = None;
@@ -229,7 +227,7 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
             };
 
             let items = provider::season::fetch_items(target_year, target_season).await?;
-            Response::from_json(&items)?.add_cors(&env)
+            Response::from_json(&items)
         }
         (Method::Post, "/api/user/status") if auth_enabled => {
             let titles: Vec<String> = match req.json().await {
@@ -255,7 +253,7 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
                                     )
                                 })
                                 .collect();
-                            Response::from_json(&status_map)?.add_cors(&env)
+                            Response::from_json(&status_map)
                         }
                         Err(e) => {
                             console_error!("Failed to fetch user items: {}", e);
@@ -310,53 +308,39 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
         }
         // Auth Routes (Only if enabled)
         (Method::Post, "/api/auth/register") if auth_enabled => {
-            auth::handle_register(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_register(req, env.clone()).await
         }
         (Method::Post, "/api/auth/login") if auth_enabled => {
-            auth::handle_login(req, env.clone()).await?.add_cors(&env)
+            auth::handle_login(req, env.clone()).await
         }
         (Method::Post, "/api/auth/logout") if auth_enabled => {
-            auth::handle_logout(req, env.clone()).await?.add_cors(&env)
+            auth::handle_logout(req, env.clone()).await
         }
-        (Method::Get, "/api/auth/me") if auth_enabled => {
-            auth::handle_me(req, env.clone()).await?.add_cors(&env)
-        }
+        (Method::Get, "/api/auth/me") if auth_enabled => auth::handle_me(req, env.clone()).await,
         (Method::Put, "/api/auth/profile") if auth_enabled => {
-            auth::handle_update_profile(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_update_profile(req, env.clone()).await
         }
         (Method::Put, "/api/auth/password") if auth_enabled => {
-            auth::handle_change_password(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_change_password(req, env.clone()).await
         }
         (Method::Get, "/api/auth/github/authorize") if auth_enabled => {
-            auth::handle_github_authorize(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_github_authorize(req, env.clone()).await
         }
         (Method::Get, "/api/auth/github/callback") if auth_enabled => {
-            auth::handle_github_callback(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_github_callback(req, env.clone()).await
         }
-        (Method::Get, "/api/user/item") if auth_enabled => auth::handle_get_item(req, env.clone())
-            .await?
-            .add_cors(&env),
+        (Method::Get, "/api/user/item") if auth_enabled => {
+            auth::handle_get_item(req, env.clone()).await
+        }
         (Method::Post, "/api/user/item") if auth_enabled => {
-            auth::handle_update_item(req, env.clone())
-                .await?
-                .add_cors(&env)
+            auth::handle_update_item(req, env.clone()).await
         }
 
         // Handle Options for CORS on auth routes
         (Method::Options, path)
             if path.starts_with("/api/auth") || path.starts_with("/api/user") =>
         {
-            Response::empty()?.add_cors(&env)
+            Response::empty()
         }
 
         _ => Response::error("Not Found", 404),

@@ -62,7 +62,7 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
 
 fn create_response(
     unified: &model::UnifiedMetadata,
-    env: &Env,
+    _env: &Env,
     ttl_override: Option<i32>,
 ) -> Result<Response> {
     let ttl = if let Some(t) = ttl_override {
@@ -73,7 +73,5 @@ fn create_response(
         crate::config::CACHE_TTL_ONGOING
     };
 
-    Response::from_json(unified)?
-        .add_cors(env)?
-        .add_header("Cache-Control", &format!("public, max-age={ttl}"))
+    Response::from_json(unified)?.add_header("Cache-Control", &format!("public, max-age={ttl}"))
 }
