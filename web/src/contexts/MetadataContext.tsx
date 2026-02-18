@@ -33,31 +33,56 @@ interface BatchResponseItem {
 }
 
 const MAX_BATCH_SIZE = 10;
+const DEBOUNCE_MS = 120;
+
+/** Generate a stable cache key from request parameters */
+function makeCacheKey(req: MetadataRequest): string {
+  return JSON.stringify([
+    req.title,
+    req.tmdb_id ?? "",
+    req.mal_id ?? "",
+    req.anilist_id ?? "",
+    req.year ?? "",
+  ]);
+}
 
 export function MetadataProvider({ children }: MetadataProviderProps) {
   const queue = useRef<QueuedRequest[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushingRef = useRef(false);
+  // Cache: maps request key → promise, so duplicate requests reuse the same fetch
+  const cacheRef = useRef<Map<string, Promise<UnifiedMetadata | null>>>(
+    new Map(),
+  );
+
+  const scheduleFlush = useCallback((fn: () => Promise<void>) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    timeoutRef.current = setTimeout(fn, DEBOUNCE_MS);
+  }, []);
 
   const flush = useCallback(async () => {
-    // Process only up to MAX_BATCH_SIZE
-    const pending = queue.current;
-    if (pending.length === 0) {
-      timeoutRef.current = null;
+    timeoutRef.current = null;
+
+    // If a flush is already in progress, don't start another one.
+    // The in-progress flush will re-check the queue when it completes.
+    if (flushingRef.current) {
       return;
     }
+
+    const pending = queue.current;
+    if (pending.length === 0) {
+      return;
+    }
+
+    flushingRef.current = true;
 
     const currentBatch = pending.slice(0, MAX_BATCH_SIZE);
     const remaining = pending.slice(MAX_BATCH_SIZE);
 
     // Update queue to remaining items
     queue.current = remaining;
-
-    // Reschedule flush if there are remaining items
-    if (remaining.length > 0) {
-      timeoutRef.current = setTimeout(flush, 100);
-    } else {
-      timeoutRef.current = null;
-    }
 
     try {
       const requests = currentBatch.map((item) => ({
@@ -89,8 +114,6 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
         if (resultMap.has(item.id)) {
           item.resolve(resultMap.get(item.id) || null);
         } else {
-          // If backend didn't return this ID (or returned old array format), fallback or resolve null
-          // Assuming strict ID matching now for robustness
           item.resolve(null);
         }
       });
@@ -98,23 +121,53 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
       console.error("Batch fetch error:", err);
       // Resolve with null to prevent hanging promises
       currentBatch.forEach((item) => item.resolve(null));
+    } finally {
+      flushingRef.current = false;
+
+      // After completing a flush, check if more requests accumulated
+      // during the fetch (e.g. user scrolled while we were waiting).
+      // Use a short debounce to catch any final stragglers.
+      if (queue.current.length > 0) {
+        scheduleFlush(flush);
+      }
     }
-  }, []);
+  }, [scheduleFlush]);
 
   const fetchMetadata = useCallback(
     (req: MetadataRequest): Promise<UnifiedMetadata | null> => {
-      return new Promise((resolve, reject) => {
-        // Use a simple random ID generator that works in non-secure contexts (http)
+      // Deduplicate: if the same request is already in-flight or cached, reuse it
+      const key = makeCacheKey(req);
+      const cached = cacheRef.current.get(key);
+      if (cached) {
+        return cached;
+      }
+
+      const promise = new Promise<UnifiedMetadata | null>((resolve) => {
         const id =
           Date.now().toString(36) + Math.random().toString(36).substring(2);
-        queue.current.push({ id, req, resolve, reject });
+        queue.current.push({ id, req, resolve, reject: () => resolve(null) });
 
-        if (!timeoutRef.current) {
-          timeoutRef.current = setTimeout(flush, 100);
+        // Only schedule a flush if one isn't already in progress.
+        // If a flush IS in progress, it will pick up queued items
+        // when it completes (see the finally block in flush).
+        if (!flushingRef.current) {
+          if (queue.current.length >= MAX_BATCH_SIZE) {
+            // Full batch ready — flush immediately
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
+            flush();
+          } else {
+            scheduleFlush(flush);
+          }
         }
       });
+
+      cacheRef.current.set(key, promise);
+      return promise;
     },
-    [flush],
+    [flush, scheduleFlush],
   );
 
   const value = useMemo(() => ({ fetchMetadata }), [fetchMetadata]);
