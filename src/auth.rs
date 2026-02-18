@@ -1,9 +1,13 @@
 use crate::ResponseExt;
 use crate::db::{AppDatabase, Database, User};
 use crate::model::UserStatus;
-use bcrypt::{DEFAULT_COST, hash, verify};
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+};
 use cookie::{Cookie, SameSite, time::Duration};
 use serde::Deserialize;
+use std::sync::OnceLock;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
 use worker::*;
@@ -115,6 +119,30 @@ struct UpdateItemRequest {
     score: Option<i32>,
 }
 
+static ARGON2_INSTANCE: OnceLock<Argon2> = OnceLock::new();
+
+fn get_argon2_instance() -> &'static Argon2<'static> {
+    ARGON2_INSTANCE.get_or_init(Argon2::default)
+}
+
+pub fn hash_password(password: &str) -> std::result::Result<String, String> {
+    let salt = SaltString::generate(&mut OsRng);
+    get_argon2_instance()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| e.to_string())
+}
+
+pub fn verify_password(password: &str, hash: &str) -> bool {
+    let parsed_hash = match PasswordHash::new(hash) {
+        Ok(h) => h,
+        Err(_) => return false,
+    };
+    get_argon2_instance()
+        .verify_password(password.as_bytes(), &parsed_hash)
+        .is_ok()
+}
+
 pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
@@ -126,8 +154,7 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
         return Response::error("Username already taken", 400);
     }
 
-    let password_hash =
-        hash(&body.password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
+    let password_hash = hash_password(&body.password).map_err(Error::RustError)?;
     let user = db
         .create_user(
             &body.email,
@@ -156,7 +183,7 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
         .ok_or_else(|| Error::RustError("Invalid credentials".to_string()))?;
 
     let valid = if let Some(hash_str) = &user.password_hash {
-        verify(&body.password, hash_str).unwrap_or(false)
+        verify_password(&body.password, hash_str)
     } else {
         false
     };
@@ -243,14 +270,12 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
         let old_password = body
             .old_password
             .ok_or_else(|| Error::RustError("Old password required".to_string()))?;
-        let valid = verify(&old_password, hash_str).unwrap_or(false);
-        if !valid {
+        if !verify_password(&old_password, hash_str) {
             return Response::error("Invalid old password", 401);
         }
     }
 
-    let new_password_hash =
-        hash(&body.new_password, DEFAULT_COST).map_err(|e| Error::RustError(e.to_string()))?;
+    let new_password_hash = hash_password(&body.new_password).map_err(Error::RustError)?;
     db.update_user_password(user.id, &new_password_hash).await?;
 
     Response::ok("Password updated")
@@ -446,5 +471,27 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         Ok(resp)
     } else {
         Response::error("Missing code", 400)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_and_verify() {
+        let password = "mysecretpassword";
+        let hash = hash_password(password).expect("Hashing failed");
+        assert!(verify_password(password, &hash));
+        assert!(!verify_password("wrongpassword", &hash));
+    }
+
+    #[test]
+    fn test_verify_invalid_hash() {
+        assert!(!verify_password("password", "invalidhash"));
+        assert!(!verify_password(
+            "password",
+            "$2y$12$invalidbcrpythashformat"
+        ));
     }
 }
