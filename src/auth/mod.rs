@@ -12,6 +12,7 @@ use uuid::Uuid;
 use worker::*;
 
 pub mod github;
+pub mod passkey;
 pub use github::{
     handle_github_authorize, handle_github_bind_authorize, handle_github_callback,
     handle_github_unbind,

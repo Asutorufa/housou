@@ -1,5 +1,5 @@
+use crate::auth::passkey::{PasskeyState, PasskeyStore, StoredPasskey, UserLookup};
 use crate::model::UserStatus;
-use crate::passkey::{PasskeyState, PasskeyStore, StoredPasskey, UserLookup};
 use async_trait::async_trait;
 use serde_derive::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
