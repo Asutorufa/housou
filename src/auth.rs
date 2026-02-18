@@ -448,3 +448,49 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         Response::error("Missing code", 400)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_oauth_state_cookie() {
+        let state = "test-state-123";
+        let cookie = create_oauth_state_cookie(state);
+        assert!(cookie.contains(&format!("{}={}", OAUTH_STATE_COOKIE_NAME, state)));
+        assert!(cookie.contains("Path=/"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(cookie.contains(&format!("Max-Age={}", OAUTH_STATE_DURATION_MINUTES * 60)));
+        assert!(!cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn test_clear_oauth_state_cookie() {
+        let cookie = clear_oauth_state_cookie();
+        assert!(cookie.contains(&format!("{}=;", OAUTH_STATE_COOKIE_NAME)) || cookie.contains(&format!("{}= ", OAUTH_STATE_COOKIE_NAME)) || cookie.ends_with(&format!("{}=", OAUTH_STATE_COOKIE_NAME)));
+        // Usually it's name=; or name=
+        assert!(cookie.contains("Max-Age=0"));
+        assert!(!cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn test_create_session_cookie() {
+        let token = "test-token-456";
+        let cookie = create_session_cookie(token);
+        assert!(cookie.contains(&format!("{}={}", SESSION_COOKIE_NAME, token)));
+        assert!(cookie.contains("Path=/"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Lax"));
+        assert!(cookie.contains(&format!("Max-Age={}", SESSION_DURATION_DAYS * 24 * 60 * 60)));
+        assert!(!cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn test_clear_session_cookie() {
+        let cookie = clear_session_cookie();
+        assert!(cookie.contains(&format!("{}=;", SESSION_COOKIE_NAME)) || cookie.contains(&format!("{}= ", SESSION_COOKIE_NAME)) || cookie.ends_with(&format!("{}=", SESSION_COOKIE_NAME)));
+        assert!(cookie.contains("Max-Age=0"));
+        assert!(!cookie.contains("Secure"));
+    }
+}
