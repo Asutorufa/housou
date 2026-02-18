@@ -275,23 +275,7 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
     let (characters, staff) = extract_credits(movie.credits);
 
     // Content Ratings (Release Dates for Movies)
-    let content_rating = movie.release_dates.and_then(|dates| {
-        dates.results.and_then(|results| {
-            find_best_rating(
-                &results,
-                |r| r.iso_3166_1.as_deref(),
-                |r| {
-                    r.release_dates
-                        .as_ref()
-                        .and_then(|d| {
-                            d.iter()
-                                .find(|x| x.certification.as_deref().is_some_and(|c| !c.is_empty()))
-                        })
-                        .and_then(|x| x.certification.clone())
-                },
-            )
-        })
-    });
+    let content_rating = extract_movie_content_rating(movie.release_dates, movie.adult);
 
     UnifiedMetadata {
         id: format!("movie/{}", movie.id.unwrap_or(0)),
@@ -309,13 +293,7 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
         total_seasons: None,
         current_season: None,
         runtime: movie.runtime,
-        content_rating: content_rating.or_else(|| {
-            if movie.adult == Some(true) {
-                Some("R18".to_string())
-            } else {
-                None
-            }
-        }),
+        content_rating,
     }
 }
 
@@ -354,15 +332,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         .collect();
 
     // Content Ratings
-    let content_rating = show.content_ratings.and_then(|ratings| {
-        ratings.results.and_then(|results| {
-            find_best_rating(
-                &results,
-                |r| r.iso_3166_1.as_deref(),
-                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned(),
-            )
-        })
-    });
+    let content_rating = extract_tv_content_rating(show.content_ratings, show.adult);
 
     let is_finished =
         show.status.as_deref() == Some("Ended") || show.status.as_deref() == Some("Canceled");
@@ -398,13 +368,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         total_seasons: show.number_of_seasons,
         current_season: Some(season_num_val),
         runtime: final_runtime,
-        content_rating: content_rating.or_else(|| {
-            if show.adult == Some(true) {
-                Some("R18".to_string())
-            } else {
-                None
-            }
-        }),
+        content_rating,
     }
 }
 
@@ -465,6 +429,46 @@ fn extract_credits(
         .collect();
 
     (characters, staff)
+}
+
+fn extract_movie_content_rating(
+    release_dates: Option<models::ReleaseDatesList>,
+    adult: Option<bool>,
+) -> Option<String> {
+    let content_rating = release_dates.and_then(|dates| {
+        dates.results.and_then(|results| {
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| {
+                    r.release_dates.as_ref().and_then(|d| {
+                        d.iter().find_map(|x| {
+                            x.certification.as_ref().filter(|c| !c.is_empty()).cloned()
+                        })
+                    })
+                },
+            )
+        })
+    });
+
+    content_rating.or_else(|| (adult == Some(true)).then_some("R18".to_string()))
+}
+
+fn extract_tv_content_rating(
+    content_ratings: Option<models::RatingsList>,
+    adult: Option<bool>,
+) -> Option<String> {
+    let content_rating = content_ratings.and_then(|ratings| {
+        ratings.results.and_then(|results| {
+            find_best_rating(
+                &results,
+                |r| r.iso_3166_1.as_deref(),
+                |r| r.rating.as_ref().filter(|s| !s.is_empty()).cloned(),
+            )
+        })
+    });
+
+    content_rating.or_else(|| (adult == Some(true)).then_some("R18".to_string()))
 }
 
 fn find_best_rating<T, FCountry, FRating>(
@@ -1008,6 +1012,33 @@ mod tests_tv_transformation {
         };
         let result2 = tv_to_unified(show_no_runtime, season);
         assert_eq!(result2.runtime, None);
+    }
+
+    #[test]
+    fn test_tv_to_unified_content_rating() {
+        use tmdb_client::models::{RatingsList, RatingslistResults};
+
+        let show = models::TvDetails {
+            content_ratings: Some(RatingsList {
+                results: Some(vec![
+                    RatingslistResults {
+                        iso_3166_1: Some("US".to_string()),
+                        rating: Some("TV-14".to_string()),
+                    },
+                    RatingslistResults {
+                        iso_3166_1: Some("JP".to_string()),
+                        rating: Some("G".to_string()),
+                    },
+                ]),
+                id: None,
+            }),
+            ..Default::default()
+        };
+
+        let season = models::SeasonDetails::default();
+        let result = tv_to_unified(show, season);
+
+        assert_eq!(result.content_rating, Some("G".to_string()));
     }
 }
 
