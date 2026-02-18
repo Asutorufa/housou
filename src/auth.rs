@@ -350,7 +350,7 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
         "https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=user:email&state={state}"
     );
 
-    let secure = is_secure(&env);
+    let secure = base_url.starts_with("https");
     Response::redirect(Url::parse(&url)?)?
         .add_header("Set-Cookie", &create_oauth_state_cookie(&state, secure))
 }
