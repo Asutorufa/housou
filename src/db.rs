@@ -440,7 +440,10 @@ impl Database for AppDatabase {
             statements.push(self.db.prepare(&query).bind(&bindings)?);
         }
 
-        let all_results: Vec<UserItem> = self.db.batch(statements).await?
+        let all_results: Vec<UserItem> = self
+            .db
+            .batch(statements)
+            .await?
             .into_iter()
             .map(|res| res.results())
             .collect::<Result<Vec<_>>>()?
