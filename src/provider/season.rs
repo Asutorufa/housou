@@ -56,8 +56,10 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
         });
     }
 
-    let results: Result<Vec<Vec<Item>>, _> =
-        futures::future::join_all(futures).await.into_iter().collect();
+    let results: Result<Vec<Vec<Item>>, _> = futures::future::join_all(futures)
+        .await
+        .into_iter()
+        .collect();
     Ok(results?.into_iter().flatten().collect())
 }
 
@@ -94,7 +96,7 @@ fn is_future_season(
 ) -> bool {
     year > current_year
         || (year == current_year
-            && season.map_or(false, |s| season_to_num(s) > season_to_num(current_season)))
+            && season.is_some_and(|s| season_to_num(s) > season_to_num(current_season)))
 }
 
 #[cfg(test)]

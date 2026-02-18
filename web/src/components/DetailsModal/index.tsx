@@ -62,14 +62,13 @@ export default function DetailsModal(props: DetailsModalProps) {
 }
 
 function DetailsModalContent({
-  isOpen: _isOpen,
   onClose,
   anime,
   items,
   siteMeta,
   onUpdate,
   ...radixProps
-}: DetailsModalProps & Record<string, unknown>) {
+}: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
   const { loggedIn, apiFetch } = useAuth();
   const { title, info } = anime || { title: "", info: null };
 
