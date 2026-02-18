@@ -20,26 +20,51 @@ interface MetadataProviderProps {
   children: React.ReactNode;
 }
 
+interface QueuedRequest {
+  id: string;
+  req: MetadataRequest;
+  resolve: (value: UnifiedMetadata | null) => void;
+  reject: (reason?: unknown) => void;
+}
+
+interface BatchResponseItem {
+  request_id?: string;
+  metadata?: UnifiedMetadata | null;
+}
+
+const MAX_BATCH_SIZE = 10;
+
 export function MetadataProvider({ children }: MetadataProviderProps) {
-  const queue = useRef<
-    {
-      req: MetadataRequest;
-      resolve: (value: UnifiedMetadata | null) => void;
-      reject: (reason?: unknown) => void;
-    }[]
-  >([]);
+  const queue = useRef<QueuedRequest[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flush = useCallback(async () => {
-    const currentQueue = [...queue.current];
-    // Clear queue immediately
-    queue.current = [];
-    timeoutRef.current = null;
+    // Process only up to MAX_BATCH_SIZE
+    const pending = queue.current;
+    if (pending.length === 0) {
+      timeoutRef.current = null;
+      return;
+    }
 
-    if (currentQueue.length === 0) return;
+    const currentBatch = pending.slice(0, MAX_BATCH_SIZE);
+    const remaining = pending.slice(MAX_BATCH_SIZE);
+
+    // Update queue to remaining items
+    queue.current = remaining;
+
+    // Reschedule flush if there are remaining items
+    if (remaining.length > 0) {
+      timeoutRef.current = setTimeout(flush, 100);
+    } else {
+      timeoutRef.current = null;
+    }
 
     try {
-      const requests = currentQueue.map((item) => item.req);
+      const requests = currentBatch.map((item) => ({
+        ...item.req,
+        request_id: item.id,
+      }));
+
       const response = await fetch("/api/metadata", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,32 +75,37 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
         throw new Error("Batch metadata fetch failed");
       }
 
-      const results: (UnifiedMetadata | null)[] = await response.json();
+      const results: BatchResponseItem[] = await response.json();
 
-      if (results.length !== currentQueue.length) {
-        console.warn(
-          `Metadata batch result length mismatch: sent ${currentQueue.length}, got ${results.length}`,
-        );
-      }
+      // Create map for O(1) lookup
+      const resultMap = new Map<string, UnifiedMetadata | null>();
+      results.forEach((res) => {
+        if (res.request_id) {
+          resultMap.set(res.request_id, res.metadata || null);
+        }
+      });
 
-      currentQueue.forEach((item, index) => {
-        if (index < results.length) {
-          item.resolve(results[index]);
+      currentBatch.forEach((item) => {
+        if (resultMap.has(item.id)) {
+          item.resolve(resultMap.get(item.id) || null);
         } else {
+          // If backend didn't return this ID (or returned old array format), fallback or resolve null
+          // Assuming strict ID matching now for robustness
           item.resolve(null);
         }
       });
     } catch (err) {
       console.error("Batch fetch error:", err);
       // Resolve with null to prevent hanging promises
-      currentQueue.forEach((item) => item.resolve(null));
+      currentBatch.forEach((item) => item.resolve(null));
     }
   }, []);
 
   const fetchMetadata = useCallback(
     (req: MetadataRequest): Promise<UnifiedMetadata | null> => {
       return new Promise((resolve, reject) => {
-        queue.current.push({ req, resolve, reject });
+        const id = crypto.randomUUID();
+        queue.current.push({ id, req, resolve, reject });
 
         if (!timeoutRef.current) {
           timeoutRef.current = setTimeout(flush, 100);

@@ -18,11 +18,18 @@ pub struct MetadataArgs<'a> {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct MetadataRequest {
+    pub request_id: Option<String>,
     pub tmdb_id: Option<String>,
     pub mal_id: Option<String>,
     pub anilist_id: Option<String>,
     pub title: Option<String>,
     pub year: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MetadataResponse {
+    pub request_id: Option<String>,
+    pub metadata: Option<model::UnifiedMetadata>,
 }
 
 pub trait MetadataProvider {
@@ -159,6 +166,7 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
     // But this function signature doesn't provide URL/Host.
     // We can use "api.housou.local" as internal host key.
     let req = MetadataRequest {
+        request_id: None,
         tmdb_id: args.tmdb_id.map(|s| s.to_string()),
         mal_id: args.mal_id.map(|s| s.to_string()),
         anilist_id: args.anilist_id.map(|s| s.to_string()),

@@ -168,6 +168,10 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
             }
         };
 
+        if requests.len() > 10 {
+            return Response::error("Bad Request: Batch size exceeds limit of 10", 400);
+        }
+
         let host = req
             .url()?
             .host_str()
@@ -177,10 +181,16 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         let futures = requests.into_iter().map(|r| {
             let env = &env;
             let host = &host;
-            async move { provider::fetch_metadata(&r, env, host).await.ok() }
+            async move {
+                let metadata = provider::fetch_metadata(&r, env, host).await.ok();
+                provider::MetadataResponse {
+                    request_id: r.request_id,
+                    metadata,
+                }
+            }
         });
 
-        let results: Vec<Option<_>> = futures::future::join_all(futures).await;
+        let results: Vec<provider::MetadataResponse> = futures::future::join_all(futures).await;
         return Response::from_json(&results);
     }
 

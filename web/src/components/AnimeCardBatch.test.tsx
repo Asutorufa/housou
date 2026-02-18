@@ -31,12 +31,23 @@ const mockItem2: DisplayAnimeItem = {
 describe("AnimeCard Batching", () => {
   test("batches multiple metadata requests into one", async () => {
     // Setup fetch mock to return success
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => [
-        { id: "1", title: { native: "Anime 1" }, coverImage: {} }, // Result for Item 1
-        { id: "2", title: { native: "Anime 2" }, coverImage: {} }, // Result for Item 2
-      ],
+    fetchMock.mockImplementation(async (url, options) => {
+      if (url === "/api/metadata" && options.method === "POST") {
+        const body = JSON.parse(options.body);
+        return {
+          ok: true,
+          json: async () =>
+            body.map((req: { request_id: string; tmdb_id: string; title: string }) => ({
+              request_id: req.request_id,
+              metadata: {
+                id: req.tmdb_id,
+                title: { native: req.title },
+                coverImage: {},
+              },
+            })),
+        };
+      }
+      return { ok: false };
     });
 
     // Mock IntersectionObserver to trigger immediately
@@ -86,5 +97,9 @@ describe("AnimeCard Batching", () => {
     // Order depends on rendering, but usually consistent
     expect(body.map((b: { title: string }) => b.title)).toContain("Anime 1");
     expect(body.map((b: { title: string }) => b.title)).toContain("Anime 2");
+
+    // Verify IDs are present
+    expect(body[0]).toHaveProperty("request_id");
+    expect(body[1]).toHaveProperty("request_id");
   });
 });
