@@ -1,4 +1,7 @@
-import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import {
+  startAuthentication,
+  startRegistration,
+} from "@simplewebauthn/browser";
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
 import type { LoginData, RegisterData, User } from "../types";

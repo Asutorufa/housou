@@ -10,13 +10,8 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
-  const {
-    user,
-    updateProfile,
-    registerPasskey,
-    listPasskeys,
-    deletePasskey,
-  } = useAuth();
+  const { user, updateProfile, registerPasskey, listPasskeys, deletePasskey } =
+    useAuth();
   const [username, setUsername] = useState(user?.username || "");
   const [email, setEmail] = useState(user?.email || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
