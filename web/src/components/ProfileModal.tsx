@@ -5,6 +5,7 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Link,
   Lock,
   Pencil,
   User,
@@ -17,6 +18,7 @@ import { type PasskeySummary, useAuth } from "../contexts/AuthContext";
 interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
+  githubEnabled?: boolean;
 }
 
 const tabTriggerClass =
@@ -133,7 +135,7 @@ function ProfileTab({
 }
 
 function SecurityTab() {
-  const { changePassword } = useAuth();
+  const { user, changePassword } = useAuth();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
@@ -181,30 +183,34 @@ function SecurityTab() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          現在のパスワード
-        </label>
-        <div className="relative">
-          <input
-            type={showOldPassword ? "text" : "password"}
-            value={oldPassword}
-            onChange={(e) => setOldPassword(e.target.value)}
-            className={`${inputClass} pr-10`}
-          />
-          <button
-            type="button"
-            onClick={() => setShowOldPassword(!showOldPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          >
-            {showOldPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
+      {user?.has_password && (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+            現在のパスワード
+          </label>
+          <div className="relative">
+            <input
+              type={showOldPassword ? "text" : "password"}
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              className={`${inputClass} pr-10`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowOldPassword(!showOldPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+            >
+              {showOldPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-          新しいパスワード (8文字以上)
+          {user?.has_password
+            ? "新しいパスワード (8文字以上)"
+            : "パスワードを設定 (8文字以上)"}
         </label>
         <div className="relative">
           <input
@@ -257,6 +263,82 @@ function SecurityTab() {
         {loading ? "更新中..." : "パスワードを更新"}
       </button>
     </form>
+  );
+}
+
+function ConnectedAccountsTab({ githubEnabled }: { githubEnabled?: boolean }) {
+  const { user, bindGithub, unbindGithub } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleUnbind = async () => {
+    if (!user?.has_password) {
+      setError("GitHubの連携を解除する前に、パスワードを設定してください。");
+      return;
+    }
+    if (!confirm("GitHub連携を解除してもよろしいですか？")) return;
+
+    setLoading(true);
+    setError(null);
+    try {
+      await unbindGithub();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unbind");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        外部サービスと連携してログインできます。
+      </p>
+
+      {error && (
+        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-500 dark:bg-red-900/20">
+          {error}
+        </div>
+      )}
+
+      {githubEnabled && (
+        <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <div className="flex items-center gap-3">
+            <svg
+              className="h-6 w-6 fill-current text-gray-900 dark:text-white"
+              viewBox="0 0 24 24"
+            >
+              <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" />
+            </svg>
+            <div>
+              <div className="font-medium text-gray-900 dark:text-gray-100">
+                GitHub
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {user?.github_id ? "連携済み" : "未連携"}
+              </div>
+            </div>
+          </div>
+
+          {user?.github_id ? (
+            <button
+              onClick={handleUnbind}
+              disabled={loading}
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              解除
+            </button>
+          ) : (
+            <button
+              onClick={bindGithub}
+              className="rounded-lg bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600"
+            >
+              連携
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -466,9 +548,13 @@ function PasskeyTab() {
     </div>
   );
 }
-const TAB_ORDER = ["profile", "security", "passkey"] as const;
+const TAB_ORDER = ["profile", "security", "connected", "passkey"] as const;
 
-export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
+export default function ProfileModal({
+  isOpen,
+  onClose,
+  githubEnabled,
+}: ProfileModalProps) {
   const { user, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState("profile");
   const [direction, setDirection] = useState(0);
@@ -529,9 +615,9 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                 {/* Tabs */}
                 <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
                   <div className="mx-6 mt-4 mb-0 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
-                    <Tabs.List className="relative grid grid-cols-3">
+                    <Tabs.List className="relative grid grid-cols-4">
                       <motion.div
-                        className="pointer-events-none absolute inset-y-0 w-1/3 rounded-md bg-white shadow-sm dark:bg-gray-700"
+                        className="pointer-events-none absolute inset-y-0 w-1/4 rounded-md bg-white shadow-sm dark:bg-gray-700"
                         initial={false}
                         animate={{
                           x: `${TAB_ORDER.indexOf(activeTab as (typeof TAB_ORDER)[number]) * 100}%`,
@@ -555,13 +641,25 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                       >
                         <span className="relative z-10 flex items-center gap-1.5">
                           <Lock size={14} />
-                          <span>セキュリティ</span>
+                          <span className="hidden sm:inline">セキュリティ</span>
+                          <span className="sm:hidden">鍵</span>
+                        </span>
+                      </Tabs.Trigger>
+                      <Tabs.Trigger
+                        value="connected"
+                        className={tabTriggerClass}
+                      >
+                        <span className="relative z-10 flex items-center gap-1.5">
+                          <Link size={14} />
+                          <span className="hidden sm:inline">連携</span>
+                          <span className="sm:hidden">連携</span>
                         </span>
                       </Tabs.Trigger>
                       <Tabs.Trigger value="passkey" className={tabTriggerClass}>
                         <span className="relative z-10 flex items-center gap-1.5">
                           <KeyRound size={14} />
-                          <span>パスキー</span>
+                          <span className="hidden sm:inline">パスキー</span>
+                          <span className="sm:hidden">生体</span>
                         </span>
                       </Tabs.Trigger>
                     </Tabs.List>
@@ -612,6 +710,11 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                             />
                           )}
                           {activeTab === "security" && <SecurityTab />}
+                          {activeTab === "connected" && (
+                            <ConnectedAccountsTab
+                              githubEnabled={githubEnabled}
+                            />
+                          )}
                           {activeTab === "passkey" && <PasskeyTab />}
                         </motion.div>
                       </AnimatePresence>

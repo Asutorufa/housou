@@ -7,7 +7,6 @@ mod config;
 mod db;
 mod handlers;
 mod model;
-mod passkey;
 mod provider;
 mod utils;
 use db::Database; // Import Database trait
@@ -170,6 +169,12 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         (Method::Get, "/api/auth/github/callback") if auth_enabled => {
             auth::handle_github_callback(req, env.clone()).await
         }
+        (Method::Get, "/api/auth/github/bind") if auth_enabled => {
+            auth::handle_github_bind_authorize(req, env.clone()).await
+        }
+        (Method::Delete, "/api/auth/github") if auth_enabled => {
+            auth::handle_github_unbind(req, env.clone()).await
+        }
         (Method::Get, "/api/user/item") if auth_enabled => {
             auth::handle_get_item(req, env.clone()).await
         }
@@ -179,25 +184,25 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
         // Passkey Routes
         (Method::Post, "/api/auth/passkey/register/start") if auth_enabled => {
-            passkey::handle_register_start(req, env.clone()).await
+            auth::passkey::handle_register_start(req, env.clone()).await
         }
         (Method::Post, "/api/auth/passkey/register/finish") if auth_enabled => {
-            passkey::handle_register_finish(req, env.clone()).await
+            auth::passkey::handle_register_finish(req, env.clone()).await
         }
         (Method::Post, "/api/auth/passkey/login/start") if auth_enabled => {
-            passkey::handle_login_start(req, env.clone()).await
+            auth::passkey::handle_login_start(req, env.clone()).await
         }
         (Method::Post, "/api/auth/passkey/login/finish") if auth_enabled => {
-            passkey::handle_login_finish(req, env.clone()).await
+            auth::passkey::handle_login_finish(req, env.clone()).await
         }
         (Method::Get, "/api/auth/passkey") if auth_enabled => {
-            passkey::handle_list(req, env.clone()).await
+            auth::passkey::handle_list(req, env.clone()).await
         }
         (Method::Delete, "/api/auth/passkey") if auth_enabled => {
-            passkey::handle_delete(req, env.clone()).await
+            auth::passkey::handle_delete(req, env.clone()).await
         }
         (Method::Patch, "/api/auth/passkey") if auth_enabled => {
-            passkey::handle_rename(req, env.clone()).await
+            auth::passkey::handle_rename(req, env.clone()).await
         }
 
         // Handle Options for CORS on auth routes
