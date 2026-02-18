@@ -82,8 +82,8 @@ export default function AnimeCard({
       if (!response.ok) throw new Error("Metadata fetch failed");
       const data = await response.json();
       setMetadata(data || null);
-    } catch (err) {
-      console.error("Metadata error:", err);
+    } catch {
+      // Ignore errors, UI will show fallback
     } finally {
       setLoading(false);
     }

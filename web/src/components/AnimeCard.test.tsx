@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import AnimeCard from "./AnimeCard";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SiteMeta, DisplayAnimeItem } from "../types";
@@ -117,7 +117,9 @@ describe("AnimeCard fetchMetadata", () => {
     // Simulate intersection
     const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
     if (observerCallback) {
-      observerCallback([mockEntry], {} as IntersectionObserver);
+      act(() => {
+        observerCallback([mockEntry], {} as IntersectionObserver);
+      });
     }
 
     await waitFor(() => {
@@ -134,5 +136,28 @@ describe("AnimeCard fetchMetadata", () => {
     expect(params.get("mal_id")).toBe("456");
     expect(params.get("anilist_id")).toBe("789");
     expect(params.get("begin")).toBe("2023-01-01");
+  });
+
+  it("handles fetch failure gracefully without logging", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
+
+    render(<AnimeCard item={mockItemFetch} onOpenModal={() => {}} />);
+
+    // Simulate intersection
+    const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
+    if (observerCallback) {
+      act(() => {
+        observerCallback([mockEntry], {} as IntersectionObserver);
+      });
+    }
+
+    // Wait for the "No image" text which appears when loading is false and no cover image
+    await waitFor(() => {
+      expect(screen.getByText("No image")).toBeInTheDocument();
+    });
+
+    expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
