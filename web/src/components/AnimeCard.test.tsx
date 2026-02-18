@@ -93,7 +93,7 @@ describe("AnimeCard fetchMetadata", () => {
       root = null;
       rootMargin = "";
       thresholds = [];
-    } as any;
+    } as unknown as typeof IntersectionObserver;
 
     // Mock fetch
     global.fetch = vi.fn(() =>
@@ -122,7 +122,7 @@ describe("AnimeCard fetchMetadata", () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    const urlString = (global.fetch as any).mock.calls[0][0];
+    const urlString = vi.mocked(global.fetch).mock.calls[0][0] as string;
     const url = new URL(urlString, "http://localhost");
     const params = url.searchParams;
 
