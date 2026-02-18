@@ -444,10 +444,7 @@ fn extract_movie_content_rating(
                 |r| {
                     r.release_dates.as_ref().and_then(|d| {
                         d.iter().find_map(|x| {
-                            x.certification
-                                .as_ref()
-                                .filter(|c| !c.is_empty())
-                                .cloned()
+                            x.certification.as_ref().filter(|c| !c.is_empty()).cloned()
                         })
                     })
                 },
