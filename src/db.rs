@@ -423,9 +423,8 @@ impl Database for AppDatabase {
             return Ok(Vec::new());
         }
 
-        let mut all_results = Vec::new();
         // Chunk to avoid "too many SQL variables" error (D1 limit is 100 per query)
-        for chunk in titles.chunks(50) {
+        let tasks = titles.chunks(50).map(|chunk| {
             let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             let query = format!(
                 "SELECT * FROM user_items_v2 WHERE user_id = ? AND title IN ({placeholders})"
@@ -437,14 +436,18 @@ impl Database for AppDatabase {
                 bindings.push(JsValue::from_str(title));
             }
 
-            let results: Vec<UserItem> = self
-                .db
-                .prepare(&query)
-                .bind(&bindings)?
-                .all()
-                .await?
-                .results()?;
-            all_results.extend(results);
+            let db = self.db.clone();
+            async move {
+                let results: Vec<UserItem> =
+                    db.prepare(&query).bind(&bindings)?.all().await?.results()?;
+                Ok::<Vec<UserItem>, worker::Error>(results)
+            }
+        });
+
+        let results = futures::future::join_all(tasks).await;
+        let mut all_results = Vec::new();
+        for res in results {
+            all_results.extend(res?);
         }
 
         Ok(all_results)
