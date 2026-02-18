@@ -83,7 +83,7 @@ export const handlers = [
   }),
 
   http.post("/api/metadata", async ({ request }) => {
-    const body = (await request.json()) as any[];
+    const body = (await request.json()) as { title?: string }[];
     // Respond with a list of metadata based on the request count
     const response = body.map((req, idx) => ({
       id: `batch-${idx}`,

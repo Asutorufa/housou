@@ -108,7 +108,7 @@ describe("AnimeCard fetchMetadata", () => {
     // Mock fetch
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve([{}]) as Promise<any>,
+      json: () => Promise.resolve([{}]) as Promise<unknown>,
     } as Response);
   });
 

@@ -84,7 +84,7 @@ describe("AnimeCard Batching", () => {
     const body = JSON.parse(call[1].body);
     expect(body).toHaveLength(2);
     // Order depends on rendering, but usually consistent
-    expect(body.map((b: any) => b.title)).toContain("Anime 1");
-    expect(body.map((b: any) => b.title)).toContain("Anime 2");
+    expect(body.map((b: { title: string }) => b.title)).toContain("Anime 1");
+    expect(body.map((b: { title: string }) => b.title)).toContain("Anime 2");
   });
 });
