@@ -105,7 +105,8 @@ pub struct RegistrationResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAttestationResponse {
-    pub client_data_json: String,   // Base64url encoded
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String, // Base64url encoded
     pub attestation_object: String, // Base64url encoded
 }
 
@@ -124,7 +125,8 @@ pub struct LoginResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatorAssertionResponse {
-    pub client_data_json: String,   // Base64url encoded
+    #[serde(rename = "clientDataJSON")]
+    pub client_data_json: String, // Base64url encoded
     pub authenticator_data: String, // Base64url encoded
     pub signature: String,          // Base64url encoded
     #[serde(skip_serializing_if = "Option::is_none")]

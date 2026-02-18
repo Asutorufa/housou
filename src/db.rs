@@ -586,7 +586,8 @@ impl Database for AppDatabase {
     }
 
     async fn save_passkey_state(&self, id: &str, state_json: &str, expires_at: i64) -> Result<()> {
-        let query = "INSERT INTO passkey_states (id, state_json, expires_at) VALUES (?, ?, ?)";
+        let query =
+            "INSERT OR REPLACE INTO passkey_states (id, state_json, expires_at) VALUES (?, ?, ?)";
         self.db
             .prepare(query)
             .bind(&[
