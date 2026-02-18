@@ -1,7 +1,7 @@
 use crate::auth::{
-    EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR, clear_oauth_action_cookie,
-    clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
-    create_session_cookie, get_auth, get_base_url, get_db, verify_oauth_state,
+    clear_oauth_action_cookie, clear_oauth_state_cookie, create_oauth_action_cookie,
+    create_oauth_state_cookie, create_session_cookie, get_auth, get_base_url, get_db,
+    verify_oauth_state, EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR,
 };
 use crate::db::{AppDatabase, Database, User};
 use cookie::Cookie;
@@ -114,9 +114,14 @@ async fn exchange_code_for_token(
     let mut resp = Fetch::Request(req_post).send().await?;
 
     if resp.status_code() != 200 {
+        let error_body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown error".to_string());
         return Err(Error::RustError(format!(
-            "GitHub Token Error: {}",
-            resp.status_code()
+            "GitHub Token Error: {} - {}",
+            resp.status_code(),
+            error_body
         )));
     }
 
@@ -139,9 +144,14 @@ pub async fn fetch_github_user(access_token: &str) -> Result<GithubUser> {
     let mut user_resp = Fetch::Request(req_get).send().await?;
 
     if user_resp.status_code() != 200 {
+        let error_body = user_resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown error".to_string());
         return Err(Error::RustError(format!(
-            "GitHub User Error: {}",
-            user_resp.status_code()
+            "GitHub User Error: {} - {}",
+            user_resp.status_code(),
+            error_body
         )));
     }
 
