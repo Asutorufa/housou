@@ -294,34 +294,26 @@ impl Database for AppDatabase {
         new_email: Option<&str>,
         new_avatar_url: Option<&str>,
     ) -> Result<()> {
-        let email_part = if let Some(email) = new_email {
-            ("email = ?", JsValue::from_str(email))
-        } else {
-            ("", JsValue::NULL)
-        };
+        let mut updates = Vec::new();
+        let mut bindings = Vec::new();
 
-        let avatar_part = if let Some(avatar) = new_avatar_url {
-            ("avatar_url = ?", JsValue::from_str(avatar))
-        } else {
-            ("", JsValue::NULL)
-        };
+        updates.push("username = ?");
+        bindings.push(JsValue::from_str(new_username));
 
-        let mut query = "UPDATE users SET username = ?".to_string();
-        let mut bindings = vec![JsValue::from_str(new_username)];
-
-        if !email_part.0.is_empty() {
-            query.push_str(", ");
-            query.push_str(email_part.0);
-            bindings.push(email_part.1);
+        if let Some(email) = new_email {
+            updates.push("email = ?");
+            bindings.push(JsValue::from_str(email));
         }
 
-        if !avatar_part.0.is_empty() {
-            query.push_str(", ");
-            query.push_str(avatar_part.0);
-            bindings.push(avatar_part.1);
+        // Always update avatar_url, setting to NULL if None (explicit clear)
+        updates.push("avatar_url = ?");
+        if let Some(avatar) = new_avatar_url {
+            bindings.push(JsValue::from_str(avatar));
+        } else {
+            bindings.push(JsValue::NULL);
         }
 
-        query.push_str(" WHERE id = ?");
+        let query = format!("UPDATE users SET {} WHERE id = ?", updates.join(", "));
         bindings.push(JsValue::from_f64(id as f64));
 
         self.db.prepare(&query).bind(&bindings)?.run().await?;
