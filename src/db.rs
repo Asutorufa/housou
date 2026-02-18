@@ -295,17 +295,6 @@ impl Database for AppDatabase {
             query.push_str(", ");
             query.push_str(avatar_part.0);
             bindings.push(avatar_part.1);
-        } else {
-            // If new_avatar_url is None, we might want to clear it?
-            // Or just leave it as is if it's not provided in the update.
-            // Let's assume Option<&str> means "set to this value (which could be None to clear)".
-            // Actually, let's treat it as "update if provided".
-            // If the user wants to clear, they send empty string? No, let's use Option properly.
-            // But how do we distinguish "don't update" vs "set to null"?
-            // Usually we set to null if it's explicitly passed as None in a Patch.
-            // For now, let's just update it every time.
-            query.push_str(", avatar_url = ?");
-            bindings.push(JsValue::NULL);
         }
 
         query.push_str(" WHERE id = ?");
