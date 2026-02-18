@@ -305,9 +305,12 @@ impl Database for AppDatabase {
             bindings.push(JsValue::from_str(email));
         }
 
+        // Always update avatar_url, setting to NULL if None (explicit clear)
+        updates.push("avatar_url = ?");
         if let Some(avatar) = new_avatar_url {
-            updates.push("avatar_url = ?");
             bindings.push(JsValue::from_str(avatar));
+        } else {
+            bindings.push(JsValue::NULL);
         }
 
         let query = format!("UPDATE users SET {} WHERE id = ?", updates.join(", "));
