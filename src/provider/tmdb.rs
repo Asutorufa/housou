@@ -645,12 +645,10 @@ mod tests {
                 Genre {
                     id: Some(1),
                     name: Some("Action".to_string()),
-                    ..Default::default()
                 },
                 Genre {
                     id: Some(2),
                     name: Some("Adventure".to_string()),
-                    ..Default::default()
                 },
             ]),
             overview: Some("This is a test movie description.".to_string()),
@@ -662,7 +660,6 @@ mod tests {
                             certification: Some("PG-13".to_string()),
                             ..Default::default()
                         }]),
-                        ..Default::default()
                     },
                     ReleasedateslistResults {
                         iso_3166_1: Some("JP".to_string()),
@@ -670,7 +667,6 @@ mod tests {
                             certification: Some("G".to_string()),
                             ..Default::default()
                         }]),
-                        ..Default::default()
                     },
                 ]),
                 ..Default::default()

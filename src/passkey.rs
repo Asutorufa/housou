@@ -1,6 +1,7 @@
 use crate::ResponseExt;
 use crate::auth;
 use crate::db::{Database, User};
+use async_trait::async_trait;
 use base64::prelude::*;
 use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
@@ -12,24 +13,142 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use worker::*;
 
+// Data Models
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StoredPasskey {
+    pub user_id: i32,
+    pub cred_id: String,
+    pub public_key: String, // Base64url-encoded COSE key
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: i64,
+    pub counter: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PasskeyState {
+    pub id: String,
+    pub state_json: String,
+    pub expires_at: i64,
+}
+
+// Storage Trait
+
+#[async_trait(?Send)]
+pub trait PasskeyStore {
+    // Credential CRUD
+    async fn create_passkey(
+        &self,
+        user_id: i32,
+        cred_id: &str,
+        public_key: &str,
+        name: &str,
+        counter: i64,
+    ) -> Result<()>;
+    async fn get_passkey(&self, cred_id: &str) -> Result<Option<StoredPasskey>>;
+    async fn list_passkeys(&self, user_id: i32) -> Result<Vec<StoredPasskey>>;
+    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> Result<()>;
+    async fn update_passkey_counter(
+        &self,
+        cred_id: &str,
+        new_counter: i64,
+        last_used_at: i64,
+    ) -> Result<()>;
+
+    // Ephemeral state (challenge ↔ session)
+    async fn save_state(&self, id: &str, state_json: &str, expires_at: i64) -> Result<()>;
+    async fn get_state(&self, id: &str) -> Result<Option<PasskeyState>>;
+    async fn delete_state(&self, id: &str) -> Result<()>;
+}
+
+// User Lookup Trait
+
+#[async_trait(?Send)]
+pub trait UserLookup {
+    async fn get_user_by_id(&self, id: i32) -> Result<Option<User>>;
+}
+
+// Configuration
+
+pub struct PasskeyConfig {
+    pub rp_id: String,
+    pub rp_name: String,
+    pub origin: String,
+}
+
+impl PasskeyConfig {
+    pub fn from_env(env: &Env) -> Self {
+        let base_url = env
+            .var("BASE_URL")
+            .map(|s| s.to_string())
+            .unwrap_or_else(|_| "http://localhost:8787".to_string());
+
+        let rp_id = match Url::parse(&base_url) {
+            Ok(url) => url.host_str().unwrap_or("localhost").to_string(),
+            Err(_) => "localhost".to_string(),
+        };
+
+        let origin = base_url.trim_end_matches('/').to_string();
+
+        Self {
+            rp_id,
+            rp_name: "Housou".to_string(),
+            origin,
+        }
+    }
+}
+
+// WebAuthn Protocol Types
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialUserEntity {
-    pub id: String, // Base64url encoded
-    pub name: String,
-    pub display_name: String,
+pub struct PublicKeyCredentialCreationOptions {
+    pub rp: RpEntity,
+    pub user: UserEntity,
+    pub challenge: String,
+    pub pub_key_cred_params: Vec<PubKeyCredParam>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exclude_credentials: Option<Vec<CredentialDescriptor>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticator_selection: Option<AuthenticatorSelection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attestation: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialRpEntity {
+pub struct PublicKeyCredentialRequestOptions {
+    pub challenge: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    pub rp_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_credentials: Option<Vec<CredentialDescriptor>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_verification: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RpEntity {
     pub name: String,
     pub id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialParameters {
+pub struct UserEntity {
+    pub id: String,
+    pub name: String,
+    pub display_name: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PubKeyCredParam {
     #[serde(rename = "type")]
     pub type_: String,
     pub alg: i32,
@@ -37,17 +156,17 @@ pub struct PublicKeyCredentialParameters {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialDescriptor {
+pub struct CredentialDescriptor {
     #[serde(rename = "type")]
     pub type_: String,
-    pub id: String, // Base64url encoded
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transports: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthenticatorSelectionCriteria {
+pub struct AuthenticatorSelection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticator_attachment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -58,37 +177,7 @@ pub struct AuthenticatorSelectionCriteria {
     pub user_verification: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialCreationOptions {
-    pub rp: PublicKeyCredentialRpEntity,
-    pub user: PublicKeyCredentialUserEntity,
-    pub challenge: String, // Base64url encoded
-    pub pub_key_cred_params: Vec<PublicKeyCredentialParameters>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub exclude_credentials: Option<Vec<PublicKeyCredentialDescriptor>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authenticator_selection: Option<AuthenticatorSelectionCriteria>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub attestation: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PublicKeyCredentialRequestOptions {
-    pub challenge: String, // Base64url encoded
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout: Option<u64>,
-    pub rp_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub allow_credentials: Option<Vec<PublicKeyCredentialDescriptor>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_verification: Option<String>,
-}
-
-// Client Response Structures
+// Client response types
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -97,17 +186,17 @@ pub struct RegistrationResponse {
     pub raw_id: String,
     #[serde(rename = "type")]
     pub type_: String,
-    pub response: AuthenticatorAttestationResponse,
+    pub response: AttestationResponse,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_extension_results: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthenticatorAttestationResponse {
+pub struct AttestationResponse {
     #[serde(rename = "clientDataJSON")]
-    pub client_data_json: String, // Base64url encoded
-    pub attestation_object: String, // Base64url encoded
+    pub client_data_json: String,
+    pub attestation_object: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -117,64 +206,51 @@ pub struct LoginResponse {
     pub raw_id: String,
     #[serde(rename = "type")]
     pub type_: String,
-    pub response: AuthenticatorAssertionResponse,
+    pub response: AssertionResponse,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_extension_results: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct AuthenticatorAssertionResponse {
+pub struct AssertionResponse {
     #[serde(rename = "clientDataJSON")]
-    pub client_data_json: String, // Base64url encoded
-    pub authenticator_data: String, // Base64url encoded
-    pub signature: String,          // Base64url encoded
+    pub client_data_json: String,
+    pub authenticator_data: String,
+    pub signature: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub user_handle: Option<String>, // Base64url encoded
+    pub user_handle: Option<String>,
 }
 
-// Internal State
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct RegistrationState {
-    pub challenge: String,
-    pub user_id: i32,
+// Public summary (for API responses)
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeySummary {
+    pub id: String,
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: i64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct LoginState {
-    pub challenge: String,
+// Internal helpers
+
+const CHALLENGE_LEN: usize = 32;
+const STATE_TTL_SECONDS: i64 = 60 * 5;
+
+#[derive(Serialize, Deserialize)]
+struct RegState {
+    challenge: String,
+    user_id: i32,
 }
 
-// --- Implementation ---
-
-const CHALLENGE_LENGTH: usize = 32;
-const STATE_TTL_SECONDS: i64 = 60 * 5; // 5 minutes
-
-fn generate_challenge() -> String {
-    let mut buf = [0u8; CHALLENGE_LENGTH];
-    OsRng.fill_bytes(&mut buf);
-    BASE64_URL_SAFE_NO_PAD.encode(buf)
+#[derive(Serialize, Deserialize)]
+struct LoginState {
+    challenge: String,
 }
 
-fn get_rp_id(env: &Env) -> String {
-    let base_url = env
-        .var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
-    // Parse hostname from URL
-    match Url::parse(&base_url) {
-        Ok(url) => url.host_str().unwrap_or("localhost").to_string(),
-        Err(_) => "localhost".to_string(),
-    }
-}
-
-fn get_rp_name() -> String {
-    "Housou".to_string()
-}
-
-// Helper structs and functions
 #[derive(Deserialize)]
-struct ClientDataJson {
+struct ClientData {
     challenge: String,
     origin: String,
     #[serde(rename = "type")]
@@ -188,57 +264,50 @@ struct AuthData {
     credential_data: Option<Vec<u8>>,
 }
 
-fn verify_client_data(
-    client_data_json_b64: &str,
-    expected_challenge: &str,
-    env: &Env,
-    expected_type: &str,
-) -> Result<ClientDataJson> {
-    let client_data_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(client_data_json_b64)
-        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {}", e)))?;
-    let client_data: ClientDataJson = serde_json::from_slice(&client_data_bytes)?;
-
-    if client_data.challenge != expected_challenge {
-        return Err(Error::RustError("Challenge mismatch".to_string()));
-    }
-
-    let expected_origin = env
-        .var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string());
-    let expected_origin = expected_origin.trim_end_matches('/');
-
-    if client_data.origin != expected_origin {
-        return Err(Error::RustError(format!(
-            "Origin mismatch: expected {}, got {}",
-            expected_origin, client_data.origin
-        )));
-    }
-
-    if client_data.type_ != expected_type {
-        return Err(Error::RustError("Invalid operation type".to_string()));
-    }
-
-    Ok(client_data)
+fn generate_challenge() -> String {
+    let mut buf = [0u8; CHALLENGE_LEN];
+    OsRng.fill_bytes(&mut buf);
+    BASE64_URL_SAFE_NO_PAD.encode(buf)
 }
 
-fn parse_auth_data(auth_data_bytes: &[u8]) -> Result<AuthData> {
-    if auth_data_bytes.len() < 37 {
-        return Err(Error::RustError("authData too short".to_string()));
+fn verify_client_data(
+    client_data_b64: &str,
+    expected_challenge: &str,
+    config: &PasskeyConfig,
+    expected_type: &str,
+) -> Result<(ClientData, Vec<u8>)> {
+    let bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(client_data_b64)
+        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {e}")))?;
+    let data: ClientData = serde_json::from_slice(&bytes)?;
+
+    if data.challenge != expected_challenge {
+        return Err(Error::RustError("Challenge mismatch".into()));
     }
+    if data.origin != config.origin {
+        return Err(Error::RustError(format!(
+            "Origin mismatch: expected {}, got {}",
+            config.origin, data.origin
+        )));
+    }
+    if data.type_ != expected_type {
+        return Err(Error::RustError("Invalid operation type".into()));
+    }
+    Ok((data, bytes))
+}
 
-    let rp_id_hash = auth_data_bytes[0..32].to_vec();
-    let flags = auth_data_bytes[32];
-    let sign_count_bytes: [u8; 4] = auth_data_bytes[33..37].try_into().unwrap();
-    let sign_count = u32::from_be_bytes(sign_count_bytes);
-
+fn parse_auth_data(raw: &[u8]) -> Result<AuthData> {
+    if raw.len() < 37 {
+        return Err(Error::RustError("authData too short".into()));
+    }
+    let rp_id_hash = raw[0..32].to_vec();
+    let flags = raw[32];
+    let sign_count = u32::from_be_bytes(raw[33..37].try_into().unwrap());
     let credential_data = if (flags & 0x40) != 0 {
-        Some(auth_data_bytes[37..].to_vec())
+        Some(raw[37..].to_vec())
     } else {
         None
     };
-
     Ok(AuthData {
         rp_id_hash,
         flags,
@@ -247,36 +316,91 @@ fn parse_auth_data(auth_data_bytes: &[u8]) -> Result<AuthData> {
     })
 }
 
-fn verify_rp_id_hash(rp_id_hash: &[u8], env: &Env) -> Result<()> {
-    let expected_rp_id = get_rp_id(env);
-    let mut hasher = Sha256::new();
-    hasher.update(expected_rp_id.as_bytes());
-    let expected_hash = hasher.finalize();
-    if rp_id_hash != expected_hash.as_slice() {
-        return Err(Error::RustError("RP ID Hash mismatch".to_string()));
+fn verify_rp_id_hash(hash: &[u8], config: &PasskeyConfig) -> Result<()> {
+    let expected = Sha256::digest(config.rp_id.as_bytes());
+    if hash != expected.as_slice() {
+        return Err(Error::RustError("RP ID Hash mismatch".into()));
     }
     Ok(())
 }
 
-// Start Registration
-pub async fn start_registration<D: Database>(
-    db: &D,
+fn verify_user_present(flags: u8) -> Result<()> {
+    if (flags & 0x01) == 0 {
+        return Err(Error::RustError("User Present flag not set".into()));
+    }
+    Ok(())
+}
+
+fn extract_credential(data: &[u8]) -> Result<(&[u8], &[u8])> {
+    if data.len() < 18 {
+        return Err(Error::RustError("Credential Data too short".into()));
+    }
+    let cred_id_len = u16::from_be_bytes(data[16..18].try_into().unwrap()) as usize;
+    if data.len() < 18 + cred_id_len {
+        return Err(Error::RustError("Credential ID incomplete".into()));
+    }
+    let cred_id = &data[18..18 + cred_id_len];
+    let pub_key_cbor = &data[18 + cred_id_len..];
+    Ok((cred_id, pub_key_cbor))
+}
+
+fn verify_p256_signature(
+    pub_key_cbor: &[u8],
+    signed_data: &[u8],
+    signature_der: &[u8],
+) -> Result<()> {
+    let cose_key = CoseKey::from_slice(pub_key_cbor)
+        .map_err(|e| Error::RustError(format!("Invalid COSE key: {e}")))?;
+
+    let x = match cose_key.params.iter().find(|(k, _)| k == &Label::Int(-2)) {
+        Some((_, Value::Bytes(b))) => b,
+        _ => return Err(Error::RustError("Missing x coordinate".into())),
+    };
+    let y = match cose_key.params.iter().find(|(k, _)| k == &Label::Int(-3)) {
+        Some((_, Value::Bytes(b))) => b,
+        _ => return Err(Error::RustError("Missing y coordinate".into())),
+    };
+
+    if x.len() != 32 || y.len() != 32 {
+        return Err(Error::RustError("Invalid coordinate length".into()));
+    }
+
+    let encoded_point = EncodedPoint::from_affine_coordinates(
+        p256::FieldBytes::from_slice(x),
+        p256::FieldBytes::from_slice(y),
+        false,
+    );
+    let verifying_key = VerifyingKey::from_encoded_point(&encoded_point)
+        .map_err(|e| Error::RustError(format!("Invalid P-256 key: {e}")))?;
+
+    let signature = Signature::from_der(signature_der)
+        .map_err(|e| Error::RustError(format!("Invalid signature DER: {e}")))?;
+
+    verifying_key.verify(signed_data, &signature).map_err(|e| {
+        console_error!("Signature verification failed: {e}");
+        Error::RustError("Signature verification failed".into())
+    })
+}
+
+// Core WebAuthn Flows
+
+pub async fn start_registration<S: PasskeyStore>(
+    store: &S,
     user: &User,
-    env: &Env,
+    config: &PasskeyConfig,
 ) -> Result<PublicKeyCredentialCreationOptions> {
     let challenge = generate_challenge();
-    let user_handle = BASE64_URL_SAFE_NO_PAD.encode(user.id.to_string().as_bytes()); // Simple user handle
+    let user_handle = BASE64_URL_SAFE_NO_PAD.encode(user.id.to_string().as_bytes());
 
-    // Check existing passkeys to exclude them
-    let existing_passkeys = db.list_passkeys(user.id).await?;
-    let exclude_credentials = if existing_passkeys.is_empty() {
+    let existing = store.list_passkeys(user.id).await?;
+    let exclude_credentials = if existing.is_empty() {
         None
     } else {
         Some(
-            existing_passkeys
+            existing
                 .into_iter()
-                .map(|pk| PublicKeyCredentialDescriptor {
-                    type_: "public-key".to_string(),
+                .map(|pk| CredentialDescriptor {
+                    type_: "public-key".into(),
                     id: pk.cred_id,
                     transports: None,
                 })
@@ -285,95 +409,79 @@ pub async fn start_registration<D: Database>(
     };
 
     let options = PublicKeyCredentialCreationOptions {
-        rp: PublicKeyCredentialRpEntity {
-            name: get_rp_name(),
-            id: get_rp_id(env),
+        rp: RpEntity {
+            name: config.rp_name.clone(),
+            id: config.rp_id.clone(),
         },
-        user: PublicKeyCredentialUserEntity {
+        user: UserEntity {
             id: user_handle,
             name: user.email.clone(),
             display_name: user.username.clone(),
         },
         challenge: challenge.clone(),
-        pub_key_cred_params: vec![
-            PublicKeyCredentialParameters {
-                type_: "public-key".to_string(),
-                alg: -7, // ES256
-            },
-            PublicKeyCredentialParameters {
-                type_: "public-key".to_string(),
-                alg: -257, // RS256
-            },
-        ],
+        pub_key_cred_params: vec![PubKeyCredParam {
+            type_: "public-key".into(),
+            alg: -7, // ES256
+        }],
         timeout: Some(60000),
         exclude_credentials,
-        authenticator_selection: Some(AuthenticatorSelectionCriteria {
-            authenticator_attachment: None, // Cross-platform or platform
+        authenticator_selection: Some(AuthenticatorSelection {
+            authenticator_attachment: None,
             require_resident_key: Some(false),
-            resident_key: Some("preferred".to_string()),
-            user_verification: Some("preferred".to_string()),
+            resident_key: Some("preferred".into()),
+            user_verification: Some("preferred".into()),
         }),
-        attestation: Some("none".to_string()), // We don't verify attestation trust path in this simple impl
+        attestation: Some("none".into()),
     };
 
-    // Save state
-    let state = RegistrationState {
+    // Persist challenge state
+    let state = RegState {
         challenge,
         user_id: user.id,
     };
-    let state_json = serde_json::to_string(&state)?;
-    let expires_at = Date::now().as_millis() as i64 + (STATE_TTL_SECONDS * 1000);
-    // Use user ID as key for simplicity in this flow, or a separate ID if needed.
-    // Ideally the frontend sends back a session ID, but here we can just key by user ID for "current registration attempt".
-    // Better: frontend doesn't send ID back in standard WebAuthn flow until finish.
-    // So we need to store it associated with the user via cookie or just rely on the fact that the user is logged in.
-    // We will use a unique ID and set it in a cookie, or return it?
-    // Actually, common pattern: return options, client sends back response.
-    // Server needs to match response to challenge.
-    // We can key state by challenge? Or by user_id if we only allow one pending registration per user.
-    // Let's key by user_id for registration since user must be logged in.
     let state_id = format!("reg:{}", user.id);
-    db.save_passkey_state(&state_id, &state_json, expires_at)
+    let expires_at = Date::now().as_millis() as i64 + (STATE_TTL_SECONDS * 1000);
+    store
+        .save_state(&state_id, &serde_json::to_string(&state)?, expires_at)
         .await?;
 
     Ok(options)
 }
 
-pub async fn finish_registration<D: Database>(
-    db: &D,
+pub async fn finish_registration<S: PasskeyStore>(
+    store: &S,
     user: &User,
-    env: &Env,
+    config: &PasskeyConfig,
     response: RegistrationResponse,
 ) -> Result<()> {
-    // 1. Retrieve state
+    // 1. Retrieve & validate state
     let state_id = format!("reg:{}", user.id);
-    let state_record = db
-        .get_passkey_state(&state_id)
+    let record = store
+        .get_state(&state_id)
         .await?
-        .ok_or_else(|| Error::RustError("Registration session expired or invalid".to_string()))?;
-    let state: RegistrationState = serde_json::from_str(&state_record.state_json)?;
+        .ok_or_else(|| Error::RustError("Registration session expired or invalid".into()))?;
+    let state: RegState = serde_json::from_str(&record.state_json)?;
 
-    // 2. Parse & Verify ClientDataJSON
-    let _client_data = verify_client_data(
+    // 2. Verify clientDataJSON
+    verify_client_data(
         &response.response.client_data_json,
         &state.challenge,
-        env,
+        config,
         "webauthn.create",
     )?;
 
-    // 3. Parse AttestationObject (CBOR)
-    let att_obj_bytes = BASE64_URL_SAFE_NO_PAD
+    // 3. Parse attestation object (CBOR)
+    let att_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.attestation_object)
-        .map_err(|e| Error::RustError(format!("Invalid attestationObject base64: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Invalid attestationObject base64: {e}")))?;
 
-    let att_obj: Value = ciborium::from_reader(att_obj_bytes.as_slice())
-        .map_err(|e| Error::RustError(format!("Invalid attestationObject CBOR: {}", e)))?;
+    let att_obj: Value = ciborium::from_reader(att_bytes.as_slice())
+        .map_err(|e| Error::RustError(format!("Invalid attestationObject CBOR: {e}")))?;
 
-    // Extract authData
     let auth_data_bytes = match &att_obj {
         Value::Map(m) => m
             .iter()
-            .find(|(k, _)| k.as_text().map(|s| s == "authData").unwrap_or(false))
+            .find(|(k, _)| k.as_text().is_some_and(|s| s == "authData"))
             .map(|(_, v)| {
                 v.as_bytes()
                     .ok_or(Error::RustError("authData not bytes".into()))
@@ -386,254 +494,166 @@ pub async fn finish_registration<D: Database>(
         }
     };
 
-    // 4. Parse & Verify AuthData
+    // 4. Verify authData
     let auth_data = parse_auth_data(auth_data_bytes)?;
-    verify_rp_id_hash(&auth_data.rp_id_hash, env)?;
+    verify_rp_id_hash(&auth_data.rp_id_hash, config)?;
+    verify_user_present(auth_data.flags)?;
 
-    // Verify User Present flag (bit 0)
-    if (auth_data.flags & 0x01) == 0 {
-        return Err(Error::RustError("User Present flag not set".to_string()));
-    }
-
-    // Extract AttestedCredentialData
-    let credential_data_bytes = auth_data
+    // 5. Extract credential
+    let cred_bytes = auth_data
         .credential_data
-        .ok_or_else(|| Error::RustError("Attested Credential Data missing".to_string()))?;
+        .ok_or_else(|| Error::RustError("Attested Credential Data missing".into()))?;
+    let (cred_id, pub_key_cbor) = extract_credential(&cred_bytes)?;
 
-    if credential_data_bytes.len() < 18 {
-        return Err(Error::RustError("Credential Data too short".to_string()));
-    }
+    // Validate the public key parses
+    CoseKey::from_slice(pub_key_cbor)
+        .map_err(|e| Error::RustError(format!("Invalid Public Key CBOR: {e}")))?;
 
-    let cred_id_len_bytes: [u8; 2] = credential_data_bytes[16..18].try_into().unwrap();
-    let cred_id_len = u16::from_be_bytes(cred_id_len_bytes) as usize;
+    // 6. Store credential
+    let cred_id_b64 = BASE64_URL_SAFE_NO_PAD.encode(cred_id);
+    let pub_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(pub_key_cbor);
+    store
+        .create_passkey(
+            user.id,
+            &cred_id_b64,
+            &pub_key_b64,
+            "Passkey",
+            auth_data.sign_count as i64,
+        )
+        .await?;
 
-    if credential_data_bytes.len() < 18 + cred_id_len {
-        return Err(Error::RustError("Credential ID incomplete".to_string()));
-    }
-
-    let credential_id = &credential_data_bytes[18..18 + cred_id_len];
-    let public_key_cbor = &credential_data_bytes[18 + cred_id_len..];
-
-    // Validate Public Key (Basic check that it parses)
-    let _cose_key: CoseKey = CoseKey::from_slice(public_key_cbor)
-        .map_err(|e| Error::RustError(format!("Invalid Public Key CBOR: {}", e)))?;
-
-    // Store in DB
-    // We store the public key as Bytes or serialized CBOR (Base64 encoded)
-    let cred_id_str = BASE64_URL_SAFE_NO_PAD.encode(credential_id);
-    let pub_key_str = BASE64_URL_SAFE_NO_PAD.encode(public_key_cbor);
-
-    // Use a default name, user can rename later
-    let name = "Passkey".to_string();
-
-    db.create_passkey(
-        user.id,
-        &cred_id_str,
-        &pub_key_str,
-        &name,
-        auth_data.sign_count as i64,
-    )
-    .await?;
-
-    // Cleanup state
-    db.delete_passkey_state(&state_id).await?;
-
+    store.delete_state(&state_id).await?;
     Ok(())
 }
 
-// Start Login
-pub async fn start_login<D: Database>(
-    db: &D,
-    env: &Env,
-) -> Result<(PublicKeyCredentialRequestOptions, String)> {
+pub async fn start_login<S: PasskeyStore>(
+    store: &S,
+    config: &PasskeyConfig,
+) -> Result<PublicKeyCredentialRequestOptions> {
     let challenge = generate_challenge();
-    let challenge_b64 = challenge.clone();
 
     let options = PublicKeyCredentialRequestOptions {
-        challenge: challenge_b64,
+        challenge: challenge.clone(),
         timeout: Some(60000),
-        rp_id: get_rp_id(env),
-        allow_credentials: None, // Allow any credential for this RP (discoverable) or we could list user's creds if user identifier is known
-        user_verification: Some("preferred".to_string()),
+        rp_id: config.rp_id.clone(),
+        allow_credentials: None,
+        user_verification: Some("preferred".into()),
     };
 
-    // Save state
     let state = LoginState { challenge };
-    let state_json = serde_json::to_string(&state)?;
+    let state_id = format!("login:{}", options.challenge);
     let expires_at = Date::now().as_millis() as i64 + (STATE_TTL_SECONDS * 1000);
-
-    // We use the challenge itself as the state ID since we don't have a user ID yet for discoverable flow
-    // But wait, the frontend might send an email first?
-    // If we want to support passwordless/usernameless flow, we key by challenge.
-    // However, to keep it simple and consistent with typical "login with passkey" button that might be clicked *after* entering email or just "login with passkey",
-    // let's use the challenge as the key to retrieve state later.
-    // The finish endpoint will receive the response which contains the challenge in clientDataJSON.
-    let state_id = format!("login:{}", options.challenge); // Use the base64 challenge as ID
-    db.save_passkey_state(&state_id, &state_json, expires_at)
+    store
+        .save_state(&state_id, &serde_json::to_string(&state)?, expires_at)
         .await?;
 
-    Ok((options, state_id))
+    Ok(options)
 }
 
-// Finish Login
-pub async fn finish_login<D: Database>(db: &D, env: &Env, response: LoginResponse) -> Result<User> {
-    // 1. Retrieve state using challenge from response (insecure to trust client data blindly? No, we verify signature later)
-    // But we need the challenge to look up the state.
-    // We can parse clientDataJSON first to get the challenge.
+pub async fn finish_login<S: PasskeyStore + UserLookup>(
+    store: &S,
+    config: &PasskeyConfig,
+    response: LoginResponse,
+) -> Result<User> {
+    // 1. Parse clientDataJSON to retrieve the challenge for state lookup
     let client_data_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.client_data_json)
-        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {}", e)))?;
-    let client_data: ClientDataJson = serde_json::from_slice(&client_data_bytes)?;
+        .map_err(|e| Error::RustError(format!("Invalid clientDataJSON base64: {e}")))?;
+    let client_data_peek: ClientData = serde_json::from_slice(&client_data_bytes)?;
 
-    let state_id = format!("login:{}", client_data.challenge);
-    let state_record = db.get_passkey_state(&state_id).await?.ok_or_else(|| {
-        Error::RustError("Login session expired or invalid (challenge not found)".to_string())
-    })?;
-    let state: LoginState = serde_json::from_str(&state_record.state_json)?;
+    let state_id = format!("login:{}", client_data_peek.challenge);
+    let record = store
+        .get_state(&state_id)
+        .await?
+        .ok_or_else(|| Error::RustError("Login session expired or invalid".into()))?;
+    let state: LoginState = serde_json::from_str(&record.state_json)?;
 
-    // 2. Parse & Verify ClientDataJSON
-    let _client_data = verify_client_data(
+    // 2. Full clientDataJSON verification
+    verify_client_data(
         &response.response.client_data_json,
         &state.challenge,
-        env,
+        config,
         "webauthn.get",
     )?;
 
-    // 3. Parse & Verify AuthenticatorData
+    // 3. Parse & verify authenticator data
     let auth_data_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.authenticator_data)
-        .map_err(|e| Error::RustError(format!("Invalid authenticatorData base64: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Invalid authenticatorData base64: {e}")))?;
 
     let auth_data = parse_auth_data(&auth_data_bytes)?;
-    verify_rp_id_hash(&auth_data.rp_id_hash, env)?;
+    verify_rp_id_hash(&auth_data.rp_id_hash, config)?;
+    verify_user_present(auth_data.flags)?;
 
-    // Verify User Present flag
-    if (auth_data.flags & 0x01) == 0 {
-        return Err(Error::RustError("User Present flag not set".to_string()));
-    }
-
-    // 4. Verify Signature
-    // Retrieve Passkey from DB
-    let passkey = db
+    // 4. Look up stored credential
+    let passkey = store
         .get_passkey(&response.id)
         .await?
-        .ok_or_else(|| Error::RustError("Passkey not found".to_string()))?;
+        .ok_or_else(|| Error::RustError("Passkey not found".into()))?;
 
-    // Verify User Handle if present
-    if let Some(user_handle_b64) = &response.response.user_handle {
-        let user_handle_bytes = BASE64_URL_SAFE_NO_PAD
-            .decode(user_handle_b64)
-            .map_err(|e| Error::RustError(format!("Invalid userHandle base64: {}", e)))?;
-        let user_id_str = String::from_utf8(user_handle_bytes)
-            .map_err(|_| Error::RustError("Invalid userHandle utf8".to_string()))?;
-
-        if user_id_str != passkey.user_id.to_string() {
-            return Err(Error::RustError("User Handle mismatch".to_string()));
+    // 5. Verify user handle if present
+    if let Some(ref uh_b64) = response.response.user_handle {
+        let uh_bytes = BASE64_URL_SAFE_NO_PAD
+            .decode(uh_b64)
+            .map_err(|e| Error::RustError(format!("Invalid userHandle base64: {e}")))?;
+        let uid_str = String::from_utf8(uh_bytes)
+            .map_err(|_| Error::RustError("Invalid userHandle utf8".into()))?;
+        if uid_str != passkey.user_id.to_string() {
+            return Err(Error::RustError("User Handle mismatch".into()));
         }
     }
 
-    // Parse Public Key (COSE)
+    // 6. Verify signature
     let pub_key_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&passkey.passkey_json)
-        .map_err(|e| Error::RustError(format!("Invalid stored public key base64: {}", e)))?;
+        .decode(&passkey.public_key)
+        .map_err(|e| Error::RustError(format!("Invalid stored public key base64: {e}")))?;
 
-    let cose_key = CoseKey::from_slice(&pub_key_bytes)
-        .map_err(|e| Error::RustError(format!("Invalid stored public key CBOR: {}", e)))?;
-
-    // Extract key parameters (assuming EC2/P-256 for now as we requested it)
-    // We should check kty (1 for OKP/EC2) and crv (1 for P-256)
-    // CoseKey structure is generic.
-    // kty: 1 (EC2), crv: 1 (P-256), x, y
-
-    let x = match cose_key.params.iter().find(|(k, _)| k == &Label::Int(-2)) {
-        Some((_, Value::Bytes(b))) => b,
-        _ => return Err(Error::RustError("Missing x coordinate".to_string())),
-    };
-    let y = match cose_key.params.iter().find(|(k, _)| k == &Label::Int(-3)) {
-        Some((_, Value::Bytes(b))) => b,
-        _ => return Err(Error::RustError("Missing y coordinate".to_string())),
-    };
-
-    if x.len() != 32 || y.len() != 32 {
-        return Err(Error::RustError("Invalid coordinate length".to_string()));
-    }
-
-    // Construct VerifyingKey
-    let x_arr = p256::FieldBytes::from_slice(x);
-    let y_arr = p256::FieldBytes::from_slice(y);
-    let encoded_point = EncodedPoint::from_affine_coordinates(x_arr, y_arr, false);
-    let verifying_key = VerifyingKey::from_encoded_point(&encoded_point)
-        .map_err(|e| Error::RustError(format!("Invalid P-256 key: {}", e)))?;
-
-    // Construct Signed Data: authData || hash(clientDataJSON)
-    let mut hasher = Sha256::new();
-    hasher.update(&client_data_bytes);
-    let client_data_hash = hasher.finalize();
-
-    let mut signed_data = Vec::new();
+    let client_data_hash = Sha256::digest(&client_data_bytes);
+    let mut signed_data = Vec::with_capacity(auth_data_bytes.len() + 32);
     signed_data.extend_from_slice(&auth_data_bytes);
     signed_data.extend_from_slice(&client_data_hash);
 
-    // Parse Signature (ASN.1 DER)
-    let signature_bytes = BASE64_URL_SAFE_NO_PAD
+    let sig_bytes = BASE64_URL_SAFE_NO_PAD
         .decode(&response.response.signature)
-        .map_err(|e| Error::RustError(format!("Invalid signature base64: {}", e)))?;
+        .map_err(|e| Error::RustError(format!("Invalid signature base64: {e}")))?;
 
-    let signature = Signature::from_der(&signature_bytes)
-        .map_err(|e| Error::RustError(format!("Invalid signature DER: {}", e)))?;
+    verify_p256_signature(&pub_key_bytes, &signed_data, &sig_bytes)?;
 
-    // Verify
-    verifying_key
-        .verify(&signed_data, &signature)
-        .map_err(|e| {
-            console_error!("Signature verification failed: {}", e);
-            Error::RustError("Signature verification failed".to_string())
-        })?;
-
-    // 7. Counter Check (Clone Protection)
-    if auth_data.sign_count <= passkey.counter as u32 && auth_data.sign_count != 0 {
-        // Note: Some authenticators return 0. If it was non-zero before and now 0 or less, it's suspicious.
-        // But for simplicity, we just enforce strictly increasing if stored is > 0
-        if passkey.counter > 0 {
-            console_error!(
-                "Signature counter regression! Stored: {}, Received: {}",
-                passkey.counter,
-                auth_data.sign_count
-            );
-            return Err(Error::RustError("Signature counter regression".to_string()));
-        }
+    // 7. Counter check (clone detection)
+    if auth_data.sign_count <= passkey.counter as u32
+        && auth_data.sign_count != 0
+        && passkey.counter > 0
+    {
+        console_error!(
+            "Signature counter regression! Stored: {}, Received: {}",
+            passkey.counter,
+            auth_data.sign_count
+        );
+        return Err(Error::RustError("Signature counter regression".into()));
     }
 
-    // Update counter and last used
+    // 8. Update counter
     let now = Date::now().as_millis() as i64;
-    db.update_passkey_counter(&passkey.cred_id, auth_data.sign_count as i64, now)
+    store
+        .update_passkey_counter(&passkey.cred_id, auth_data.sign_count as i64, now)
         .await?;
 
-    // Cleanup state
-    db.delete_passkey_state(&state_id).await?;
+    store.delete_state(&state_id).await?;
 
-    // Return User
-    let user = db
+    // 9. Return the user
+    store
         .get_user_by_id(passkey.user_id)
         .await?
-        .ok_or_else(|| Error::RustError("User not found".to_string()))?;
-
-    Ok(user)
+        .ok_or_else(|| Error::RustError("User not found".into()))
 }
 
-// List Passkeys
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PasskeySummary {
-    pub id: String, // cred_id
-    pub name: String,
-    pub created_at: i64,
-    pub last_used_at: i64,
-}
-
-pub async fn list_user_passkeys<D: Database>(db: &D, user_id: i32) -> Result<Vec<PasskeySummary>> {
-    let passkeys = db.list_passkeys(user_id).await?;
-    let summaries = passkeys
+pub async fn list_user_passkeys<S: PasskeyStore>(
+    store: &S,
+    user_id: i32,
+) -> Result<Vec<PasskeySummary>> {
+    Ok(store
+        .list_passkeys(user_id)
+        .await?
         .into_iter()
         .map(|pk| PasskeySummary {
             id: pk.cred_id,
@@ -641,16 +661,18 @@ pub async fn list_user_passkeys<D: Database>(db: &D, user_id: i32) -> Result<Vec
             created_at: pk.created_at,
             last_used_at: pk.last_used_at,
         })
-        .collect();
-    Ok(summaries)
+        .collect())
 }
 
-// Delete Passkey
-pub async fn delete_user_passkey<D: Database>(db: &D, user_id: i32, cred_id: &str) -> Result<()> {
-    db.delete_passkey(user_id, cred_id).await
+pub async fn delete_user_passkey<S: PasskeyStore>(
+    store: &S,
+    user_id: i32,
+    cred_id: &str,
+) -> Result<()> {
+    store.delete_passkey(user_id, cred_id).await
 }
 
-// Handlers
+// HTTP Handlers
 
 pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
     let (user, _) = match auth::get_auth(&req, &env).await? {
@@ -658,7 +680,8 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
         None => return Response::error("Unauthorized", 401),
     };
     let db = auth::get_db(&env)?;
-    let options = start_registration(&db, &user, &env).await?;
+    let config = PasskeyConfig::from_env(&env);
+    let options = start_registration(&db, &user, &config).await?;
     Response::from_json(&options)
 }
 
@@ -669,21 +692,23 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
     };
     let response: RegistrationResponse = req.json().await?;
     let db = auth::get_db(&env)?;
-    finish_registration(&db, &user, &env, response).await?;
+    let config = PasskeyConfig::from_env(&env);
+    finish_registration(&db, &user, &config, response).await?;
     Response::ok("Passkey registered")
 }
 
 pub async fn handle_login_start(_req: Request, env: Env) -> Result<Response> {
-    // Check if user is already logged in? Optional.
     let db = auth::get_db(&env)?;
-    let (options, _) = start_login(&db, &env).await?;
+    let config = PasskeyConfig::from_env(&env);
+    let options = start_login(&db, &config).await?;
     Response::from_json(&options)
 }
 
 pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response> {
     let response: LoginResponse = req.json().await?;
     let db = auth::get_db(&env)?;
-    let user = finish_login(&db, &env, response).await?;
+    let config = PasskeyConfig::from_env(&env);
+    let user = finish_login(&db, &config, response).await?;
 
     // Create session
     let token = uuid::Uuid::new_v4().to_string();
