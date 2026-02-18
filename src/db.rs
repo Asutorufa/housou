@@ -176,7 +176,9 @@ impl Database for AppDatabase {
                 let now = Date::now().as_millis() as i64;
                 statements.push(
                     self.db
-                        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+                        .prepare(
+                            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                        )
                         .bind(&[
                             JsValue::from_f64(version as f64),
                             JsValue::from_f64(now as f64),
