@@ -146,3 +146,11 @@ export interface Selections {
   site: string;
   status?: string;
 }
+
+export interface MetadataRequest {
+  tmdb_id?: string;
+  mal_id?: string;
+  anilist_id?: string;
+  title?: string;
+  year?: number;
+}

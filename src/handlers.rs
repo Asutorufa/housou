@@ -156,7 +156,34 @@ pub async fn handle_user_status(mut req: Request, env: Env) -> Result<Response> 
     }
 }
 
-pub async fn handle_metadata(req: Request, env: Env) -> Result<Response> {
+pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
+    if req.method() == Method::Post {
+        let requests: Vec<provider::MetadataRequest> = match req.json().await {
+            Ok(r) => r,
+            Err(_) => {
+                return Response::error(
+                    "Bad Request: Body must be a list of metadata requests",
+                    400,
+                );
+            }
+        };
+
+        let host = req
+            .url()?
+            .host_str()
+            .unwrap_or("api.housou.local")
+            .to_string();
+
+        let futures = requests.into_iter().map(|r| {
+            let env = &env;
+            let host = &host;
+            async move { provider::fetch_metadata(&r, env, host).await.ok() }
+        });
+
+        let results: Vec<Option<_>> = futures::future::join_all(futures).await;
+        return Response::from_json(&results);
+    }
+
     let url = req.url()?;
     let mut tmdb_id = None;
     let mut mal_id = None;

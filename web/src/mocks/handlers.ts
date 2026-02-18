@@ -82,6 +82,34 @@ export const handlers = [
     });
   }),
 
+  http.post("/api/metadata", async ({ request }) => {
+    const body = (await request.json()) as any[];
+    // Respond with a list of metadata based on the request count
+    const response = body.map((req, idx) => ({
+      id: `batch-${idx}`,
+      title: {
+        native: req.title || "Test Anime Batch",
+        romaji: req.title || "Test Anime Batch",
+        english: req.title || "Test Anime Batch",
+      },
+      coverImage: { large: "https://placehold.co/400x600" },
+      averageScore: 80 + idx,
+      episodes: 12,
+      genres: ["Action", "Slice of Life"],
+      description: `This is batch item ${idx} for ${req.title}`,
+      studios: ["Studio Batch"],
+      characters: [],
+      staff: [],
+      episodesList: [],
+      isFinished: false,
+      totalSeasons: 1,
+      currentSeason: 1,
+      runtime: 24,
+      contentRating: "PG-13",
+    }));
+    return HttpResponse.json(response);
+  }),
+
   // Auth Handlers
   http.post("/api/auth/register", async ({ request }) => {
     const body = (await request.json()) as { email: string; username: string };

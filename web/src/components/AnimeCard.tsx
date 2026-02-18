@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
+import { useMetadata } from "../contexts/MetadataContext";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { isDev } from "../utils/envUtils";
@@ -25,6 +26,7 @@ export default function AnimeCard({
   selectedSite,
   onOpenModal,
 }: AnimeCardProps) {
+  const { fetchMetadata } = useMetadata();
   const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -35,7 +37,7 @@ export default function AnimeCard({
       (entries) => {
         if (entries[0].isIntersecting && !loadedRef.current) {
           loadedRef.current = true;
-          fetchMetadata();
+          loadMetadata();
           observer.disconnect();
         }
       },
@@ -50,7 +52,7 @@ export default function AnimeCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.title]);
 
-  async function fetchMetadata() {
+  async function loadMetadata() {
     setLoading(true);
     try {
       const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
@@ -59,29 +61,22 @@ export default function AnimeCard({
         (s) => s.site === "aniList" || s.site === "anilist",
       );
 
-      const params = new URLSearchParams();
-      params.append("title", item.title);
-
-      if (tmdbSite?.id) {
-        params.append("tmdb_id", tmdbSite.id);
-      }
-
-      if (malSite?.id) {
-        params.append("mal_id", malSite.id);
-      }
-
-      if (anilistSite?.id) {
-        params.append("anilist_id", anilistSite.id);
-      }
-
+      let year: number | undefined;
       if (item.begin) {
-        params.append("begin", item.begin);
+        const parsedYear = parseInt(item.begin.substring(0, 4));
+        if (!isNaN(parsedYear)) {
+          year = parsedYear;
+        }
       }
 
-      const url = `/api/metadata?${params.toString()}`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Metadata fetch failed");
-      const data = await response.json();
+      const data = await fetchMetadata({
+        title: item.title,
+        tmdb_id: tmdbSite?.id,
+        mal_id: malSite?.id,
+        anilist_id: anilistSite?.id,
+        year,
+      });
+
       setMetadata(data || null);
     } catch (err) {
       if (isDev()) {
