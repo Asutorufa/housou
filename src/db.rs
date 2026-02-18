@@ -423,8 +423,8 @@ impl Database for AppDatabase {
             return Ok(Vec::new());
         }
 
-        let mut all_results = Vec::new();
         // Chunk to avoid "too many SQL variables" error (D1 limit is 100 per query)
+        let mut statements = Vec::new();
         for chunk in titles.chunks(50) {
             let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             let query = format!(
@@ -437,15 +437,17 @@ impl Database for AppDatabase {
                 bindings.push(JsValue::from_str(title));
             }
 
-            let results: Vec<UserItem> = self
-                .db
-                .prepare(&query)
-                .bind(&bindings)?
-                .all()
-                .await?
-                .results()?;
-            all_results.extend(results);
+            statements.push(self.db.prepare(&query).bind(&bindings)?);
         }
+
+        let all_results: Vec<UserItem> = self
+            .db
+            .batch(statements)
+            .await?
+            .into_iter()
+            .map(|res| res.results())
+            .collect::<Result<Vec<_>>>()?
+            .concat();
 
         Ok(all_results)
     }
