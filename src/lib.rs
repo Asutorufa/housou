@@ -85,11 +85,26 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         }
     }
 
+    // Handle request logic (caching and routing)
+    let resp_result = handle_request_logic(req, env.clone()).await;
+
+    let resp = match resp_result {
+        Ok(r) => r,
+        Err(e) => {
+            console_error!("Request failed: {}", e);
+            Response::error(e.to_string(), 500)?
+        }
+    };
+
+    // Add security headers to ALL responses
+    resp.add_security_headers()?.add_cors(&env)
+}
+
+async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
     let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
-    // 1. Handle caching and routing
-    let resp = if req.method() == Method::Get {
+    if req.method() == Method::Get {
         // Skip caching for auth routes and items when auth is enabled (user specific data)
         // Actually, we should check auth cookie presence before skipping cache, or make items endpoint handle caching carefully.
         // For simplicity: skip caching items endpoint if auth cookie is present or if we want to be safe.
@@ -107,10 +122,10 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             .contains("housou_session");
 
         if is_auth_route || (url.path() == "/api/items" && has_session_cookie) {
-            router(req, env.clone()).await?
+            router(req, env.clone()).await
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
-            cached_resp.cloned()?
+            cached_resp.cloned()
         } else {
             // Generate new response
             let mut fresh_resp = router(req, env.clone()).await?;
@@ -129,14 +144,11 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
                 }
                 let _ = cache.put(url.as_str(), fresh_resp.cloned()?).await;
             }
-            fresh_resp
+            Ok(fresh_resp)
         }
     } else {
-        router(req, env.clone()).await?
-    };
-
-    // Add security headers to ALL responses
-    resp.add_security_headers()?.add_cors(&env)
+        router(req, env.clone()).await
+    }
 }
 
 async fn fetch_site_meta() -> Result<SiteMeta> {
