@@ -3,7 +3,7 @@ use worker::*;
 
 use crate::db::Database;
 use crate::model::{SiteMeta, SiteMetadata, SiteType};
-use crate::{auth, config, db, provider, utils, ResponseExt};
+use crate::{ResponseExt, auth, config, db, provider, utils};
 
 #[derive(Serialize)]
 pub struct ConfigResponse<'a> {
