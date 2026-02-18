@@ -192,7 +192,10 @@ describe("AnimeCard fetchMetadata", () => {
       expect(screen.getByText("No image")).toBeInTheDocument();
     });
 
-    expect(consoleSpy).toHaveBeenCalledWith("Metadata error:", expect.any(Error));
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Metadata error:",
+      expect.any(Error),
+    );
     consoleSpy.mockRestore();
   });
 });
