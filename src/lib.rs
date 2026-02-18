@@ -202,7 +202,9 @@ async fn router(req: Request, env: Env) -> Result<Response> {
 
         // Handle Options for CORS on auth routes
         (Method::Options, path)
-            if path.starts_with("/api/auth") || path.starts_with("/api/user") =>
+            if path.starts_with("/api/auth")
+                || path.starts_with("/api/user")
+                || path.starts_with("/api/metadata") =>
         {
             Response::empty()
         }
