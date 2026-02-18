@@ -32,6 +32,11 @@ tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "
     "async",
 ] }
 rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074c0", default-features = false }
+base64 = "0.22"
+p256 = { version = "0.13", features = ["ecdsa", "std"] } # ECDSA P-256 signatures
+sha2 = "0.10" # SHA-256 hashing
+coset = "0.3" # COSE structure parsing (CBOR Object Signing and Encryption)
+ciborium = "0.2" # CBOR serialization/deserialization
 
 [profile.release]
 opt-level = "z"
