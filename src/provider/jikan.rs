@@ -68,13 +68,13 @@ struct JikanEntity {
 pub struct JikanProvider;
 
 impl MetadataProvider for JikanProvider {
-    async fn fetch(
-        &self,
-        id: Option<&str>,
-        _title: Option<&str>,
-        _year: Option<i32>,
-    ) -> Result<UnifiedMetadata> {
-        let mal_id = id.ok_or_else(|| Error::RustError("MAL ID required".into()))?;
+    async fn fetch(&self, query: super::LookupQuery<'_>) -> Result<UnifiedMetadata> {
+        let mal_id = match query {
+            super::LookupQuery::ById(id) => id,
+            super::LookupQuery::ByTitle { .. } => {
+                return Err(Error::RustError("Jikan requires a MAL ID".into()));
+            }
+        };
         let url = format!("https://api.jikan.moe/v4/anime/{mal_id}/full");
 
         let response: JikanResponse<JikanAnime> = utils::fetch_json(&url)

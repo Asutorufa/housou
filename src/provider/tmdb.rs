@@ -41,21 +41,15 @@ impl<'a> TmdbProvider<'a> {
 }
 
 impl<'a> MetadataProvider for TmdbProvider<'a> {
-    async fn fetch(
-        &self,
-        id: Option<&str>,
-        title: Option<&str>,
-        year: Option<i32>,
-    ) -> Result<model::UnifiedMetadata> {
+    async fn fetch(&self, query: super::LookupQuery<'_>) -> Result<model::UnifiedMetadata> {
         let client = self.get_client()?;
 
         // 1. Resolve ID (Search if needed)
-        let media_type = if let Some(id) = id {
-            parse_tmdb_id(id)?
-        } else if let Some(search_title) = title {
-            search_media(&client, search_title, year).await?
-        } else {
-            return Err(Error::RustError("ID or Title required".into()));
+        let media_type = match query {
+            super::LookupQuery::ById(id) => parse_tmdb_id(id)?,
+            super::LookupQuery::ByTitle { title, year } => {
+                search_media(&client, title, year).await?
+            }
         };
 
         // 2. Fetch Details based on type
@@ -139,11 +133,9 @@ async fn search_media(
 
                     if let Some(id) = id {
                         let id_str = id.to_string();
-                        // Check year if provided
+                        // Check year if provided (±1 year tolerance for timezone/date edge cases)
                         if let Some(y) = year {
-                            if let Some(date_str) = release_date
-                                && date_str.starts_with(&y.to_string())
-                            {
+                            if year_matches(release_date, y) {
                                 return Ok(MediaType::Movie(id_str));
                             }
                         } else {
@@ -157,11 +149,9 @@ async fn search_media(
 
                     if let Some(id) = id {
                         let id_str = id.to_string();
-                        // Check year if provided
+                        // Check year if provided (±1 year tolerance for timezone/date edge cases)
                         if let Some(y) = year {
-                            if let Some(date_str) = first_air_date
-                                && date_str.starts_with(&y.to_string())
-                            {
+                            if year_matches(first_air_date, y) {
                                 return Ok(MediaType::Tv {
                                     show_id: id_str,
                                     season: 1,
@@ -181,6 +171,15 @@ async fn search_media(
     }
 
     Err(Error::RustError("No suitable match found".into()))
+}
+
+/// Check if a date string's year is within ±1 of the expected year.
+/// This handles timezone edge cases (e.g., begin date 2025-12-31 UTC = 2026-01-01 JST).
+fn year_matches(date_str: Option<&str>, expected_year: i32) -> bool {
+    date_str
+        .and_then(|d| d.get(..4))
+        .and_then(|y| y.parse::<i32>().ok())
+        .is_some_and(|date_year| (date_year - expected_year).abs() <= 1)
 }
 
 static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -627,6 +626,25 @@ mod tests {
                 input
             );
         }
+    }
+
+    #[test]
+    fn test_year_matches() {
+        // Exact match
+        assert!(year_matches(Some("2025-12-31"), 2025));
+        assert!(year_matches(Some("2026-01-01"), 2026));
+
+        // ±1 year tolerance (timezone edge cases)
+        assert!(year_matches(Some("2026-01-01"), 2025)); // begin=2025-12-31 UTC, release=2026
+        assert!(year_matches(Some("2025-12-31"), 2026)); // reverse edge case
+
+        // Out of range
+        assert!(!year_matches(Some("2028-01-01"), 2025));
+        assert!(!year_matches(Some("2023-06-15"), 2025));
+
+        // None / empty
+        assert!(!year_matches(None, 2025));
+        assert!(!year_matches(Some(""), 2025));
     }
 
     #[test]

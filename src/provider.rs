@@ -32,13 +32,14 @@ pub struct MetadataResponse {
     pub metadata: Option<model::UnifiedMetadata>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum LookupQuery<'a> {
+    ById(&'a str),
+    ByTitle { title: &'a str, year: Option<i32> },
+}
+
 pub trait MetadataProvider {
-    async fn fetch(
-        &self,
-        id: Option<&str>,
-        title: Option<&str>,
-        year: Option<i32>,
-    ) -> Result<model::UnifiedMetadata>;
+    async fn fetch(&self, query: LookupQuery<'_>) -> Result<model::UnifiedMetadata>;
 }
 
 /// Helper to generate a cache key URL for a request
@@ -125,19 +126,26 @@ async fn fetch_metadata_from_providers(
     args: MetadataArgs<'_>,
     env: &Env,
 ) -> Result<(model::UnifiedMetadata, Option<i32>)> {
-    // 1. Try TMDb
-    if args.tmdb_id.is_some() {
+    // Build the title-based query once (reused across providers)
+    let title_query = args.title.map(|t| LookupQuery::ByTitle {
+        title: t,
+        year: args.year,
+    });
+
+    // 1. Try TMDb first (always — by ID if available, otherwise by title search)
+    let tmdb_query = args.tmdb_id.map(LookupQuery::ById).or(title_query);
+    if let Some(query) = tmdb_query {
         let tmdb = tmdb::TmdbProvider::new(env);
-        match tmdb.fetch(args.tmdb_id, args.title, args.year).await {
+        match tmdb.fetch(query).await {
             Ok(unified) => return Ok((unified, None)),
             Err(e) => console_log!("TMDb fetch failed {:?}", e),
         }
     }
 
-    // 2. Try Jikan
-    if args.mal_id.is_some() {
+    // 2. Try Jikan (ID-only provider)
+    if let Some(id) = args.mal_id {
         let jikan = jikan::JikanProvider;
-        match jikan.fetch(args.mal_id, args.title, args.year).await {
+        match jikan.fetch(LookupQuery::ById(id)).await {
             Ok(unified) => {
                 return Ok((unified, Some(crate::config::CACHE_TTL_JIKAN)));
             }
@@ -146,18 +154,18 @@ async fn fetch_metadata_from_providers(
     }
 
     // 3. Fallback to AniList
-    let anilist = anilist::AnilistProvider;
-    let fallback_title = args
-        .title
-        .ok_or_else(|| Error::RustError("Title required for metadata lookup".into()))?;
-
-    match anilist
-        .fetch(args.anilist_id, Some(fallback_title), args.year)
-        .await
-    {
-        Ok(unified) => Ok((unified, None)),
-        Err(e) => Err(e),
+    let anilist_query = args.anilist_id.map(LookupQuery::ById).or(title_query);
+    if let Some(query) = anilist_query {
+        let anilist = anilist::AnilistProvider;
+        match anilist.fetch(query).await {
+            Ok(unified) => return Ok((unified, None)),
+            Err(e) => console_log!("AniList fetch failed {:?}", e),
+        }
     }
+
+    Err(Error::RustError(
+        "No metadata provider could fulfill the request".into(),
+    ))
 }
 
 pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response> {

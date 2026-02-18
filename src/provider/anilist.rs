@@ -8,36 +8,26 @@ pub struct AnilistProvider;
 static ANILIST_CLIENT: OnceLock<rust_anilist::Client> = OnceLock::new();
 
 impl MetadataProvider for AnilistProvider {
-    async fn fetch(
-        &self,
-        id: Option<&str>,
-        title: Option<&str>,
-        _year: Option<i32>,
-    ) -> Result<model::UnifiedMetadata> {
+    async fn fetch(&self, query: super::LookupQuery<'_>) -> Result<model::UnifiedMetadata> {
         let client = ANILIST_CLIENT.get_or_init(rust_anilist::Client::default);
 
-        let anime = if let Some(i) = id {
-            // AniList ID must be an integer
-            let anime_id = i
-                .parse::<i64>()
-                .map_err(|e| Error::RustError(format!("Invalid AniList ID: {e}")))?;
-            client
-                .get_anime(anime_id)
-                .await
-                .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {e}")))?
-        } else if let Some(t) = title {
-            let results = client.search_anime(t, 1, 1).await;
-
-            // rust-anilist search_anime returns Option<Vec<Anime>>
-            // and it might return None or an empty vector.
-            match results.and_then(|v| v.into_iter().next()) {
-                Some(anime) => anime,
-                None => return Err(Error::RustError("AniList: Not Found".into())),
+        let anime = match query {
+            super::LookupQuery::ById(id) => {
+                let anime_id = id
+                    .parse::<i64>()
+                    .map_err(|e| Error::RustError(format!("Invalid AniList ID: {e}")))?;
+                client
+                    .get_anime(anime_id)
+                    .await
+                    .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {e}")))?
             }
-        } else {
-            return Err(Error::RustError(
-                "AniList provider requires ID or Title".into(),
-            ));
+            super::LookupQuery::ByTitle { title, .. } => {
+                let results = client.search_anime(title, 1, 1).await;
+                match results.and_then(|v| v.into_iter().next()) {
+                    Some(anime) => anime,
+                    None => return Err(Error::RustError("AniList: Not Found".into())),
+                }
+            }
         };
 
         Ok(anilist_to_unified(anime))
