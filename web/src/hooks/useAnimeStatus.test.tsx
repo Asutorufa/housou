@@ -66,7 +66,7 @@ describe("useAnimeStatus", () => {
     expect(onUpdate).toHaveBeenCalled();
   });
 
-  it("should not crash on API failure", async () => {
+  it("should revert status on API failure", async () => {
     mockApiFetch.mockRejectedValue(new Error("API Error"));
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -78,8 +78,8 @@ describe("useAnimeStatus", () => {
       await result.current.updateStatus("3");
     });
 
-    // Should still have optimistic update (based on current implementation)
-    expect(result.current.currentStatus).toBe(3);
+    // Should revert to original status
+    expect(result.current.currentStatus).toBe(1);
 
     expect(consoleSpy).toHaveBeenCalledWith(
       "Failed to update status",

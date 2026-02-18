@@ -25,6 +25,7 @@ export function useAnimeStatus({
     if (!title) return;
 
     const status = parseInt(statusString) as UserStatus;
+    const previousStatus = localStatus;
 
     // Optimistic update
     setLocalStatus(status);
@@ -39,7 +40,8 @@ export function useAnimeStatus({
       onUpdate?.();
     } catch (err) {
       console.error("Failed to update status", err);
-      // Revert on error if needed, for now simple optimistic
+      // Revert on error
+      setLocalStatus(previousStatus);
     }
   };
 
