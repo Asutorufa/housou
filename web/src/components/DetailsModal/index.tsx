@@ -7,7 +7,6 @@ import type {
   DisplayAnimeItem,
   SiteMeta,
   UnifiedMetadata,
-  UserStatus,
 } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
 import { sortSites } from "../../utils/siteUtils";
