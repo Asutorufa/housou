@@ -82,18 +82,22 @@ describe("AnimeCard fetchMetadata", () => {
 
   beforeEach(() => {
     // Mock IntersectionObserver
-    window.IntersectionObserver = class {
-      constructor(cb: IntersectionObserverCallback) {
-        observerCallback = cb;
-      }
-      observe = observeMock;
-      disconnect = disconnectMock;
-      unobserve = vi.fn();
-      takeRecords = vi.fn();
-      root = null;
-      rootMargin = "";
-      thresholds = [];
-    } as unknown as typeof IntersectionObserver;
+    const MockIntersectionObserver = vi.fn();
+    MockIntersectionObserver.mockImplementation(function (
+      cb: IntersectionObserverCallback,
+    ) {
+      observerCallback = cb;
+      return {
+        observe: observeMock,
+        disconnect: disconnectMock,
+        unobserve: vi.fn(),
+        takeRecords: vi.fn(),
+        root: null,
+        rootMargin: "",
+        thresholds: [],
+      };
+    });
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
 
     // Mock fetch
     vi.spyOn(global, "fetch").mockResolvedValue({
