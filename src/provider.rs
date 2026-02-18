@@ -3,7 +3,7 @@ pub mod jikan;
 pub mod season;
 pub mod tmdb;
 
-use crate::{model, ResponseExt};
+use crate::{ResponseExt, model};
 use serde_derive::{Deserialize, Serialize};
 use worker::*;
 
@@ -100,7 +100,10 @@ pub async fn fetch_metadata(
     let mut resp = Response::from_json(&unified)?;
     resp.headers_mut().set(
         "Cache-Control",
-        &format!("public, max-age={}", ttl.unwrap_or(crate::config::CACHE_TTL_ONGOING)),
+        &format!(
+            "public, max-age={}",
+            ttl.unwrap_or(crate::config::CACHE_TTL_ONGOING)
+        ),
     )?;
     // We must ignore the promise here to not block, but we can await it if needed.
     // worker::Cache::put returns a Future.
