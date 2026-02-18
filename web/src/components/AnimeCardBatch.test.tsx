@@ -37,14 +37,20 @@ describe("AnimeCard Batching", () => {
         return {
           ok: true,
           json: async () =>
-            body.map((req: { request_id: string; tmdb_id: string; title: string }) => ({
-              request_id: req.request_id,
-              metadata: {
-                id: req.tmdb_id,
-                title: { native: req.title },
-                coverImage: {},
-              },
-            })),
+            body.map(
+              (req: {
+                request_id: string;
+                tmdb_id: string;
+                title: string;
+              }) => ({
+                request_id: req.request_id,
+                metadata: {
+                  id: req.tmdb_id,
+                  title: { native: req.title },
+                  coverImage: {},
+                },
+              }),
+            ),
         };
       }
       return { ok: false };
