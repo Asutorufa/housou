@@ -3,6 +3,12 @@ import AnimeCard from "./AnimeCard";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SiteMeta, DisplayAnimeItem } from "../types";
 import React from "react";
+import { isDev } from "../utils/envUtils";
+
+// Mock envUtils
+vi.mock("../utils/envUtils", () => ({
+  isDev: vi.fn(),
+}));
 
 // Mock AuthContext if needed (AnimeCard doesn't use it directly but might have imports)
 // It uses `onOpenModal` prop.
@@ -138,7 +144,10 @@ describe("AnimeCard fetchMetadata", () => {
     expect(params.get("begin")).toBe("2023-01-01");
   });
 
-  it("handles fetch failure gracefully without logging", async () => {
+  it("handles fetch failure gracefully without logging in production", async () => {
+    // Mock isDev to return false (Production)
+    vi.mocked(isDev).mockReturnValue(false);
+
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
 
@@ -158,6 +167,32 @@ describe("AnimeCard fetchMetadata", () => {
     });
 
     expect(consoleSpy).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("logs fetch failure in development", async () => {
+    // Mock isDev to return true (Development)
+    vi.mocked(isDev).mockReturnValue(true);
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
+
+    render(<AnimeCard item={mockItemFetch} onOpenModal={() => {}} />);
+
+    // Simulate intersection
+    const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
+    if (observerCallback) {
+      act(() => {
+        observerCallback([mockEntry], {} as IntersectionObserver);
+      });
+    }
+
+    // Wait for the "No image" text
+    await waitFor(() => {
+      expect(screen.getByText("No image")).toBeInTheDocument();
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith("Metadata error:", expect.any(Error));
     consoleSpy.mockRestore();
   });
 });
