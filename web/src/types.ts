@@ -139,3 +139,10 @@ export interface UnifiedMetadata {
   runtime?: number;
   contentRating?: string;
 }
+
+export interface Selections {
+  year: string;
+  season: string;
+  site: string;
+  status?: string;
+}

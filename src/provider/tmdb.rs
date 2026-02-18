@@ -270,53 +270,10 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
         native: movie.title.clone(),
     };
 
-    let cover_image = UniversalCoverImage {
-        large: movie
-            .poster_path
-            .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
-        extra_large: movie
-            .poster_path
-            .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
-    };
-
-    let genres = movie
-        .genres
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|g| g.name)
-        .collect();
-    let studios = movie
-        .production_companies
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|s| s.name)
-        .collect();
-
-    let mut characters = Vec::new();
-    let mut staff = Vec::new();
-
-    if let Some(credits) = movie.credits {
-        if let Some(cast) = credits.cast {
-            for member in cast.into_iter().take(6) {
-                characters.push(UniversalCharacter {
-                    name: member.character.unwrap_or_default(),
-                    voice_actor: member.name,
-                    role: Some("Cast".to_string()),
-                });
-            }
-        }
-        if let Some(crew) = credits.crew {
-            for member in crew.into_iter().take(10) {
-                staff.push(UniversalStaff {
-                    name: member.name.unwrap_or_default(),
-                    role: member.job.unwrap_or_default(),
-                    department: member.department,
-                });
-            }
-        }
-    }
+    let cover_image = format_cover_image(movie.poster_path.as_deref());
+    let genres = extract_genres(movie.genres);
+    let studios = extract_studios(movie.production_companies);
+    let (characters, staff) = extract_credits(movie.credits);
 
     // Content Ratings (Release Dates for Movies)
     let content_rating = movie.release_dates.and_then(|dates| {
@@ -379,54 +336,10 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     };
 
     let poster_path = season.poster_path.or(show.poster_path.clone());
-    let cover_image = UniversalCoverImage {
-        large: poster_path
-            .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
-        extra_large: poster_path
-            .as_ref()
-            .map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
-    };
-
-    let genres = show
-        .genres
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|g| g.name)
-        .collect();
-    let studios = show
-        .production_companies
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|s| s.name)
-        .collect();
-
-    let mut characters = Vec::new();
-    let mut staff = Vec::new();
-
-    // Prefer season credits, fall back to show credits
-    let credits = season.credits.or(show.credits);
-
-    if let Some(credits) = credits {
-        if let Some(cast) = credits.cast {
-            for member in cast.into_iter().take(6) {
-                characters.push(UniversalCharacter {
-                    name: member.character.unwrap_or_default(),
-                    voice_actor: member.name,
-                    role: Some("Cast".to_string()),
-                });
-            }
-        }
-        if let Some(crew) = credits.crew {
-            for member in crew.into_iter().take(10) {
-                staff.push(UniversalStaff {
-                    name: member.name.unwrap_or_default(),
-                    role: member.job.unwrap_or_default(),
-                    department: member.department,
-                });
-            }
-        }
-    }
+    let cover_image = format_cover_image(poster_path.as_deref());
+    let genres = extract_genres(show.genres);
+    let studios = extract_studios(show.production_companies);
+    let (characters, staff) = extract_credits(season.credits.or(show.credits));
 
     let episodes_list: Vec<_> = season
         .episodes
@@ -494,6 +407,65 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
             }
         }),
     }
+}
+
+fn format_cover_image(path: Option<&str>) -> model::UniversalCoverImage {
+    model::UniversalCoverImage {
+        large: path.map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
+        extra_large: path.map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
+    }
+}
+
+fn extract_genres(genres: Option<Vec<models::Genre>>) -> Vec<String> {
+    genres
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|g| g.name)
+        .collect()
+}
+
+fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<String> {
+    companies
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|s| s.name)
+        .collect()
+}
+
+fn extract_credits(
+    credits: Option<models::Credits>,
+) -> (Vec<model::UniversalCharacter>, Vec<model::UniversalStaff>) {
+    const MAX_CAST_MEMBERS: usize = 6;
+    const MAX_CREW_MEMBERS: usize = 10;
+    const CAST_ROLE: &str = "Cast";
+
+    let credits = credits.unwrap_or_default();
+
+    let characters = credits
+        .cast
+        .unwrap_or_default()
+        .into_iter()
+        .take(MAX_CAST_MEMBERS)
+        .map(|member| model::UniversalCharacter {
+            name: member.character.unwrap_or_default(),
+            voice_actor: member.name,
+            role: Some(CAST_ROLE.to_string()),
+        })
+        .collect();
+
+    let staff = credits
+        .crew
+        .unwrap_or_default()
+        .into_iter()
+        .take(MAX_CREW_MEMBERS)
+        .map(|member| model::UniversalStaff {
+            name: member.name.unwrap_or_default(),
+            role: member.job.unwrap_or_default(),
+            department: member.department,
+        })
+        .collect();
+
+    (characters, staff)
 }
 
 fn find_best_rating<T, FCountry, FRating>(
