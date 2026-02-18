@@ -1,6 +1,8 @@
 name: Lint Check
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -19,6 +21,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
         with:
+          shared-key: "lint-check"
           cache-on-failure: "true"
 
       - name: Check Rust Formatting
