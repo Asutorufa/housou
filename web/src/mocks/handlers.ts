@@ -83,29 +83,35 @@ export const handlers = [
   }),
 
   http.post("/api/metadata", async ({ request }) => {
-    const body = (await request.json()) as { title?: string }[];
+    const body = (await request.json()) as {
+      request_id?: string;
+      title?: string;
+    }[];
     // Respond with a list of metadata based on the request count
     const response = body.map((req, idx) => ({
-      id: `batch-${idx}`,
-      title: {
-        native: req.title || "Test Anime Batch",
-        romaji: req.title || "Test Anime Batch",
-        english: req.title || "Test Anime Batch",
+      request_id: req.request_id,
+      metadata: {
+        id: `batch-${idx}`,
+        title: {
+          native: req.title || "Test Anime Batch",
+          romaji: req.title || "Test Anime Batch",
+          english: req.title || "Test Anime Batch",
+        },
+        coverImage: { large: "https://placehold.co/400x600" },
+        averageScore: 80 + idx,
+        episodes: 12,
+        genres: ["Action", "Slice of Life"],
+        description: `This is batch item ${idx} for ${req.title}`,
+        studios: ["Studio Batch"],
+        characters: [],
+        staff: [],
+        episodesList: [],
+        isFinished: false,
+        totalSeasons: 1,
+        currentSeason: 1,
+        runtime: 24,
+        contentRating: "PG-13",
       },
-      coverImage: { large: "https://placehold.co/400x600" },
-      averageScore: 80 + idx,
-      episodes: 12,
-      genres: ["Action", "Slice of Life"],
-      description: `This is batch item ${idx} for ${req.title}`,
-      studios: ["Studio Batch"],
-      characters: [],
-      staff: [],
-      episodesList: [],
-      isFinished: false,
-      totalSeasons: 1,
-      currentSeason: 1,
-      runtime: 24,
-      contentRating: "PG-13",
     }));
     return HttpResponse.json(response);
   }),

@@ -144,7 +144,9 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         (Method::Post, "/api/user/status") if auth_enabled => {
             handlers::handle_user_status(req, env).await
         }
-        (Method::Get, "/api/metadata") => handlers::handle_metadata(req, env).await,
+        (Method::Get, "/api/metadata") | (Method::Post, "/api/metadata") => {
+            handlers::handle_metadata(req, env).await
+        }
         // Auth Routes (Only if enabled)
         (Method::Post, "/api/auth/register") if auth_enabled => {
             auth::handle_register(req, env.clone()).await
