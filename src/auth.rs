@@ -370,7 +370,9 @@ fn verify_oauth_state(req: &Request, query_state: Option<&String>) -> Result<()>
         || stored_state.is_none()
         || query_state.map(|s| s.as_str()) != stored_state.as_deref()
     {
-        return Err(Error::RustError("Invalid or missing OAuth state".to_string()));
+        return Err(Error::RustError(
+            "Invalid or missing OAuth state".to_string(),
+        ));
     }
     Ok(())
 }
