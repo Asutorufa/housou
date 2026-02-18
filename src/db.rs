@@ -72,6 +72,7 @@ pub trait Database {
         new_avatar_url: Option<&str>,
     ) -> Result<()>;
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()>;
+    async fn update_user_github_id(&self, id: i32, github_id: Option<&str>) -> Result<()>;
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()>;
     #[allow(dead_code)]
@@ -328,6 +329,21 @@ impl Database for AppDatabase {
                 JsValue::from_str(password_hash),
                 JsValue::from_f64(id as f64),
             ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn update_user_github_id(&self, id: i32, github_id: Option<&str>) -> Result<()> {
+        let query = "UPDATE users SET github_id = ? WHERE id = ?";
+        let gh_val = if let Some(g) = github_id {
+            JsValue::from_str(g)
+        } else {
+            JsValue::NULL
+        };
+        self.db
+            .prepare(query)
+            .bind(&[gh_val, JsValue::from_f64(id as f64)])?
             .run()
             .await?;
         Ok(())

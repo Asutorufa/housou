@@ -68,6 +68,7 @@ export interface Config {
     };
   };
   auth_enabled?: boolean;
+  github_enabled?: boolean;
 }
 
 export interface User {
@@ -75,6 +76,8 @@ export interface User {
   email: string;
   username: string;
   avatar_url?: string;
+  github_id?: string;
+  has_password?: boolean;
   created_at: number;
 }
 

@@ -251,10 +251,12 @@ export default function Header({
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        githubEnabled={config?.github_enabled}
       />
       <ProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
+        githubEnabled={config?.github_enabled}
       />
     </header>
   );

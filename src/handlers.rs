@@ -11,6 +11,7 @@ pub struct ConfigResponse {
     pub years: Vec<i32>,
     pub attribution: Attribution,
     pub auth_enabled: bool,
+    pub github_enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -57,6 +58,7 @@ async fn fetch_site_meta() -> Result<SiteMeta> {
 
 pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
     let auth_enabled = env.d1("DB").is_ok();
+    let github_enabled = env.var("GITHUB_CLIENT_ID").is_ok();
     let site_meta = fetch_site_meta().await?;
 
     // Fixed range of years to avoid fetching all month files just to get the list
@@ -75,6 +77,7 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
             },
         },
         auth_enabled,
+        github_enabled,
     };
 
     Response::from_json(&config_resp)?.add_header(

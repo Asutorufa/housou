@@ -24,6 +24,7 @@ export const handlers = [
         },
       },
       auth_enabled: true,
+      github_enabled: true,
     });
   }),
 
@@ -111,6 +112,18 @@ export const handlers = [
         id: 1,
         email: "user@example.com",
         username: "Test User",
+        has_password: true,
+        github_id: null,
+        created_at: Date.now(),
+      });
+    }
+    if (body.email === "linked@example.com" && body.password === expectedHash) {
+      return HttpResponse.json({
+        id: 2,
+        email: "linked@example.com",
+        username: "Linked User",
+        has_password: true,
+        github_id: "12345",
         created_at: Date.now(),
       });
     }

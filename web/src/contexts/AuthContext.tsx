@@ -36,6 +36,8 @@ interface AuthContextType {
   listPasskeys: () => Promise<PasskeySummary[]>;
   deletePasskey: (id: string) => Promise<void>;
   renamePasskey: (id: string, name: string) => Promise<void>;
+  bindGithub: () => void;
+  unbindGithub: () => Promise<void>;
 }
 
 // Separate Error type for API responses
@@ -283,6 +285,27 @@ export function AuthProvider({
     if (!res.ok) throw new Error("Failed to rename passkey");
   }, []);
 
+  const bindGithub = useCallback(() => {
+    window.location.href = "/api/auth/github/bind";
+  }, []);
+
+  const unbindGithub = useCallback(async () => {
+    const res = await apiFetch("/api/auth/github", {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      let message = "Unbind failed";
+      try {
+        const json = await res.json();
+        if (json.error) message = json.error;
+      } catch {
+        // Ignore
+      }
+      throw new Error(message);
+    }
+    mutate();
+  }, [apiFetch, mutate]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -300,6 +323,8 @@ export function AuthProvider({
         listPasskeys,
         deletePasskey,
         renamePasskey,
+        bindGithub,
+        unbindGithub,
       }}
     >
       {children}
