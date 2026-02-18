@@ -1,14 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import type {
-  DisplayAnimeItem,
-  SiteMeta,
-  UnifiedMetadata,
-  UserStatus,
-} from "../../types";
+import { useAnimeStatus } from "../../hooks/useAnimeStatus";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
 import { sortSites } from "../../utils/siteUtils";
 import CustomSelect from "../CustomSelect";
@@ -69,38 +64,18 @@ function DetailsModalContent({
   onUpdate,
   ...radixProps
 }: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
-  const { loggedIn, apiFetch } = useAuth();
+  const { loggedIn } = useAuth();
   const { title, info } = anime || { title: "", info: null };
-
-  // Local state for immediate UI updates
-  const [localStatus, setLocalStatus] = useState<UserStatus | null>(null);
 
   // Find the original item to get site links and user status
   const originalItem = items.find((i) => i.title === title);
 
-  // Determine effective status: local state > original item > default
-  const currentStatus = localStatus ?? originalItem?.userStatus ?? 0;
-
-  const handleStatusChange = async (value: string) => {
-    const status = parseInt(value) as UserStatus;
-    if (!title) return;
-
-    // Optimistic update
-    setLocalStatus(status);
-
-    try {
-      await apiFetch("/api/user/item", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, status, score: originalItem?.userScore }),
-      });
-      // Optionally notify parent to refresh list
-      onUpdate?.();
-    } catch (err) {
-      console.error("Failed to update status", err);
-      // Revert on error if needed, for now simple optimistic
-    }
-  };
+  const { currentStatus, updateStatus } = useAnimeStatus({
+    title,
+    initialStatus: originalItem?.userStatus,
+    initialScore: originalItem?.userScore,
+    onUpdate,
+  });
 
   const sites = sortSites(originalItem?.sites || [], siteMeta);
 
@@ -149,7 +124,7 @@ function DetailsModalContent({
                 <div className="mb-4">
                   <CustomSelect
                     value={currentStatus.toString()}
-                    onValueChange={handleStatusChange}
+                    onValueChange={updateStatus}
                     options={Object.entries(USER_STATUS_LABELS).map(
                       ([value, label]) => ({
                         value,
