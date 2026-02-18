@@ -38,41 +38,41 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     Ok(None)
 }
 
-fn create_session_cookie(token: &str) -> String {
+fn create_session_cookie(token: &str, secure: bool) -> String {
     Cookie::build((SESSION_COOKIE_NAME, token))
         .path("/")
         .http_only(true)
-        .secure(false) // Changed for dev environment
-        .same_site(SameSite::Lax) // Changed to Lax for easier dev/redirects
+        .secure(secure)
+        .same_site(SameSite::Lax)
         .max_age(Duration::days(SESSION_DURATION_DAYS))
         .to_string()
 }
 
-fn clear_session_cookie() -> String {
+fn clear_session_cookie(secure: bool) -> String {
     Cookie::build((SESSION_COOKIE_NAME, ""))
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(secure)
         .same_site(SameSite::Lax)
         .max_age(Duration::seconds(0))
         .to_string()
 }
 
-fn create_oauth_state_cookie(state: &str) -> String {
+fn create_oauth_state_cookie(state: &str, secure: bool) -> String {
     Cookie::build((OAUTH_STATE_COOKIE_NAME, state))
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(secure)
         .same_site(SameSite::Lax) // Lax needed for redirect flow
         .max_age(Duration::minutes(OAUTH_STATE_DURATION_MINUTES))
         .to_string()
 }
 
-fn clear_oauth_state_cookie() -> String {
+fn clear_oauth_state_cookie(secure: bool) -> String {
     Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
         .path("/")
         .http_only(true)
-        .secure(false)
+        .secure(secure)
         .same_site(SameSite::Lax)
         .max_age(Duration::seconds(0))
         .to_string()
@@ -82,6 +82,10 @@ fn get_base_url(env: &Env) -> String {
     env.var("BASE_URL")
         .map(|s| s.to_string())
         .unwrap_or_else(|_| "http://localhost:8787".to_string())
+}
+
+fn is_secure_env(env: &Env) -> bool {
+    get_base_url(env).starts_with("https://") || env.var("CF_PAGES_URL").is_ok()
 }
 
 #[derive(Deserialize)]
@@ -143,7 +147,8 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
-    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token))
+    let is_secure = is_secure_env(&env);
+    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token, is_secure))
 }
 
 pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
@@ -169,7 +174,8 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
     let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
-    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token))
+    let is_secure = is_secure_env(&env);
+    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token, is_secure))
 }
 
 pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
@@ -177,7 +183,8 @@ pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
         let db = get_db(&env)?;
         db.delete_session(&token).await?;
     }
-    Response::ok("Logged out")?.add_header("Set-Cookie", &clear_session_cookie())
+    let is_secure = is_secure_env(&env);
+    Response::ok("Logged out")?.add_header("Set-Cookie", &clear_session_cookie(is_secure))
 }
 
 pub async fn handle_me(req: Request, env: Env) -> Result<Response> {
@@ -318,8 +325,9 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
         "https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=user:email&state={state}"
     );
 
+    let is_secure = is_secure_env(&env);
     Response::redirect(Url::parse(&url)?)?
-        .add_header("Set-Cookie", &create_oauth_state_cookie(&state))
+        .add_header("Set-Cookie", &create_oauth_state_cookie(&state, is_secure))
 }
 
 pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
@@ -437,12 +445,13 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         // Redirect to home
         let base_url = get_base_url(&env);
+        let is_secure = is_secure_env(&env);
 
         let mut resp = Response::redirect(Url::parse(&base_url)?)?;
         resp.headers_mut()
-            .append("Set-Cookie", &create_session_cookie(&token))?;
+            .append("Set-Cookie", &create_session_cookie(&token, is_secure))?;
         resp.headers_mut()
-            .append("Set-Cookie", &clear_oauth_state_cookie())?;
+            .append("Set-Cookie", &clear_oauth_state_cookie(is_secure))?;
         Ok(resp)
     } else {
         Response::error("Missing code", 400)
