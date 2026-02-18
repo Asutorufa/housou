@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-} from "react";
+import { createContext, useCallback, useContext, useMemo, useRef } from "react";
 import type { MetadataRequest, UnifiedMetadata } from "../types";
 
 interface MetadataContextType {

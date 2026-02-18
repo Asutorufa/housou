@@ -192,8 +192,14 @@ describe("AnimeCard fetchMetadata", () => {
     // In context: catch(err) -> console.error("Batch fetch error:", err) -> resolve(null).
     // So "Metadata error:" is NOT logged by AnimeCard.
     // But "Batch fetch error:" IS logged by Context.
-    expect(consoleSpy).toHaveBeenCalledWith("Batch fetch error:", expect.any(Error));
-    expect(consoleSpy).not.toHaveBeenCalledWith("Metadata error:", expect.any(Error));
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Batch fetch error:",
+      expect.any(Error),
+    );
+    expect(consoleSpy).not.toHaveBeenCalledWith(
+      "Metadata error:",
+      expect.any(Error),
+    );
 
     consoleSpy.mockRestore();
   });
