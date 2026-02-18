@@ -17,6 +17,9 @@ pub const SESSION_DURATION_DAYS: i64 = 30;
 const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
 const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
+const EMAIL_IN_USE_ERR: &str = "Email already in use";
+const USERNAME_TAKEN_ERR: &str = "Username already taken";
+
 // Helper to get DB
 pub fn get_db(env: &Env) -> Result<AppDatabase> {
     let d1 = env.d1("DB")?;
@@ -355,7 +358,7 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
         .add_header("Set-Cookie", &create_oauth_state_cookie(&state, secure))
 }
 
-fn verify_oauth_state(req: &Request, query_state: Option<&String>) -> Result<()> {
+fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {
     let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
     let mut stored_state = None;
 
@@ -368,7 +371,7 @@ fn verify_oauth_state(req: &Request, query_state: Option<&String>) -> Result<()>
 
     if query_state.is_none()
         || stored_state.is_none()
-        || query_state.map(|s| s.as_str()) != stored_state.as_deref()
+        || query_state != stored_state.as_deref()
     {
         return Err(Error::RustError(
             "Invalid or missing OAuth state".to_string(),
@@ -450,10 +453,10 @@ async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> R
             .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
 
         if (db.get_user_by_email(&email).await?).is_some() {
-            return Err(Error::RustError("Email already in use".to_string()));
+            return Err(Error::RustError(EMAIL_IN_USE_ERR.to_string()));
         }
         if (db.get_user_by_username(&gh_user.login).await?).is_some() {
-            return Err(Error::RustError("Username already taken".to_string()));
+            return Err(Error::RustError(USERNAME_TAKEN_ERR.to_string()));
         }
 
         let user = db
@@ -476,7 +479,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
     let state = query_params.get("state").cloned();
 
     // Verify State (CSRF)
-    if verify_oauth_state(&req, state.as_ref()).is_err() {
+    if verify_oauth_state(&req, state.as_deref()).is_err() {
         return Response::error("Invalid or missing OAuth state", 403);
     }
 
@@ -493,7 +496,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
             Ok(u) => u,
             Err(e) => {
                 let msg = e.to_string();
-                if msg.contains("Email already in use") || msg.contains("Username already taken") {
+                if msg.contains(EMAIL_IN_USE_ERR) || msg.contains(USERNAME_TAKEN_ERR) {
                     return Response::error(msg, 400);
                 }
                 return Err(e);
