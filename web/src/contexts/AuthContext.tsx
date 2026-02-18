@@ -1,6 +1,7 @@
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
-import type { LoginData, RegisterData, User } from "../types";
+import type { LoginData, Passkey, RegisterData, User } from "../types";
 import { hashPassword } from "../utils/authUtils";
 
 interface AuthContextType {
@@ -20,6 +21,10 @@ interface AuthContextType {
     new_password: string;
   }) => Promise<void>;
   apiFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  registerPasskey: (name?: string) => Promise<void>;
+  loginPasskey: (email: string) => Promise<void>;
+  getPasskeys: () => Promise<Passkey[]>;
+  deletePasskey: (id: number) => Promise<void>;
 }
 
 // Separate Error type for API responses
@@ -185,6 +190,67 @@ export function AuthProvider({
     [apiFetch],
   );
 
+  const registerPasskey = useCallback(
+    async (name?: string) => {
+      const resp = await apiFetch("/api/auth/passkey/register/start", {
+        method: "POST",
+      });
+      if (!resp.ok) throw new Error("Failed to start registration");
+      const { state_id, options } = await resp.json();
+
+      const attResp = await startRegistration({ optionsJSON: options });
+
+      const finishResp = await apiFetch("/api/auth/passkey/register/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state_id, register_response: attResp, name }),
+      });
+      if (!finishResp.ok) throw new Error("Failed to finish registration");
+    },
+    [apiFetch],
+  );
+
+  const loginPasskey = useCallback(
+    async (email: string) => {
+      const resp = await fetch("/api/auth/passkey/login/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!resp.ok) throw new Error("Failed to start login");
+      const { state_id, options } = await resp.json();
+
+      const asseResp = await startAuthentication({ optionsJSON: options });
+
+      const finishResp = await fetch("/api/auth/passkey/login/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state_id, login_response: asseResp }),
+      });
+      if (!finishResp.ok) throw new Error("Failed to finish login");
+
+      const user = await finishResp.json();
+      mutate(user, false);
+    },
+    [mutate],
+  );
+
+  const getPasskeys = useCallback(async () => {
+    const resp = await apiFetch("/api/user/passkeys");
+    if (!resp.ok) throw new Error("Failed to fetch passkeys");
+    return resp.json();
+  }, [apiFetch]);
+
+  const deletePasskey = useCallback(
+    async (id: number) => {
+      const resp = await apiFetch(`/api/user/passkeys/${id}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok) throw new Error("Failed to delete passkey");
+    },
+    [apiFetch],
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -197,6 +263,10 @@ export function AuthProvider({
         updateProfile,
         changePassword,
         apiFetch,
+        registerPasskey,
+        loginPasskey,
+        getPasskeys,
+        deletePasskey,
       }}
     >
       {children}

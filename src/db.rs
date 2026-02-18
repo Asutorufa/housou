@@ -42,6 +42,26 @@ pub struct UserItemSummary {
     pub score: Option<i32>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Passkey {
+    pub id: i32,
+    pub user_id: i32,
+    pub cred_id: String,
+    pub public_key: String,
+    pub counter: i64,
+    pub name: Option<String>,
+    pub created_at: i64,
+    pub last_used: i64,
+    pub aaguid: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PasskeyState {
+    pub id: String,
+    pub state: String,
+    pub expires_at: i64,
+}
+
 #[derive(Debug, Deserialize)]
 struct SchemaVersion {
     version: Option<i32>,
@@ -91,6 +111,31 @@ pub trait Database {
         user_id: i32,
         titles: &[String],
     ) -> Result<Vec<UserItem>>;
+
+    // Passkeys
+    async fn create_passkey(
+        &self,
+        user_id: i32,
+        cred_id: &str,
+        public_key: &str,
+        counter: i64,
+        name: Option<&str>,
+        aaguid: Option<&str>,
+    ) -> Result<()>;
+    async fn get_passkeys_by_user(&self, user_id: i32) -> Result<Vec<Passkey>>;
+    async fn get_passkey_by_cred_id(&self, cred_id: &str) -> Result<Option<Passkey>>;
+    async fn update_passkey_counter(
+        &self,
+        cred_id: &str,
+        counter: i64,
+        last_used: i64,
+    ) -> Result<()>;
+    async fn delete_passkey(&self, id: i32, user_id: i32) -> Result<()>;
+
+    // Passkey State (for challenge persistence)
+    async fn save_passkey_state(&self, id: &str, state: &str, expires_at: i64) -> Result<()>;
+    async fn get_passkey_state(&self, id: &str) -> Result<Option<PasskeyState>>;
+    async fn delete_passkey_state(&self, id: &str) -> Result<()>;
 }
 
 pub struct AppDatabase {
@@ -162,6 +207,29 @@ impl Database for AppDatabase {
                 ],
             ),
             (2, vec!["ALTER TABLE users ADD COLUMN avatar_url TEXT;"]),
+            (
+                3,
+                vec![
+                    "CREATE TABLE IF NOT EXISTS passkeys (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        cred_id TEXT NOT NULL UNIQUE,
+                        public_key TEXT NOT NULL,
+                        counter INTEGER NOT NULL,
+                        name TEXT,
+                        created_at INTEGER,
+                        last_used INTEGER,
+                        aaguid TEXT,
+                        FOREIGN KEY(user_id) REFERENCES users(id)
+                    );",
+                    "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);",
+                    "CREATE TABLE IF NOT EXISTS passkey_states (
+                        id TEXT PRIMARY KEY,
+                        state TEXT NOT NULL,
+                        expires_at INTEGER NOT NULL
+                    );",
+                ],
+            ),
         ];
 
         // Apply pending migrations
@@ -441,5 +509,131 @@ impl Database for AppDatabase {
             .concat();
 
         Ok(all_results)
+    }
+
+    async fn create_passkey(
+        &self,
+        user_id: i32,
+        cred_id: &str,
+        public_key: &str,
+        counter: i64,
+        name: Option<&str>,
+        aaguid: Option<&str>,
+    ) -> Result<()> {
+        let created_at = Date::now().as_millis() as i64;
+        let last_used = created_at;
+        let query = "INSERT INTO passkeys (user_id, cred_id, public_key, counter, name, created_at, last_used, aaguid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+        let name_val = if let Some(n) = name {
+            JsValue::from_str(n)
+        } else {
+            JsValue::NULL
+        };
+        let aaguid_val = if let Some(a) = aaguid {
+            JsValue::from_str(a)
+        } else {
+            JsValue::NULL
+        };
+
+        self.db
+            .prepare(query)
+            .bind(&[
+                JsValue::from_f64(user_id as f64),
+                JsValue::from_str(cred_id),
+                JsValue::from_str(public_key),
+                JsValue::from_f64(counter as f64),
+                name_val,
+                JsValue::from_f64(created_at as f64),
+                JsValue::from_f64(last_used as f64),
+                aaguid_val,
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn get_passkeys_by_user(&self, user_id: i32) -> Result<Vec<Passkey>> {
+        let query = "SELECT * FROM passkeys WHERE user_id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_f64(user_id as f64)])?
+            .all()
+            .await?
+            .results()
+    }
+
+    async fn get_passkey_by_cred_id(&self, cred_id: &str) -> Result<Option<Passkey>> {
+        let query = "SELECT * FROM passkeys WHERE cred_id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_str(cred_id)])?
+            .first(None)
+            .await
+    }
+
+    async fn update_passkey_counter(
+        &self,
+        cred_id: &str,
+        counter: i64,
+        last_used: i64,
+    ) -> Result<()> {
+        let query = "UPDATE passkeys SET counter = ?, last_used = ? WHERE cred_id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[
+                JsValue::from_f64(counter as f64),
+                JsValue::from_f64(last_used as f64),
+                JsValue::from_str(cred_id),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn delete_passkey(&self, id: i32, user_id: i32) -> Result<()> {
+        let query = "DELETE FROM passkeys WHERE id = ? AND user_id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[
+                JsValue::from_f64(id as f64),
+                JsValue::from_f64(user_id as f64),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn save_passkey_state(&self, id: &str, state: &str, expires_at: i64) -> Result<()> {
+        let query = "INSERT INTO passkey_states (id, state, expires_at) VALUES (?, ?, ?)";
+        self.db
+            .prepare(query)
+            .bind(&[
+                JsValue::from_str(id),
+                JsValue::from_str(state),
+                JsValue::from_f64(expires_at as f64),
+            ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn get_passkey_state(&self, id: &str) -> Result<Option<PasskeyState>> {
+        let now = Date::now().as_millis() as i64;
+        let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])?
+            .first(None)
+            .await
+    }
+
+    async fn delete_passkey_state(&self, id: &str) -> Result<()> {
+        let query = "DELETE FROM passkey_states WHERE id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_str(id)])?
+            .run()
+            .await?;
+        Ok(())
     }
 }

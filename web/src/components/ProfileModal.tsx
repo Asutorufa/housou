@@ -1,8 +1,9 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Eye, EyeOff, X } from "lucide-react";
+import { Eye, EyeOff, Key, Trash2, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import type { Passkey } from "../types";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -27,7 +28,51 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
-  const { changePassword } = useAuth();
+  const { changePassword, registerPasskey, getPasskeys, deletePasskey } =
+    useAuth();
+  const [passkeys, setPasskeys] = useState<Passkey[]>([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && user) {
+      loadPasskeys();
+    }
+  }, [isOpen, user]);
+
+  const loadPasskeys = async () => {
+    try {
+      const data = await getPasskeys();
+      setPasskeys(data);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRegisterPasskey = async () => {
+    setPasskeyLoading(true);
+    setPasskeyError(null);
+    try {
+      await registerPasskey();
+      await loadPasskeys();
+    } catch (e) {
+      setPasskeyError(
+        e instanceof Error ? e.message : "Failed to register passkey",
+      );
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
+  const handleDeletePasskey = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this passkey?")) return;
+    try {
+      await deletePasskey(id);
+      await loadPasskeys();
+    } catch {
+      setPasskeyError("Failed to delete passkey");
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -272,6 +317,61 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                     {passwordLoading ? "更新中..." : "パスワードを更新"}
                   </button>
                 </form>
+
+                <div className="my-8 border-t border-gray-100 dark:border-gray-800" />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Dialog.Title className="text-md font-semibold text-gray-900 dark:text-gray-100">
+                      パスキー
+                    </Dialog.Title>
+                    <button
+                      onClick={handleRegisterPasskey}
+                      disabled={passkeyLoading}
+                      className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      <Key size={14} />
+                      追加
+                    </button>
+                  </div>
+
+                  {passkeyError && (
+                    <div className="rounded-lg bg-red-50 p-3 text-sm text-red-500 dark:bg-red-900/20">
+                      {passkeyError}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {passkeys.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        パスキーは登録されていません。
+                      </p>
+                    ) : (
+                      passkeys.map((pk) => (
+                        <div
+                          key={pk.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                        >
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {pk.name || "Passkey"}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Created:{" "}
+                              {new Date(pk.created_at).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDeletePasskey(pk.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </motion.div>
             </Dialog.Content>
           </Dialog.Portal>

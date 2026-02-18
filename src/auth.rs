@@ -5,10 +5,12 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use cookie::{Cookie, SameSite, time::Duration};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 use uuid::Uuid;
+use webauthn_rs::prelude::*;
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 
@@ -481,6 +483,254 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
     } else {
         Response::error("Missing code", 400)
     }
+}
+
+// Passkey Logic
+fn get_webauthn(env: &Env) -> Result<Webauthn> {
+    let base_url_str = get_base_url(env);
+    let base_url = Url::parse(&base_url_str)?;
+    let host = base_url.host_str().unwrap_or("localhost");
+    let rp_id = host;
+    let origin = Url::parse(&base_url_str)?;
+
+    let builder = WebauthnBuilder::new(rp_id, &origin).map_err(|e| Error::RustError(e.to_string()))?;
+    builder.build().map_err(|e| Error::RustError(e.to_string()))
+}
+
+#[derive(Deserialize)]
+struct PasskeyRegisterFinishRequest {
+    state_id: String,
+    register_response: RegisterPublicKeyCredential,
+    name: Option<String>,
+}
+
+pub async fn handle_passkey_register_start(req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let webauthn = get_webauthn(&env)?;
+    // Deterministic UUID for user handle based on ID
+    let user_uuid = Uuid::new_v5(&Uuid::NAMESPACE_OID, user.id.to_string().as_bytes());
+
+    let (ccr, state) = webauthn
+        .start_passkey_registration(user_uuid, &user.username, &user.username, None)
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    let state_json = serde_json::to_string(&state)?;
+    let state_id = Uuid::new_v4().to_string();
+    let expires_at = Date::now().as_millis() as i64 + (5 * 60 * 1000); // 5 mins
+
+    let db = get_db(&env)?;
+    db.save_passkey_state(&state_id, &state_json, expires_at).await?;
+
+    let response = serde_json::json!({
+        "state_id": state_id,
+        "options": ccr
+    });
+
+    Response::from_json(&response)
+}
+
+pub async fn handle_passkey_register_finish(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let body: PasskeyRegisterFinishRequest = req.json().await?;
+    let db = get_db(&env)?;
+
+    let state_record = db
+        .get_passkey_state(&body.state_id)
+        .await?
+        .ok_or_else(|| Error::RustError("Invalid or expired state".to_string()))?;
+
+    let state: PasskeyRegistration = serde_json::from_str(&state_record.state)?;
+    let webauthn = get_webauthn(&env)?;
+
+    let passkey = webauthn
+        .finish_passkey_registration(&body.register_response, &state)
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    // Store in DB
+    let cred_id_b64 = URL_SAFE_NO_PAD.encode(&passkey.cred_id());
+    let public_key_json = serde_json::to_string(&passkey.get_public_key())?;
+
+    // Extract counter and aaguid via serialization to ensure compatibility
+    let passkey_val = serde_json::to_value(&passkey)?;
+    let counter = passkey_val.get("counter").and_then(|v| v.as_u64()).unwrap_or(0);
+    let aaguid = passkey_val.get("aaguid").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+    db.create_passkey(
+        user.id,
+        &cred_id_b64,
+        &public_key_json,
+        counter as i64,
+        body.name.as_deref(),
+        aaguid.as_deref(),
+    )
+    .await?;
+
+    // Cleanup state
+    db.delete_passkey_state(&body.state_id).await?;
+
+    Response::ok("Passkey registered")
+}
+
+// Passkey Login
+
+#[derive(Deserialize)]
+struct PasskeyLoginStartRequest {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct PasskeyLoginFinishRequest {
+    state_id: String,
+    login_response: PublicKeyCredential,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PasskeyLoginState {
+    user_id: i32,
+    webauthn_state: PasskeyAuthentication,
+}
+
+fn db_passkey_to_webauthn(db_pk: &crate::db::Passkey) -> Result<Passkey, Error> {
+    let cred_id_bytes = URL_SAFE_NO_PAD.decode(&db_pk.cred_id).map_err(|_| Error::RustError("Bad cred_id".into()))?;
+    let public_key: serde_json::Value = serde_json::from_str(&db_pk.public_key)?;
+
+    // Try to reconstruct Passkey from JSON.
+    // We assume standard field names: cred_id, key, counter, aaguid.
+    let json = serde_json::json!({
+        "cred_id": cred_id_bytes,
+        "key": public_key,
+        "counter": db_pk.counter,
+        "aaguid": db_pk.aaguid
+    });
+
+    serde_json::from_value(json).map_err(|e| Error::RustError(format!("Failed to reconstruct passkey: {}", e)))
+}
+
+pub async fn handle_passkey_login_start(mut req: Request, env: Env) -> Result<Response> {
+    let body: PasskeyLoginStartRequest = req.json().await?;
+    let db = get_db(&env)?;
+
+    let user = db
+        .get_user_by_email(&body.email)
+        .await?
+        .ok_or_else(|| Error::RustError("User not found".to_string()))?;
+
+    let db_passkeys = db.get_passkeys_by_user(user.id).await?;
+    if db_passkeys.is_empty() {
+         return Response::error("No passkeys found for user", 400);
+    }
+
+    let mut webauthn_passkeys = Vec::new();
+    for pk in &db_passkeys {
+        webauthn_passkeys.push(db_passkey_to_webauthn(pk)?);
+    }
+
+    let webauthn = get_webauthn(&env)?;
+    let (rcr, state) = webauthn
+        .start_passkey_authentication(&webauthn_passkeys)
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    let full_state = PasskeyLoginState {
+        user_id: user.id,
+        webauthn_state: state,
+    };
+    let state_json = serde_json::to_string(&full_state)?;
+    let state_id = Uuid::new_v4().to_string();
+    let expires_at = Date::now().as_millis() as i64 + (5 * 60 * 1000);
+
+    db.save_passkey_state(&state_id, &state_json, expires_at).await?;
+
+    let response = serde_json::json!({
+        "state_id": state_id,
+        "options": rcr
+    });
+
+    Response::from_json(&response)
+}
+
+pub async fn handle_passkey_login_finish(mut req: Request, env: Env) -> Result<Response> {
+    let body: PasskeyLoginFinishRequest = req.json().await?;
+    let db = get_db(&env)?;
+
+    let state_record = db
+        .get_passkey_state(&body.state_id)
+        .await?
+        .ok_or_else(|| Error::RustError("Invalid or expired state".to_string()))?;
+
+    let full_state: PasskeyLoginState = serde_json::from_str(&state_record.state)?;
+    let webauthn = get_webauthn(&env)?;
+
+    let (user_id, webauthn_state) = (full_state.user_id, full_state.webauthn_state);
+
+    let user = db.get_user_by_id(user_id).await?
+        .ok_or_else(|| Error::RustError("User not found".to_string()))?;
+
+    // Finish authentication
+    let auth_result = webauthn
+        .finish_passkey_authentication(&body.login_response, &webauthn_state)
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+    // Update counter
+    // `auth_result` contains `cred_id` and `counter`.
+    // Find the used passkey from DB (using cred_id) and update it.
+    // auth_result.cred_id is likely `CredentialID` (bytes).
+    // We stored it as base64 in DB.
+
+    let used_cred_id_b64 = URL_SAFE_NO_PAD.encode(&auth_result.cred_id());
+
+    // Update DB
+    db.update_passkey_counter(&used_cred_id_b64, auth_result.counter() as i64, Date::now().as_millis() as i64).await?;
+
+    // Cleanup state
+    db.delete_passkey_state(&body.state_id).await?;
+
+    // Issue Session
+    let token = Uuid::new_v4().to_string();
+    let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    db.create_session(user.id, &token, expires_at).await?;
+
+    let secure = is_secure(&env);
+    Response::from_json(&user)?.add_header("Set-Cookie", &create_session_cookie(&token, secure))
+}
+
+pub async fn handle_get_passkeys(req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let db = get_db(&env)?;
+    let passkeys = db.get_passkeys_by_user(user.id).await?;
+
+    // Return sanitized list (no public key, no counter needed for UI usually, but okay to send)
+    // Passkey struct is serializable.
+    Response::from_json(&passkeys)
+}
+
+pub async fn handle_delete_passkey(req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let url = req.url()?;
+    let path_segments: Vec<&str> = url.path_segments().unwrap().collect();
+    // /api/user/passkeys/:id
+    let id_str = path_segments.last().unwrap();
+    let id = id_str.parse::<i32>().map_err(|_| Error::RustError("Invalid ID".into()))?;
+
+    let db = get_db(&env)?;
+    db.delete_passkey(id, user.id).await?;
+
+    Response::ok("Deleted")
 }
 
 #[cfg(test)]

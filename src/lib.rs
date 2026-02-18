@@ -348,6 +348,26 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
             auth::handle_update_item(req, env.clone()).await
         }
 
+        // Passkey Routes
+        (Method::Post, "/api/auth/passkey/register/start") if auth_enabled => {
+            auth::handle_passkey_register_start(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/register/finish") if auth_enabled => {
+            auth::handle_passkey_register_finish(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/login/start") if auth_enabled => {
+            auth::handle_passkey_login_start(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/login/finish") if auth_enabled => {
+            auth::handle_passkey_login_finish(req, env.clone()).await
+        }
+        (Method::Get, "/api/user/passkeys") if auth_enabled => {
+            auth::handle_get_passkeys(req, env.clone()).await
+        }
+        (Method::Delete, path) if auth_enabled && path.starts_with("/api/user/passkeys/") => {
+            auth::handle_delete_passkey(req, env.clone()).await
+        }
+
         // Handle Options for CORS on auth routes
         (Method::Options, path)
             if path.starts_with("/api/auth") || path.starts_with("/api/user") =>

@@ -78,6 +78,13 @@ export interface User {
   created_at: number;
 }
 
+export interface Passkey {
+  id: number;
+  name?: string;
+  created_at: number;
+  last_used: number;
+}
+
 // Define strict types for auth payloads
 export interface LoginData {
   email: string;

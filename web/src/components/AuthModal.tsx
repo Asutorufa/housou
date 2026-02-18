@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Eye, EyeOff, X } from "lucide-react";
+import { Eye, EyeOff, Key, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
@@ -16,7 +16,7 @@ export default function AuthModal({
   onClose,
   initialTab = "login",
 }: AuthModalProps) {
-  const { login, register } = useAuth();
+  const { login, register, loginPasskey } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +55,24 @@ export default function AuthModal({
 
   const handleGithubLogin = () => {
     window.location.href = "/api/auth/github/authorize";
+  };
+
+  const handlePasskeyLogin = async () => {
+    setError(null);
+    setLoading(true);
+    if (!email) {
+      setError("メールアドレスを入力してください");
+      setLoading(false);
+      return;
+    }
+    try {
+      await loginPasskey(email);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Passkey login failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -198,6 +216,18 @@ export default function AuthModal({
                           : "登録"}
                     </button>
                   </form>
+
+                  {activeTab === "login" && (
+                    <button
+                      type="button"
+                      onClick={handlePasskeyLogin}
+                      disabled={loading}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <Key size={18} />
+                      パスキーでログイン
+                    </button>
+                  )}
 
                   <div className="relative my-6">
                     <div className="absolute inset-0 flex items-center">
