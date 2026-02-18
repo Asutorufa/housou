@@ -118,37 +118,39 @@ pub async fn handle_user_status(mut req: Request, env: Env) -> Result<Response> 
         }
     };
 
-    match auth::get_auth(&req, &env).await {
-        Ok(Some((user, _))) => match auth::get_db(&env) {
-            Ok(db) => match db.get_user_items_by_titles(user.id, &titles).await {
-                Ok(user_items) => {
-                    let status_map: std::collections::HashMap<_, _> = user_items
-                        .into_iter()
-                        .map(|ui| {
-                            (
-                                ui.title,
-                                db::UserItemSummary {
-                                    status: ui.status,
-                                    score: ui.score,
-                                },
-                            )
-                        })
-                        .collect();
-                    Response::from_json(&status_map)
-                }
-                Err(e) => {
-                    console_error!("Failed to fetch user items: {}", e);
-                    Response::error("Internal Server Error", 500)
-                }
-            },
+    let (user, _) = match auth::get_auth(&req, &env).await {
+        Ok(Some(auth_data)) => auth_data,
+        Ok(None) => return Response::error("Unauthorized", 401),
+        Err(e) => {
+            console_error!("Auth error: {}", e);
+            return Response::error("Internal Server Error", 500);
+        }
+    };
+
+    match auth::get_db(&env) {
+        Ok(db) => match db.get_user_items_by_titles(user.id, &titles).await {
+            Ok(user_items) => {
+                let status_map: std::collections::HashMap<_, _> = user_items
+                    .into_iter()
+                    .map(|ui| {
+                        (
+                            ui.title,
+                            db::UserItemSummary {
+                                status: ui.status,
+                                score: ui.score,
+                            },
+                        )
+                    })
+                    .collect();
+                Response::from_json(&status_map)
+            }
             Err(e) => {
-                console_error!("Failed to get DB connection: {}", e);
+                console_error!("Failed to fetch user items: {}", e);
                 Response::error("Internal Server Error", 500)
             }
         },
-        Ok(None) => Response::error("Unauthorized", 401),
         Err(e) => {
-            console_error!("Auth error: {}", e);
+            console_error!("Failed to get DB connection: {}", e);
             Response::error("Internal Server Error", 500)
         }
     }
