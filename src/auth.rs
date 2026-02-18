@@ -470,7 +470,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         // Redirect to home
         let base_url = get_base_url(&env);
-        let secure = is_secure(&env);
+        let secure = base_url.starts_with("https");
 
         let mut resp = Response::redirect(Url::parse(&base_url)?)?;
         resp.headers_mut()
