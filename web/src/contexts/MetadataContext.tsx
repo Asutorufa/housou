@@ -104,7 +104,9 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
   const fetchMetadata = useCallback(
     (req: MetadataRequest): Promise<UnifiedMetadata | null> => {
       return new Promise((resolve, reject) => {
-        const id = crypto.randomUUID();
+        // Use a simple random ID generator that works in non-secure contexts (http)
+        const id =
+          Date.now().toString(36) + Math.random().toString(36).substring(2);
         queue.current.push({ id, req, resolve, reject });
 
         if (!timeoutRef.current) {
