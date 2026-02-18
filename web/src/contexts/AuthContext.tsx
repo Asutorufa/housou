@@ -1,7 +1,15 @@
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
 import type { LoginData, RegisterData, User } from "../types";
 import { hashPassword } from "../utils/authUtils";
+
+export interface PasskeySummary {
+  id: string;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number;
+}
 
 interface AuthContextType {
   user: User | undefined;
@@ -20,6 +28,10 @@ interface AuthContextType {
     new_password: string;
   }) => Promise<void>;
   apiFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  loginPasskey: () => Promise<void>;
+  registerPasskey: () => Promise<void>;
+  listPasskeys: () => Promise<PasskeySummary[]>;
+  deletePasskey: (id: string) => Promise<void>;
 }
 
 // Separate Error type for API responses
@@ -185,6 +197,79 @@ export function AuthProvider({
     [apiFetch],
   );
 
+  const loginPasskey = useCallback(async () => {
+    // 1. Get options from server
+    const resp = await fetch("/api/auth/passkey/login/start", {
+      method: "POST",
+    });
+    if (!resp.ok) throw new Error("Failed to start passkey login");
+    const options = await resp.json();
+
+    // 2. Pass options to browser
+    let asseResp;
+    try {
+      asseResp = await startAuthentication(options);
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+
+    // 3. Send response to server
+    const verificationResp = await fetch("/api/auth/passkey/login/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(asseResp),
+    });
+
+    if (!verificationResp.ok) {
+      const json = await verificationResp.json().catch(() => ({}));
+      throw new Error(json.error || "Passkey verification failed");
+    }
+
+    const user = await verificationResp.json();
+    mutate(user, false);
+  }, [mutate]);
+
+  const registerPasskey = useCallback(async () => {
+    const resp = await fetch("/api/auth/passkey/register/start", {
+      method: "POST",
+    });
+    if (!resp.ok) throw new Error("Failed to start passkey registration");
+    const options = await resp.json();
+
+    let attResp;
+    try {
+      attResp = await startRegistration(options);
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+
+    const verificationResp = await fetch("/api/auth/passkey/register/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(attResp),
+    });
+
+    if (!verificationResp.ok) {
+      const json = await verificationResp.json().catch(() => ({}));
+      throw new Error(json.error || "Passkey registration failed");
+    }
+  }, []);
+
+  const listPasskeys = useCallback(async () => {
+    const res = await fetch("/api/auth/passkey");
+    if (!res.ok) throw new Error("Failed to list passkeys");
+    return res.json();
+  }, []);
+
+  const deletePasskey = useCallback(async (id: string) => {
+    const res = await fetch(`/api/auth/passkey?id=${id}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error("Failed to delete passkey");
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -197,6 +282,10 @@ export function AuthProvider({
         updateProfile,
         changePassword,
         apiFetch,
+        loginPasskey,
+        registerPasskey,
+        listPasskeys,
+        deletePasskey,
       }}
     >
       {children}

@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Eye, EyeOff, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { useAuth } from "../contexts/AuthContext";
+import { type PasskeySummary, useAuth } from "../contexts/AuthContext";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -10,7 +10,13 @@ interface ProfileModalProps {
 }
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
-  const { user, updateProfile } = useAuth();
+  const {
+    user,
+    updateProfile,
+    registerPasskey,
+    listPasskeys,
+    deletePasskey,
+  } = useAuth();
   const [username, setUsername] = useState(user?.username || "");
   const [email, setEmail] = useState(user?.email || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
@@ -28,6 +34,53 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const { changePassword } = useAuth();
+
+  // Passkey states
+  const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadPasskeys();
+    }
+  }, [isOpen]);
+
+  const loadPasskeys = async () => {
+    try {
+      const list = await listPasskeys();
+      setPasskeys(list);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAddPasskey = async () => {
+    setPasskeyLoading(true);
+    setPasskeyError(null);
+    try {
+      await registerPasskey();
+      await loadPasskeys();
+    } catch (err) {
+      setPasskeyError(
+        err instanceof Error ? err.message : "Failed to add passkey",
+      );
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
+  const handleDeletePasskey = async (id: string) => {
+    if (!confirm("このパスキーを削除してもよろしいですか？")) return;
+    try {
+      await deletePasskey(id);
+      await loadPasskeys();
+    } catch (err) {
+      setPasskeyError(
+        err instanceof Error ? err.message : "Failed to delete passkey",
+      );
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -272,6 +325,62 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
                     {passwordLoading ? "更新中..." : "パスワードを更新"}
                   </button>
                 </form>
+
+                <div className="my-8 border-t border-gray-100 dark:border-gray-800" />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Dialog.Title className="text-md font-semibold text-gray-900 dark:text-gray-100">
+                      パスキー
+                    </Dialog.Title>
+                    <button
+                      type="button"
+                      onClick={handleAddPasskey}
+                      disabled={passkeyLoading}
+                      className="rounded-md bg-blue-100 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                    >
+                      {passkeyLoading ? "追加中..." : "追加"}
+                    </button>
+                  </div>
+
+                  {passkeyError && (
+                    <div className="rounded-lg bg-red-50 p-3 text-sm text-red-500 dark:bg-red-900/20">
+                      {passkeyError}
+                    </div>
+                  )}
+
+                  {passkeys.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      パスキーは登録されていません。
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {passkeys.map((pk) => (
+                        <div
+                          key={pk.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+                        >
+                          <div>
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {pk.name}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              登録日:{" "}
+                              {new Date(pk.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePasskey(pk.id)}
+                            className="text-gray-400 hover:text-red-500 dark:hover:text-red-400"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </motion.div>
             </Dialog.Content>
           </Dialog.Portal>

@@ -13,7 +13,7 @@ use worker::wasm_bindgen::JsValue;
 use worker::*;
 
 const SESSION_COOKIE_NAME: &str = "housou_session";
-const SESSION_DURATION_DAYS: i64 = 30;
+pub const SESSION_DURATION_DAYS: i64 = 30;
 const OAUTH_STATE_COOKIE_NAME: &str = "oauth_state";
 const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
@@ -42,7 +42,7 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     Ok(None)
 }
 
-fn create_session_cookie(token: &str, secure: bool) -> String {
+pub fn create_session_cookie(token: &str, secure: bool) -> String {
     Cookie::build((SESSION_COOKIE_NAME, token))
         .path("/")
         .http_only(true)
@@ -88,7 +88,7 @@ fn get_base_url(env: &Env) -> String {
         .unwrap_or_else(|_| "http://localhost:8787".to_string())
 }
 
-fn is_secure(env: &Env) -> bool {
+pub fn is_secure(env: &Env) -> bool {
     get_base_url(env).starts_with("https")
 }
 

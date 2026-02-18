@@ -7,6 +7,7 @@ mod auth;
 mod config;
 mod db;
 mod model;
+mod passkey;
 mod provider;
 mod utils;
 use db::Database; // Import Database trait
@@ -346,6 +347,26 @@ async fn router(mut req: Request, env: Env) -> Result<Response> {
         }
         (Method::Post, "/api/user/item") if auth_enabled => {
             auth::handle_update_item(req, env.clone()).await
+        }
+
+        // Passkey Routes
+        (Method::Post, "/api/auth/passkey/register/start") if auth_enabled => {
+            passkey::handle_register_start(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/register/finish") if auth_enabled => {
+            passkey::handle_register_finish(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/login/start") if auth_enabled => {
+            passkey::handle_login_start(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/passkey/login/finish") if auth_enabled => {
+            passkey::handle_login_finish(req, env.clone()).await
+        }
+        (Method::Get, "/api/auth/passkey") if auth_enabled => {
+            passkey::handle_list(req, env.clone()).await
+        }
+        (Method::Delete, "/api/auth/passkey") if auth_enabled => {
+            passkey::handle_delete(req, env.clone()).await
         }
 
         // Handle Options for CORS on auth routes
