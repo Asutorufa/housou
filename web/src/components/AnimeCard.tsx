@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
+import { isDev } from "../utils/envUtils";
 import { sortSites } from "../utils/siteUtils";
 import { isValidUrl } from "../utils/urlUtils";
 
@@ -83,7 +84,9 @@ export default function AnimeCard({
       const data = await response.json();
       setMetadata(data || null);
     } catch (err) {
-      console.error("Metadata error:", err);
+      if (isDev()) {
+        console.error("Metadata error:", err);
+      }
     } finally {
       setLoading(false);
     }
