@@ -276,20 +276,23 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
 
     // Content Ratings (Release Dates for Movies)
     let content_rating = extract_movie_content_rating(movie.release_dates, movie.adult);
+    let average_score = movie.vote_average.map(|v| (v * 10.0) as i32);
+    let description = movie.overview;
 
     UnifiedMetadata {
-        id: format!("movie/{}", movie.id.unwrap_or(0)),
+        source: MetadataSource::Tmdb(format!("movie/{}", movie.id.unwrap_or(0))),
         title,
         cover_image,
-        average_score: movie.vote_average.map(|v| (v * 10.0) as i32),
+        average_score,
         episodes: None,
         genres,
-        description: movie.overview,
+        description,
         studios,
         characters,
         staff,
-        episodes_list: Vec::new(),
-        is_finished: movie.status.as_deref() == Some("Released"),
+        episodes_list: vec![],
+        is_finished: movie.status.as_deref() == Some("Released")
+            || movie.status.as_deref() == Some("Canceled"),
         total_seasons: None,
         current_season: None,
         runtime: movie.runtime,
@@ -351,15 +354,17 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
 
     let show_id_val = show.id.unwrap_or(0);
     let season_num_val = season.season_number.unwrap_or(1);
+    let average_score = show.vote_average.map(|v| (v * 10.0) as i32);
+    let description = season.overview.filter(|s| !s.is_empty()).or(show.overview);
 
     UnifiedMetadata {
-        id: format!("tv/{show_id_val}/season/{season_num_val}"),
+        source: MetadataSource::Tmdb(format!("tv/{show_id_val}/season/{season_num_val}")),
         title,
         cover_image,
-        average_score: show.vote_average.map(|v| (v * 10.0) as i32),
+        average_score,
         episodes: Some(season_episodes_len as i32),
         genres,
-        description: season.overview.filter(|s| !s.is_empty()).or(show.overview),
+        description,
         studios,
         characters,
         staff,
@@ -718,7 +723,7 @@ mod tests {
         let unified = movie_to_unified(movie);
 
         let expected = model::UnifiedMetadata {
-            id: "movie/12345".into(),
+            source: model::MetadataSource::Tmdb("movie/12345".into()),
             title: model::UniversalTitle {
                 native: Some("Test Movie".into()),
                 ..Default::default()
@@ -911,7 +916,10 @@ mod tests_tv_transformation {
 
         let result = tv_to_unified(show, season);
 
-        assert_eq!(result.id, "tv/100/season/1");
+        assert_eq!(
+            result.source,
+            model::MetadataSource::Tmdb("tv/100/season/1".into())
+        );
         assert_eq!(
             result.title.native,
             Some("Show Title : Season 1".to_string())

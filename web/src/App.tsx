@@ -43,16 +43,6 @@ export default function App() {
   const setSelectedStatus = (status: string) =>
     setSelections((prev) => ({ ...prev, status }));
 
-  if (error) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 text-red-500 dark:bg-gray-900">
-        <div className="text-center">
-          <h1 className="mb-2 text-2xl font-bold">Error</h1>
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
@@ -75,15 +65,30 @@ export default function App() {
           <div className="flex justify-center py-12">
             <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
           </div>
+        ) : error && items.length === 0 ? (
+          <div className="flex min-h-[50vh] items-center justify-center p-4 text-red-500">
+            <div className="text-center">
+              <h2 className="mb-2 text-xl font-bold">Unable to load anime list</h2>
+              <p className="opacity-80">{error}</p>
+            </div>
+          </div>
         ) : (
-          <TabbedGrid
-            items={filteredItems}
-            siteMeta={config?.site_meta}
-            selectedSite={selectedSite}
-            onOpenModal={(title: string, info: UnifiedMetadata | null) =>
-              setSelectedAnime({ title, info })
-            }
-          />
+          <>
+            {error && (
+              <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
+                <span className="font-semibold">Note:</span> Failed to refresh
+                data ({error}). Showing cached content.
+              </div>
+            )}
+            <TabbedGrid
+              items={filteredItems}
+              siteMeta={config?.site_meta}
+              selectedSite={selectedSite}
+              onOpenModal={(title: string, info: UnifiedMetadata | null) =>
+                setSelectedAnime({ title, info })
+              }
+            />
+          </>
         )}
         <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
       </main>

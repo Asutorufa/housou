@@ -4,19 +4,20 @@ import { useLocalStorage } from "usehooks-ts";
 import { STORAGE_KEY_SELECTIONS } from "../constants";
 import { useAuth } from "../contexts/AuthContext";
 import type {
-  AnimeItem,
-  DisplayAnimeItem,
-  Selections,
-  Site,
-  UserItemSummary,
+    AnimeItem,
+    DisplayAnimeItem,
+    Selections,
+    Site,
+    UserItemSummary,
 } from "../types";
 import { useConfigInitialization } from "./useConfigInitialization";
 
 const fetcher = async (url: string) => {
   const response = await fetch(url);
   if (!response.ok) {
+    const errorText = await response.text();
     throw new Error(
-      `Items fetch failed: ${response.status} ${response.statusText}`,
+      `Items fetch failed: ${response.status} ${response.statusText} - ${errorText}`,
     );
   }
   return response.json();

@@ -77,7 +77,14 @@ function DetailsModalContent({
     onUpdate,
   });
 
-  const sites = sortSites(originalItem?.sites || [], siteMeta);
+  let displaySites = originalItem?.sites || [];
+
+  // Inject metadata source if missing from original sites
+  if (info?.id && info?.sourceSite && !displaySites.some((s) => s.site === info.sourceSite)) {
+    displaySites = [...displaySites, { site: info.sourceSite, id: info.id }];
+  }
+
+  const sites = sortSites(displaySites, siteMeta);
 
   return (
     <div

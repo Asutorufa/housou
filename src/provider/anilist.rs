@@ -94,7 +94,7 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
     };
 
     UnifiedMetadata {
-        id: media.id.to_string(),
+        source: MetadataSource::Anilist(media.id.to_string()),
         title,
         cover_image,
         average_score: media.average_score.map(|s| s as i32),
@@ -119,6 +119,7 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::MetadataSource;
     use rust_anilist::models::Anime;
     use serde_json::json;
 
@@ -195,7 +196,7 @@ mod tests {
         let anime = create_anime_from_json(anime_json);
         let unified = anilist_to_unified(anime);
 
-        assert_eq!(unified.id, "12345");
+        assert_eq!(unified.source, MetadataSource::Anilist("12345".to_string()));
         assert_eq!(unified.title.romaji, Some("Test Anime".to_string()));
         assert_eq!(
             unified.title.english,
@@ -257,7 +258,7 @@ mod tests {
         let anime = create_anime_from_json(anime_json);
         let unified = anilist_to_unified(anime);
 
-        assert_eq!(unified.id, "67890");
+        assert_eq!(unified.source, MetadataSource::Anilist("67890".to_string()));
         assert_eq!(unified.title.romaji, Some("Minimal Anime".to_string()));
         assert_eq!(unified.title.english, Some("Minimal Anime".to_string()));
         assert_eq!(unified.title.native, Some("Minimal Anime".to_string()));

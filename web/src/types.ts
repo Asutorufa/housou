@@ -126,6 +126,7 @@ export interface UniversalEpisode {
 
 export interface UnifiedMetadata {
   id: string;
+  sourceSite?: string;
   title: UniversalTitle;
   coverImage: UniversalCoverImage;
   averageScore?: number;

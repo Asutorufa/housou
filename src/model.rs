@@ -138,10 +138,33 @@ pub struct Site {
     pub regions: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "sourceSite", content = "id", rename_all = "lowercase")]
+pub enum MetadataSource {
+    Tmdb(String),
+    Mal(String),
+    #[serde(rename = "aniList")]
+    Anilist(String),
+    Bangumi(String),
+    #[serde(rename = "anidb")]
+    AniDB(String),
+    #[serde(rename = "bilibili")]
+    Bilibili(String),
+    #[serde(rename = "acfun")]
+    AcFun(String),
+}
+
+impl Default for MetadataSource {
+    fn default() -> Self {
+        Self::Tmdb("".to_string())
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnifiedMetadata {
-    pub id: String,
+    #[serde(flatten)]
+    pub source: MetadataSource,
     pub title: UniversalTitle,
     pub cover_image: UniversalCoverImage,
     pub average_score: Option<i32>,

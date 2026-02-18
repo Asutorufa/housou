@@ -1,6 +1,6 @@
 use crate::model::{
-    Item, ItemType, Language, Site, TitleTranslate, UnifiedMetadata, UniversalCoverImage,
-    UniversalTitle,
+    Item, ItemType, Language, MetadataSource, Site, TitleTranslate, UnifiedMetadata,
+    UniversalCoverImage, UniversalTitle,
 };
 use crate::provider::MetadataProvider;
 use crate::utils;
@@ -189,7 +189,7 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
     });
 
     UnifiedMetadata {
-        id: anime.mal_id.to_string(),
+        source: MetadataSource::Mal(anime.mal_id.to_string()),
         title: UniversalTitle {
             romaji: Some(anime.title),
             english: anime.title_english,
