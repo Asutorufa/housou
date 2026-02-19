@@ -1,0 +1,39 @@
+[package]
+name = "passkey-server"
+version = "0.1.0"
+edition = "2021"
+description = "A generic, storage-agnostic Passkey (WebAuthn) server implementation."
+repository = "https://github.com/Asutorufa/housou/tree/master/crates/passkey"
+license = "MIT"
+keywords = ["passkey", "webauthn", "fido2", "authentication", "wasm"]
+categories = ["authentication", "web-programming", "wasm"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+base64 = "0.22"
+coset = "0.4"
+ciborium = "0.2"
+p256 = { version = "0.13", features = ["ecdsa", "std"] }
+sha2 = "0.10"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+thiserror = "1.0"
+getrandom = "0.4"
+rand_core = "0.10"
+
+[features]
+default = []
+send = []
+wasm = ["getrandom/wasm_js"]
+
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+serde_json = "1.0"
+
+[[example]]
+name = "basic"
+required-features = ["send"]
