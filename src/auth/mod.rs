@@ -398,7 +398,11 @@ pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Re
     let stored_states = get_cookie_values(req, OAUTH_STATE_COOKIE_NAME);
     let stored_state = stored_states.first().map(|s| s.as_str());
 
-    if query_state.is_none() || stored_state.is_none() || query_state != stored_state {
+    if query_state
+        .zip(stored_state)
+        .filter(|(q, s)| q == s)
+        .is_none()
+    {
         return Err(Error::RustError(
             "Invalid or missing OAuth state".to_string(),
         ));
