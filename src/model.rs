@@ -110,20 +110,7 @@ pub struct Item {
     pub sites: Vec<Site>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TitleTranslate {
-    #[serde(rename = "zh-Hans")]
-    #[serde(default)]
-    pub zh_hans: Option<Vec<String>>,
-    #[serde(default)]
-    pub en: Option<Vec<String>>,
-    #[serde(rename = "zh-Hant")]
-    #[serde(default)]
-    pub zh_hant: Option<Vec<String>>,
-    #[serde(default)]
-    pub ja: Option<Vec<String>>,
-}
+pub type TitleTranslate = std::collections::HashMap<String, Vec<String>>;
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -162,16 +149,24 @@ impl Default for MetadataSource {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Studio {
+    pub name: String,
+    pub logo_url: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnifiedMetadata {
     #[serde(flatten)]
     pub source: MetadataSource,
     pub title: UniversalTitle,
+    pub title_translate: Option<TitleTranslate>,
     pub cover_image: UniversalCoverImage,
     pub average_score: Option<i32>,
     pub episodes: Option<i32>,
     pub genres: Vec<String>,
     pub description: Option<String>,
-    pub studios: Vec<String>,
+    pub studios: Vec<Studio>,
     pub characters: Vec<UniversalCharacter>,
     pub staff: Vec<UniversalStaff>,
     pub episodes_list: Vec<UniversalEpisode>,

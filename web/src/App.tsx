@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import AttributionModal from "./components/AttributionModal";
 import DetailsModal from "./components/DetailsModal";
 import Footer from "./components/Footer";
@@ -21,11 +22,59 @@ export default function App() {
     mutateStatuses,
   } = useAnimeData();
 
+  const [location, setLocation] = useLocation();
+  const search = useSearch();
+
   const [selectedAnime, setSelectedAnime] = useState<{
     title: string;
     info: UnifiedMetadata | null;
   } | null>(null);
   const [isAttributionOpen, setIsAttributionOpen] = useState(false);
+
+  // Sync URL "anime" param to modal state
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const animeTitle = params.get("anime");
+
+    if (animeTitle) {
+      // If we have items and the modal isn't open or is open with wrong item
+      if (items.length > 0 && selectedAnime?.title !== animeTitle) {
+        const item = items.find((i) => i.title === animeTitle);
+        // Note: usage of 'items' might be raw items. We need to fetch metadata if not available?
+        // The modal handles fetching metadata internally if passed 'anime' object with title?
+        // Actually, onOpenModal usually passes (title, info).
+        // If we only have title from URL, we pass title and null info, layout should handle it.
+        if (item) {
+          setSelectedAnime({ title: animeTitle, info: null });
+        }
+      }
+    } else {
+      // URL has no anime, close modal if open
+      if (selectedAnime) {
+        setSelectedAnime(null);
+      }
+    }
+  }, [search, items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOpenModal = (title: string, info: UnifiedMetadata | null) => {
+    // Optimistically select locally
+    setSelectedAnime({ title, info });
+
+    // Update URL
+    const params = new URLSearchParams(search);
+    params.set("anime", title);
+    setLocation(`${location}?${params.toString()}`);
+  };
+
+  const handleCloseModal = () => {
+    // Optimistically close locally
+    setSelectedAnime(null);
+
+    // Update URL
+    const params = new URLSearchParams(search);
+    params.delete("anime");
+    setLocation(`${location}?${params.toString()}`);
+  };
 
   const selectedYear = selections.year;
   const setSelectedYear = (year: string) =>
@@ -85,9 +134,7 @@ export default function App() {
               items={filteredItems}
               siteMeta={config?.site_meta}
               selectedSite={selectedSite}
-              onOpenModal={(title: string, info: UnifiedMetadata | null) =>
-                setSelectedAnime({ title, info })
-              }
+              onOpenModal={handleOpenModal}
             />
           </>
         )}
@@ -96,7 +143,7 @@ export default function App() {
 
       <DetailsModal
         isOpen={!!selectedAnime}
-        onClose={() => setSelectedAnime(null)}
+        onClose={handleCloseModal}
         anime={selectedAnime}
         items={items}
         siteMeta={config?.site_meta}

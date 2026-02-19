@@ -1,12 +1,15 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import DOMPurify from "dompurify";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
+import { useSmartMetadata } from "../../hooks/useSmartMetadata";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
 import { sortSites } from "../../utils/siteUtils";
 import CustomSelect from "../CustomSelect";
+import Skeleton from "../Skeleton";
 import AnimeCover from "./AnimeCover";
 import CastSection from "./CastSection";
 import EpisodeList from "./EpisodeList";
@@ -66,10 +69,19 @@ function DetailsModalContent({
   ...radixProps
 }: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
   const { loggedIn } = useAuth();
-  const { title, info } = anime || { title: "", info: null };
 
   // Find the original item to get site links and user status
+  const title = anime?.title || "";
   const originalItem = items.find((i) => i.title === title);
+
+  // Use smart hook for metadata
+  // We pass anime.info as initial data if it exists.
+  // We only enable the hook if we have an originalItem to fetch from.
+  const { metadata: info, loading } = useSmartMetadata(
+    originalItem!, // We assume originalItem exists if title is valid, or hook handles undefined naturally if typed correctly (hook expects DisplayAnimeItem)
+    anime?.info || null,
+    !!originalItem, // Only enable if we found the item
+  );
 
   const { currentStatus, updateStatus } = useAnimeStatus({
     title,
@@ -113,8 +125,15 @@ function DetailsModalContent({
         </Dialog.Close>
 
         <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-          {/* Image Section */}
-          <AnimeCover info={info} title={title} />
+          {/* Image Section - Show Skeleton if loading */}
+          {loading && !info ? (
+            <Skeleton
+              className="h-64 md:h-full md:w-1/3"
+              variant="rectangular"
+            />
+          ) : (
+            <AnimeCover info={info} title={title} />
+          )}
 
           {/* Content Section */}
           <motion.div
@@ -153,43 +172,132 @@ function DetailsModalContent({
                 </div>
               )}
 
-              <InfoBadges info={info} />
+              {loading && !info ? (
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-6 w-16 rounded-md" />
+                  <Skeleton className="h-6 w-20 rounded-md" />
+                  <Skeleton className="h-6 w-14 rounded-md" />
+                </div>
+              ) : (
+                <InfoBadges info={info} />
+              )}
             </div>
 
-            {/* Multilingual Titles */}
-            <MultilingualTitles info={info} originalItem={originalItem} />
+            {loading && !info ? (
+              <div className="space-y-8">
+                {/* Titles & Links Placeholder */}
+                <div className="space-y-4">
+                  <Skeleton className="h-32 w-full rounded-2xl" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-8 w-24 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-full" />
+                    <Skeleton className="h-8 w-24 rounded-full" />
+                  </div>
+                </div>
 
-            {/* Links Section */}
-            <ExternalLinks
-              originalItem={originalItem}
-              siteMeta={siteMeta}
-              sites={sites}
-            />
+                {/* Description Placeholder */}
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-20 rounded" />
+                  <div className="space-y-1">
+                    <Skeleton className="h-4 w-full rounded" />
+                    <Skeleton className="h-4 w-full rounded" />
+                    <Skeleton className="h-4 w-3/4 rounded" />
+                  </div>
+                </div>
 
-            {/* Description */}
-            {info?.description && (
-              <div>
-                <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
-                  あらすじ
-                </h4>
-                <div className="prose prose-sm dark:prose-invert text-sm leading-relaxed text-gray-600 md:text-base dark:text-gray-300">
-                  {info.description}
+                {/* Cast/Staff Grid Placeholder */}
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-24 rounded" />
+                    <div className="grid grid-cols-2 gap-3">
+                      {[1, 2, 3, 4].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full rounded-xl" />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-24 rounded" />
+                    <div className="grid grid-cols-2 gap-3">
+                      {[1, 2, 3, 4].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full rounded-xl" />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
+            ) : (
+              <>
+                {/* Multilingual Titles */}
+                <MultilingualTitles info={info} originalItem={originalItem} />
+
+                {/* Links Section */}
+                <ExternalLinks
+                  originalItem={originalItem}
+                  siteMeta={siteMeta}
+                  sites={sites}
+                />
+
+                {/* Description */}
+                {info?.description && (
+                  <div>
+                    <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
+                      あらすじ
+                    </h4>
+                    <div className="prose prose-sm dark:prose-invert text-sm leading-relaxed text-gray-600 md:text-base dark:text-gray-300">
+                      {(() => {
+                        const cleanConfig = {
+                          ALLOWED_TAGS: [
+                            "b",
+                            "i",
+                            "em",
+                            "strong",
+                            "a",
+                            "br",
+                            "p",
+                            "ul",
+                            "ol",
+                            "li",
+                          ],
+                          ALLOWED_ATTR: ["href", "target", "rel"],
+                        };
+
+                        const rawDescription = info.description || "";
+                        const sanitized = DOMPurify.sanitize(
+                          rawDescription,
+                          cleanConfig,
+                        );
+
+                        // Collapse multiple newlines/brs into max 2
+                        const collapsed = sanitized
+                          .replace(/<br\s*\/?>/gi, "\n") // Convert br to newline
+                          .replace(/\n{2,}/g, "\n") // Max 2 newlines
+                          .trim();
+
+                        return (
+                          <div
+                            className="whitespace-pre-wrap"
+                            dangerouslySetInnerHTML={{ __html: collapsed }}
+                          />
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Videos */}
+                <VideoSection videos={info?.videos} />
+
+                {/* Episodes List */}
+                <EpisodeList episodes={info?.episodesList} />
+
+                {/* Studio & Cast */}
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <StudioSection studios={info?.studios} />
+                  <CastSection characters={info?.characters} />
+                  <StaffSection staff={info?.staff} />
+                </div>
+              </>
             )}
-
-            {/* Videos */}
-            <VideoSection videos={info?.videos} />
-
-            {/* Episodes List */}
-            <EpisodeList episodes={info?.episodesList} />
-
-            {/* Studio & Cast */}
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <StudioSection studios={info?.studios} />
-              <CastSection characters={info?.characters} />
-              <StaffSection staff={info?.staff} />
-            </div>
           </motion.div>
         </div>
       </motion.div>

@@ -9,6 +9,17 @@ export default function MultilingualTitles({
   info,
   originalItem,
 }: MultilingualTitlesProps) {
+  // Merge translations from info and originalItem
+  const translations = { ...info?.titleTranslate };
+  if (originalItem?.titleTranslate) {
+    Object.entries(originalItem.titleTranslate).forEach(([lang, titles]) => {
+      if (!titles?.length) return;
+      const existing = translations[lang] || [];
+      // Deduplicate
+      translations[lang] = Array.from(new Set([...existing, ...titles]));
+    });
+  }
+
   return (
     <div className="space-y-2 rounded-2xl border border-gray-100 bg-gray-50 p-4 text-sm dark:border-gray-700/50 dark:bg-gray-900/50">
       {info?.title?.native && (
@@ -29,26 +40,25 @@ export default function MultilingualTitles({
           </span>
         </div>
       )}
-      {/* Local data translations */}
-      {originalItem?.titleTranslate &&
-        Object.entries(originalItem.titleTranslate).map(([lang, titles]) => {
-          if (!titles?.length) return null;
-          return (
-            <div key={lang} className="flex gap-3">
-              <span className="w-14 shrink-0 font-bold text-gray-400 uppercase">
-                {{
-                  "zh-Hans": "簡体字",
-                  "zh-Hant": "繁体字",
-                  en: "英語",
-                  ja: "日本語",
-                }[lang] || lang}
-              </span>
-              <span className="text-gray-700 dark:text-gray-200">
-                {titles.join(" / ")}
-              </span>
-            </div>
-          );
-        })}
+      {/* Merged translations */}
+      {Object.entries(translations).map(([lang, titles]) => {
+        if (!titles?.length) return null;
+        return (
+          <div key={lang} className="flex gap-3">
+            <span className="w-14 shrink-0 font-bold text-gray-400 uppercase">
+              {{
+                "zh-Hans": "簡体字",
+                "zh-Hant": "繁体字",
+                en: "英語",
+                ja: "日本語",
+              }[lang] || lang}
+            </span>
+            <span className="text-gray-700 dark:text-gray-200">
+              {titles.join(" / ")}
+            </span>
+          </div>
+        );
+      })}
 
       {info?.title?.english && (
         <div className="flex gap-3">

@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { cn } from "../utils/cn";
 
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
@@ -47,15 +48,42 @@ export default function TabbedGrid({
   selectedSite,
   onOpenModal,
 }: TabbedGridProps) {
+  const [location, setLocation] = useLocation();
+  const search = useSearch();
   const currentDay = new Date().getDay().toString();
-  const [activeTab, setActiveTab] = useState(currentDay);
+
+  const activeTab = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const day = params.get("day");
+    return day && WEEKDAY_DATA.some((d) => d.id === day) ? day : currentDay;
+  }, [search, currentDay]);
+
   const [direction, setDirection] = useState(0);
 
+  // Sync initial day to URL if missing, or ensure standard consistency
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (!params.get("day")) {
+      const newParams = new URLSearchParams(search);
+      newParams.set("day", currentDay);
+      // Replace to avoid pushing a history entry for the initial default
+      window.history.replaceState(
+        null,
+        "",
+        `${location}?${newParams.toString()}`,
+      );
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleTabChange = (newTab: string) => {
+    if (newTab === activeTab) return;
     const prevIndex = parseInt(activeTab);
     const nextIndex = parseInt(newTab);
     setDirection(nextIndex > prevIndex ? 1 : -1);
-    setActiveTab(newTab);
+
+    const params = new URLSearchParams(search);
+    params.set("day", newTab);
+    setLocation(`${location}?${params.toString()}`);
   };
 
   const groupedItems = useMemo(() => {

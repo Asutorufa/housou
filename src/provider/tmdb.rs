@@ -229,7 +229,7 @@ async fn get_movie_details(
             id,
             Some("ja-JP"),
             None,
-            Some("release_dates,credits,videos"),
+            Some("release_dates,credits,videos,alternative_titles"),
         )
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {e}")))?;
@@ -255,7 +255,7 @@ async fn get_tv_details(
         id,
         Some("ja-JP"),
         None,
-        Some("content_ratings,credits,videos"),
+        Some("content_ratings,credits,videos,alternative_titles"),
     );
 
     let seasons_api = client.tv_seasons_api();
@@ -297,10 +297,13 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
     let average_score = movie.vote_average.map(|v| (v * 10.0) as i32);
     let description = movie.overview;
     let videos = extract_videos(movie.videos);
+    let title_translate =
+        extract_alternative_titles(movie.alternative_titles.and_then(|t| t.titles));
 
     UnifiedMetadata {
         source: MetadataSource::Tmdb(format!("movie/{}", movie.id.unwrap_or(0))),
         title,
+        title_translate,
         cover_image,
         average_score,
         episodes: None,
@@ -391,9 +394,13 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let average_score = show.vote_average.map(|v| (v * 10.0) as i32);
     let description = season.overview.filter(|s| !s.is_empty()).or(show.overview);
 
+    let title_translate =
+        extract_alternative_titles(show.alternative_titles.and_then(|t| t.results));
+
     UnifiedMetadata {
         source: MetadataSource::Tmdb(format!("tv/{show_id_val}/season/{season_num_val}")),
         title,
+        title_translate,
         cover_image,
         average_score,
         episodes: Some(season_episodes_len as i32),
@@ -427,12 +434,35 @@ fn extract_genres(genres: Option<Vec<models::Genre>>) -> Vec<String> {
         .collect()
 }
 
-fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<String> {
+fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<model::Studio> {
     companies
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|s| s.name)
+        .map(|s| model::Studio {
+            name: s.name.unwrap_or_default(),
+            logo_url: s
+                .logo_path
+                .map(|p| format!("https://image.tmdb.org/t/p/w200{p}")),
+        })
         .collect()
+}
+
+fn extract_alternative_titles(
+    titles: Option<Vec<models::AlternativetitleslistItem>>,
+) -> Option<model::TitleTranslate> {
+    let titles = titles?;
+    if titles.is_empty() {
+        return None;
+    }
+    let mut tt = model::TitleTranslate::new();
+
+    for t in titles {
+        if let (Some(iso), Some(title)) = (t.iso_3166_1, t.title) {
+            tt.entry(iso).or_insert_with(Vec::new).push(title);
+        }
+    }
+
+    if tt.is_empty() { None } else { Some(tt) }
 }
 
 fn extract_videos(videos: Option<models::VideosList>) -> Vec<model::UniversalVideo> {
@@ -784,6 +814,7 @@ mod tests {
             average_score: Some(85),
             genres: vec!["Action".into(), "Adventure".into()],
             description: Some("This is a test movie description.".into()),
+            title_translate: None,
             studios: vec![],
             characters: vec![model::UniversalCharacter {
                 name: "Character 1".into(),
@@ -982,7 +1013,13 @@ mod tests_tv_transformation {
                 .contains("/season_poster.jpg")
         );
         assert_eq!(result.genres, vec!["Action".to_string()]);
-        assert_eq!(result.studios, vec!["Studio A".to_string()]);
+        assert_eq!(
+            result.studios,
+            vec![model::Studio {
+                name: "Studio A".to_string(),
+                logo_url: None
+            }]
+        );
         // Season credits should be used
         assert_eq!(
             result.characters[0].voice_actor,

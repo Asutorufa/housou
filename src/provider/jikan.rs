@@ -1,16 +1,12 @@
 use crate::model::{
-    Item, ItemType, Language, MetadataSource, Site, TitleTranslate, UnifiedMetadata,
+    Item, ItemType, Language, MetadataSource, Site, Studio, TitleTranslate, UnifiedMetadata,
     UniversalCoverImage, UniversalTitle,
 };
 use crate::provider::MetadataProvider;
 use crate::utils;
-use regex::Regex;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use std::sync::OnceLock;
 use worker::*;
-
-static HTML_TAG_REGEX: OnceLock<Regex> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct JikanResponse<T> {
@@ -132,38 +128,26 @@ fn convert_to_item(anime: JikanAnime) -> Item {
             if &anime.title != ja_title {
                 en.push(anime.title.clone());
             }
-            (
-                ja_title.clone(),
-                TitleTranslate {
-                    en: if en.is_empty() { None } else { Some(en) },
-                    ja: Some(vec![ja_title.clone()]),
-                    ..Default::default()
-                },
-            )
+            let mut tt = TitleTranslate::new();
+            if !en.is_empty() {
+                tt.insert("en".into(), en);
+            }
+            tt.insert("ja".into(), vec![ja_title.clone()]);
+            (ja_title.clone(), tt)
         } else {
-            (
-                anime.title.clone(),
-                TitleTranslate {
-                    en: anime.title_english.clone().map(|t| vec![t]),
-                    ..Default::default()
-                },
-            )
+            let mut tt = TitleTranslate::new();
+            if let Some(en) = anime.title_english.clone() {
+                tt.insert("en".into(), vec![en]);
+            }
+            (anime.title.clone(), tt)
         }
     } else {
-        (
-            anime.title.clone(),
-            TitleTranslate {
-                en: anime.title_english.clone().map(|t| vec![t]),
-                ..Default::default()
-            },
-        )
+        let mut tt = TitleTranslate::new();
+        if let Some(en) = anime.title_english.clone() {
+            tt.insert("en".into(), vec![en]);
+        }
+        (anime.title.clone(), tt)
     };
-
-    // Strip HTML tags from synopsis
-    let comment = anime.synopsis.as_ref().map(|s| {
-        let regex = HTML_TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
-        regex.replace_all(s, "").to_string()
-    });
 
     Item {
         title,
@@ -173,7 +157,7 @@ fn convert_to_item(anime: JikanAnime) -> Item {
         official_site: anime.url,
         begin: anime.aired.from,
         end: anime.aired.to,
-        comment,
+        comment: anime.synopsis,
         sites,
         broadcast: anime.broadcast.and_then(|b| b.string),
     }
@@ -182,18 +166,22 @@ fn convert_to_item(anime: JikanAnime) -> Item {
 fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
     let image = anime.images.get("jpg").or_else(|| anime.images.get("webp"));
 
-    // Strip HTML from description
-    let description = anime.synopsis.map(|s| {
-        let regex = HTML_TAG_REGEX.get_or_init(|| Regex::new(r"<[^>]*>").unwrap());
-        regex.replace_all(&s, "").to_string()
-    });
-
     UnifiedMetadata {
         source: MetadataSource::Mal(anime.mal_id.to_string()),
         title: UniversalTitle {
             romaji: Some(anime.title),
-            english: anime.title_english,
-            native: anime.title_japanese,
+            english: anime.title_english.clone(),
+            native: anime.title_japanese.clone(),
+        },
+        title_translate: {
+            let mut tt = TitleTranslate::new();
+            if let Some(en) = anime.title_english {
+                tt.insert("en".into(), vec![en]);
+            }
+            if let Some(ja) = anime.title_japanese {
+                tt.insert("ja".into(), vec![ja]);
+            }
+            if tt.is_empty() { None } else { Some(tt) }
         },
         cover_image: UniversalCoverImage {
             large: image.and_then(|i| i.large_image_url.clone()),
@@ -202,8 +190,15 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         average_score: anime.score.map(|s| (s * 10.0) as i32),
         episodes: anime.episodes,
         genres: anime.genres.into_iter().map(|g| g.name).collect(),
-        description,
-        studios: anime.studios.into_iter().map(|s| s.name).collect(),
+        description: anime.synopsis,
+        studios: anime
+            .studios
+            .into_iter()
+            .map(|s| Studio {
+                name: s.name,
+                logo_url: None,
+            })
+            .collect(),
         characters: vec![],
         staff: vec![],
         episodes_list: vec![],
@@ -258,11 +253,17 @@ mod tests {
         assert_eq!(item.end.as_deref(), Some("1999-04-24T00:00:00+00:00"));
 
         let translate = item.title_translate;
-        assert_eq!(translate.ja, Some(vec!["カウボーイビバップ".to_string()]));
+        assert_eq!(
+            translate.get("ja"),
+            Some(&vec!["カウボーイビバップ".to_string()])
+        );
         // Check for exact equality to ensure no duplicates or unexpected entries
         assert_eq!(
-            translate.en,
-            Some(vec!["Cowboy Bebop".to_string(), "Cowboy Bebop".to_string()])
+            translate.get("en"),
+            Some(&vec![
+                "Cowboy Bebop".to_string(),
+                "Cowboy Bebop".to_string()
+            ])
         );
 
         assert_eq!(item.sites.len(), 1);

@@ -144,16 +144,22 @@ export interface UniversalVideo {
   size?: number;
 }
 
+export interface Studio {
+  name: string;
+  logoUrl?: string;
+}
+
 export interface UnifiedMetadata {
   id: string;
   sourceSite?: string;
   title: UniversalTitle;
+  titleTranslate?: TitleTranslate;
   coverImage: UniversalCoverImage;
   averageScore?: number;
   episodes?: number;
   genres: string[];
   description?: string;
-  studios: string[];
+  studios: Studio[];
   characters: UniversalCharacter[];
   staff: UniversalStaff[];
   episodesList: UniversalEpisode[];

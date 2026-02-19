@@ -54,7 +54,10 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
         .studios
         .unwrap_or_default()
         .into_iter()
-        .map(|s| s.name)
+        .map(|s| model::Studio {
+            name: s.name,
+            logo_url: None,
+        })
         .collect();
 
     let characters = media
@@ -96,6 +99,7 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
     UnifiedMetadata {
         source: MetadataSource::Anilist(media.id.to_string()),
         title,
+        title_translate: None,
         cover_image,
         average_score: media.average_score.map(|s| s as i32),
         episodes: media.episodes.map(|e| e as i32),
@@ -223,7 +227,13 @@ mod tests {
             unified.description,
             Some("This is a test description.".to_string())
         );
-        assert_eq!(unified.studios, vec!["Test Studio".to_string()]);
+        assert_eq!(
+            unified.studios,
+            vec![model::Studio {
+                name: "Test Studio".to_string(),
+                logo_url: None
+            }]
+        );
         assert_eq!(unified.characters.len(), 1);
         assert_eq!(unified.characters[0].name, "Test Character");
         assert_eq!(unified.characters[0].role, Some("Main".to_string()));

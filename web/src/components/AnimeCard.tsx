@@ -1,13 +1,14 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useMetadata } from "../contexts/MetadataContext";
+import { useSmartMetadata } from "../hooks/useSmartMetadata";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { cn } from "../utils/cn";
-import { isDev } from "../utils/envUtils";
 import { sortSites } from "../utils/siteUtils";
 import { isValidUrl } from "../utils/urlUtils";
+import SiteLink from "./SiteLink";
+import Skeleton from "./Skeleton";
 
 interface AnimeCardProps {
   item: DisplayAnimeItem;
@@ -22,18 +23,16 @@ export default function AnimeCard({
   selectedSite,
   onOpenModal,
 }: AnimeCardProps) {
-  const { fetchMetadata } = useMetadata();
-  const [metadata, setMetadata] = useState<UnifiedMetadata | null>(null);
-  const [loading, setLoading] = useState(false);
+  /* REMOVED: internal state and loadMetadata */
+  const [isEnabled, setIsEnabled] = useState(false);
+  const { metadata, loading } = useSmartMetadata(item, null, isEnabled);
   const cardRef = useRef<HTMLDivElement>(null);
-  const loadedRef = useRef(false);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && !loadedRef.current) {
-          loadedRef.current = true;
-          loadMetadata();
+        if (entries[0].isIntersecting && !isEnabled) {
+          setIsEnabled(true);
           observer.disconnect();
         }
       },
@@ -47,41 +46,6 @@ export default function AnimeCard({
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item.title]);
-
-  async function loadMetadata() {
-    setLoading(true);
-    try {
-      const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
-      const malSite = item.sites?.find((s) => s.site === "mal");
-      const anilistSite = item.sites?.find(
-        (s) => s.site === "aniList" || s.site === "anilist",
-      );
-
-      let year: number | undefined;
-      if (item.begin) {
-        const parsedYear = parseInt(item.begin.substring(0, 4));
-        if (!isNaN(parsedYear)) {
-          year = parsedYear;
-        }
-      }
-
-      const data = await fetchMetadata({
-        title: item.title,
-        tmdb_id: tmdbSite?.id,
-        mal_id: malSite?.id,
-        anilist_id: anilistSite?.id,
-        year,
-      });
-
-      setMetadata(data || null);
-    } catch (err) {
-      if (isDev()) {
-        console.error("Metadata error:", err);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const sitesToShow = useMemo(() => {
     let sites = item.sites || [];
@@ -113,16 +77,16 @@ export default function AnimeCard({
           "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)",
         transition: { duration: 0.3, ease: "easeOut" },
       }}
-      className="flex h-full flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/5"
+      className="flex h-full flex-col overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 cursor-pointer dark:bg-gray-800 dark:ring-white/5"
+      onClick={() => onOpenModal(item.title, metadata)}
     >
       {/* Cover Image */}
       <motion.div
         layoutId={`image-${item.title}`}
         className={cn(
-          "group relative aspect-[3/4] cursor-pointer overflow-hidden bg-gray-200 dark:bg-gray-700",
+          "group relative aspect-[3/4] overflow-hidden bg-gray-200 dark:bg-gray-700",
           !coverUrl && loading && "animate-pulse",
         )}
-        onClick={() => onOpenModal(item.title, metadata)}
       >
         {coverUrl ? (
           <img
@@ -168,12 +132,18 @@ export default function AnimeCard({
         layoutId={`content-${item.title}`}
         className="flex flex-1 flex-col gap-2 p-3 md:gap-3 md:p-4"
       >
-        <motion.h3
-          layoutId={`title-${item.title}`}
-          className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
-        >
-          {item.title}
-        </motion.h3>
+        <div className="flex flex-col gap-1">
+          {loading && !metadata ? (
+            <Skeleton className="h-5 w-3/4" />
+          ) : (
+            <motion.h3
+              layoutId={`title-${item.title}`}
+              className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
+            >
+              {item.title}
+            </motion.h3>
+          )}
+        </div>
 
         {/* Tags */}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -186,28 +156,38 @@ export default function AnimeCard({
               special: "特別篇",
             }[item.type] || item.type}
           </span>
-          {!!metadata?.averageScore && metadata.averageScore > 0 && (
-            <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 ring-1 ring-yellow-500/10 dark:bg-yellow-900/30 dark:text-yellow-300">
-              ⭐ {metadata.averageScore}%
-            </span>
-          )}
-          {metadata?.episodes && (
-            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-700 ring-1 ring-purple-500/10 dark:bg-purple-900/30 dark:text-purple-300">
-              {metadata.episodes}話
-            </span>
-          )}
-          {metadata?.genres?.slice(0, 2).map((genre: string) => (
-            <span
-              key={genre}
-              className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-500/10 dark:bg-teal-900/30 dark:text-teal-300"
-            >
-              {genre}
-            </span>
-          ))}
-          {item.begin && (
-            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 ring-1 ring-blue-500/10 dark:bg-blue-900/30 dark:text-blue-300">
-              {new Date(item.begin).toISOString().split("T")[0]}
-            </span>
+          {loading && !metadata ? (
+            <>
+              <Skeleton className="h-4 w-12 rounded-full" />
+              <Skeleton className="h-4 w-8 rounded-full" />
+              <Skeleton className="h-4 w-16 rounded-full" />
+            </>
+          ) : (
+            <>
+              {!!metadata?.averageScore && metadata.averageScore > 0 && (
+                <span className="rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700 ring-1 ring-yellow-500/10 dark:bg-yellow-900/30 dark:text-yellow-300">
+                  ⭐ {metadata.averageScore}%
+                </span>
+              )}
+              {metadata?.episodes && (
+                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-bold text-purple-700 ring-1 ring-purple-500/10 dark:bg-purple-900/30 dark:text-purple-300">
+                  {metadata.episodes}話
+                </span>
+              )}
+              {metadata?.genres?.slice(0, 2).map((genre: string) => (
+                <span
+                  key={genre}
+                  className="rounded-full bg-teal-100 px-2 py-0.5 text-[10px] font-bold text-teal-700 ring-1 ring-teal-500/10 dark:bg-teal-900/30 dark:text-teal-300"
+                >
+                  {genre}
+                </span>
+              ))}
+              {item.begin && (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 ring-1 ring-blue-500/10 dark:bg-blue-900/30 dark:text-blue-300">
+                  {new Date(item.begin).toISOString().split("T")[0]}
+                </span>
+              )}
+            </>
           )}
         </div>
 
@@ -221,15 +201,12 @@ export default function AnimeCard({
               if (!url || !isValidUrl(url)) return null;
 
               return (
-                <a
+                <SiteLink
                   key={`${site.site}-${idx}`}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-md px-2 py-1 text-[11px] font-semibold text-blue-600 transition-all hover:bg-blue-50 hover:text-blue-700 active:scale-95 dark:text-blue-400 dark:hover:bg-blue-900/40 dark:hover:text-blue-300"
-                >
-                  {meta?.title || site.site}
-                </a>
+                  url={url}
+                  label={meta?.title || site.site}
+                  className="rounded-md px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/40 dark:hover:text-blue-300"
+                />
               );
             })}
           </div>

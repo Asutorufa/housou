@@ -2098,7 +2098,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0136791f7c95b1f6dd99f9cc786b91bb81c3800b639b3478e561ddb7be95e5f1"
 dependencies = [
  "fastrand",
- "getrandom 0.4.1",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -2168,7 +2168,7 @@ dependencies = [
 [[package]]
 name = "tmdb_client"
 version = "1.8.0"
-source = "git+https://github.com/asutorufa/tmdb-client-rs.git?rev=913f798021464dffdc21f41d12c5a6b2475ff100#913f798021464dffdc21f41d12c5a6b2475ff100"
+source = "git+https://github.com/asutorufa/tmdb-client-rs.git?rev=114cca9aeebdae880a7db8afb38980a81aa7ff64#114cca9aeebdae880a7db8afb38980a81aa7ff64"
 dependencies = [
  "async-trait",
  "chrono",

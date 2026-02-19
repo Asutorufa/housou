@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import type { DisplayAnimeItem, Site, SiteMeta } from "../../types";
 import { isValidUrl } from "../../utils/urlUtils";
+import SiteLink from "../SiteLink";
 
 interface ExternalLinksProps {
   originalItem?: DisplayAnimeItem;
@@ -20,15 +21,14 @@ export default function ExternalLinks({
           <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
             公式サイト
           </h4>
-          <a
-            href={originalItem.officialSite}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-purple-100 bg-purple-50 px-3 py-1.5 text-sm font-bold text-purple-600 transition-colors hover:bg-purple-100 dark:border-purple-800/50 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/30"
+          <SiteLink
+            url={originalItem.officialSite}
+            label="公式サイト"
+            className="inline-flex rounded-xl border border-purple-100 bg-purple-50 px-3 py-1.5 text-sm font-bold text-purple-600 hover:bg-purple-100 dark:border-purple-800/50 dark:bg-purple-900/20 dark:text-purple-400 dark:hover:bg-purple-900/30"
           >
             公式サイト
             <ExternalLink size={12} />
-          </a>
+          </SiteLink>
         </div>
       )}
       {Object.entries({
@@ -69,16 +69,15 @@ export default function ExternalLinks({
                 if (!url || !isValidUrl(url)) return null;
 
                 return (
-                  <a
+                  <SiteLink
                     key={`${site.site}-${idx}`}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-600 transition-colors hover:bg-blue-100 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                    url={url}
+                    label={meta?.title || site.site}
+                    className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-600 hover:bg-blue-100 dark:border-blue-800/50 dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30"
                   >
                     {meta?.title || site.site}
                     <ExternalLink size={12} />
-                  </a>
+                  </SiteLink>
                 );
               })}
             </div>

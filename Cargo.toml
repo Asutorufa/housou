@@ -31,7 +31,7 @@ uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
 getrandom = { version = "0.4", features = ["wasm_js"] }
 async-trait = "0.1"
-tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
+tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "114cca9aeebdae880a7db8afb38980a81aa7ff64", default-features = false, features = [
     "async",
 ] }
 rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074c0", default-features = false }
