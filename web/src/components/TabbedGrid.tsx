@@ -1,7 +1,7 @@
 import * as Tabs from "@radix-ui/react-tabs";
 import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import AnimeCard from "./AnimeCard";
@@ -17,24 +17,6 @@ interface TabbedGridProps {
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
-}
-
-function useColumnCount() {
-  const [columns, setColumns] = useState(1);
-
-  useEffect(() => {
-    const updateColumns = () => {
-      const width = window.innerWidth;
-      if (width >= 1280) setColumns(4);
-      else if (width >= 1024) setColumns(3);
-      else setColumns(2);
-    };
-    updateColumns();
-    window.addEventListener("resize", updateColumns);
-    return () => window.removeEventListener("resize", updateColumns);
-  }, []);
-
-  return columns;
 }
 
 const containerVariants = {
@@ -64,7 +46,6 @@ export default function TabbedGrid({
   const currentDay = new Date().getDay().toString();
   const [activeTab, setActiveTab] = useState(currentDay);
   const [direction, setDirection] = useState(0);
-  const columnCount = useColumnCount();
 
   const handleTabChange = (newTab: string) => {
     const prevIndex = parseInt(activeTab);
@@ -99,15 +80,6 @@ export default function TabbedGrid({
 
   const dayIndex = parseInt(activeTab);
   const dayItems = groupedItems[dayIndex];
-
-  // Distribute items into columns for horizontal masonry feel
-  const columns: DisplayAnimeItem[][] = Array.from(
-    { length: columnCount },
-    () => [],
-  );
-  dayItems.forEach((item, idx) => {
-    columns[idx % columnCount].push(item);
-  });
 
   return (
     <Tabs.Root
@@ -154,30 +126,23 @@ export default function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <div className="flex items-start gap-1 sm:gap-2 md:gap-4">
-                {columns.map((column, colIdx) => (
-                  <div
-                    key={colIdx}
-                    className="flex flex-1 flex-col gap-1 sm:gap-2 md:gap-4"
-                  >
-                    <AnimatePresence mode="popLayout" initial={false}>
-                      {column.map((item) => (
-                        <motion.div
-                          key={item.title}
-                          layout="position"
-                          className="p-2"
-                        >
-                          <AnimeCard
-                            item={item}
-                            siteMeta={siteMeta}
-                            selectedSite={selectedSite}
-                            onOpenModal={onOpenModal}
-                          />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                ))}
+              <div className="columns-2 gap-1 sm:gap-2 md:gap-4 lg:columns-3 xl:columns-4">
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {dayItems.map((item) => (
+                    <motion.div
+                      key={item.title}
+                      layout="position"
+                      className="mb-1 break-inside-avoid sm:mb-2 md:mb-4"
+                    >
+                      <AnimeCard
+                        item={item}
+                        siteMeta={siteMeta}
+                        selectedSite={selectedSite}
+                        onOpenModal={onOpenModal}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             ) : (
               <motion.div
