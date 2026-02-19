@@ -4,7 +4,7 @@ import {
 } from "@simplewebauthn/browser";
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
-import type { LoginData, RegisterData, User } from "../types";
+import type { LoginData, RegisterData, TelegramAuthData, User } from "../types";
 import { hashPassword } from "../utils/authUtils";
 
 export interface PasskeySummary {
@@ -38,6 +38,9 @@ interface AuthContextType {
   renamePasskey: (id: string, name: string) => Promise<void>;
   bindGithub: () => void;
   unbindGithub: () => Promise<void>;
+  loginTelegram: (data: TelegramAuthData) => Promise<void>;
+  bindTelegram: (data: TelegramAuthData) => Promise<void>;
+  unbindTelegram: () => Promise<void>;
 }
 
 // Separate Error type for API responses
@@ -55,6 +58,20 @@ const fetcher = async (url: string) => {
     throw error;
   }
   if (!res.ok) throw new Error("Failed to fetch user");
+  return res.json();
+};
+
+const handleResponse = async (res: Response, defaultError: string) => {
+  if (!res.ok) {
+    let message = defaultError;
+    try {
+      const json = await res.json();
+      if (json.error) message = json.error;
+    } catch {
+      // Ignore
+    }
+    throw new Error(message);
+  }
   return res.json();
 };
 
@@ -85,19 +102,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, password: hashedPassword }),
       });
-      if (!res.ok) {
-        let message = "Login failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore if parsing fails, use default message
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Login failed");
       mutate(user, false);
     },
     [mutate],
@@ -111,19 +116,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, password: hashedPassword }),
       });
-      if (!res.ok) {
-        let message = "Registration failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore if parsing fails
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Registration failed");
       mutate(user, false);
     },
     [mutate],
@@ -152,19 +145,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) {
-        let message = "Update failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Update failed");
       mutate(user, false);
       return user;
     },
@@ -187,18 +168,7 @@ export function AuthProvider({
         }),
       });
 
-      if (!res.ok) {
-        let message = "Password update failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
+      await handleResponse(res, "Password update failed");
     },
     [apiFetch],
   );
@@ -293,16 +263,41 @@ export function AuthProvider({
     const res = await apiFetch("/api/auth/github", {
       method: "DELETE",
     });
-    if (!res.ok) {
-      let message = "Unbind failed";
-      try {
-        const json = await res.json();
-        if (json.error) message = json.error;
-      } catch {
-        // Ignore
-      }
-      throw new Error(message);
-    }
+    await handleResponse(res, "Unbind failed");
+    mutate();
+  }, [apiFetch, mutate]);
+
+  const loginTelegram = useCallback(
+    async (data: TelegramAuthData) => {
+      const res = await fetch("/api/auth/telegram/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const user = await handleResponse(res, "Login failed");
+      mutate(user, false);
+    },
+    [mutate],
+  );
+
+  const bindTelegram = useCallback(
+    async (data: TelegramAuthData) => {
+      const res = await apiFetch("/api/auth/telegram/bind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const user = await handleResponse(res, "Bind failed");
+      mutate(user, false);
+    },
+    [apiFetch, mutate],
+  );
+
+  const unbindTelegram = useCallback(async () => {
+    const res = await apiFetch("/api/auth/telegram", {
+      method: "DELETE",
+    });
+    await handleResponse(res, "Unbind failed");
     mutate();
   }, [apiFetch, mutate]);
 
@@ -325,6 +320,9 @@ export function AuthProvider({
         renamePasskey,
         bindGithub,
         unbindGithub,
+        loginTelegram,
+        bindTelegram,
+        unbindTelegram,
       }}
     >
       {children}

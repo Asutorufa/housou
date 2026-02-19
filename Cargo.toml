@@ -35,6 +35,9 @@ tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "
     "async",
 ] }
 rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074c0", default-features = false }
+sha2 = "0.10.9"
+hmac = "0.12.1"
+hex = "0.4.3"
 
 [profile.release]
 opt-level = "z"

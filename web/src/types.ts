@@ -69,6 +69,7 @@ export interface Config {
   };
   auth_enabled?: boolean;
   github_enabled?: boolean;
+  telegram_bot_name?: string;
 }
 
 export interface User {
@@ -77,6 +78,7 @@ export interface User {
   username: string;
   avatar_url?: string;
   github_id?: string;
+  telegram_id?: string;
   has_password?: boolean;
   created_at: number;
 }
@@ -91,6 +93,16 @@ export interface RegisterData {
   email: string;
   username: string;
   password: string;
+}
+
+export interface TelegramAuthData {
+  id: number;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  photo_url?: string;
+  auth_date: number;
+  hash: string;
 }
 
 export interface UniversalTitle {

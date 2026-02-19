@@ -37,6 +37,8 @@ Create `.dev.vars` for local development. For production, use `npx wrangler secr
 | `BASE_URL` | The base URL of your application (e.g., `https://housou.pages.dev`). | No* |
 | `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID. | For Auth |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App Client Secret. | For Auth |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token. | For Telegram Auth |
+| `TELEGRAM_BOT_NAME` | Telegram Bot Name (username without @). | For Telegram Auth |
 | `CORS_ALLOWED_ORIGIN` | Allowed origin for CORS (default: `*`). | No |
 
 *\* Defaults to `http://localhost:8787` if not set.*
@@ -88,7 +90,21 @@ To enable GitHub login:
     npx wrangler secret put GITHUB_CLIENT_SECRET
     ```
 
-### 3. Passkey Support (WebAuthn)
+### 3. Configure Telegram Login
+
+To enable Telegram login:
+
+1.  Start a chat with **@BotFather** on Telegram.
+2.  Create a new bot (`/newbot`) or select an existing one.
+3.  Set the domain for the login widget using `/setdomain` to your application's domain (e.g., `https://housou.pages.dev`).
+4.  Get your **HTTP API Token** (Bot Token).
+5.  Add the Token and Bot Name to your environment:
+    ```bash
+    npx wrangler secret put TELEGRAM_BOT_TOKEN
+    npx wrangler secret put TELEGRAM_BOT_NAME
+    ```
+
+### 4. Passkey Support (WebAuthn)
 
 Once logged in via GitHub, users can register Passkeys (TouchID, FaceID, Yubikey) for faster, passwordless logins on subsequent visits. This is handled via the `/api/auth/passkey/*` endpoints.
 
@@ -121,6 +137,14 @@ Once logged in via GitHub, users can register Passkeys (TouchID, FaceID, Yubikey
 | `/api/auth/github/callback` | `GET` | GitHub OAuth callback handler. |
 | `/api/auth/github/bind` | `GET` | Link GitHub account to current user. |
 | `/api/auth/github` | `DELETE` | Unlink GitHub account. |
+
+### Telegram Auth
+
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/auth/telegram/login` | `POST` | Login with Telegram widget data. |
+| `/api/auth/telegram/bind` | `POST` | Link Telegram account to current user. |
+| `/api/auth/telegram` | `DELETE` | Unlink Telegram account. |
 
 ### Passkeys (WebAuthn)
 

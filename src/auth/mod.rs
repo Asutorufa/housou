@@ -13,11 +13,13 @@ use worker::*;
 
 pub mod github;
 pub mod passkey;
+pub mod telegram;
 pub use github::{
     handle_github_authorize, handle_github_bind_authorize, handle_github_callback,
     handle_github_unbind,
 };
 use serde::Serialize;
+pub use telegram::{handle_telegram_bind, handle_telegram_login, handle_telegram_unbind};
 
 const SESSION_COOKIE_NAME: &str = "housou_session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
@@ -161,6 +163,7 @@ pub struct UserResponse {
     pub username: String,
     pub avatar_url: Option<String>,
     pub github_id: Option<String>,
+    pub telegram_id: Option<String>,
     pub created_at: i64,
     pub has_password: bool,
 }
@@ -173,6 +176,7 @@ impl From<User> for UserResponse {
             username: user.username,
             avatar_url: user.avatar_url,
             github_id: user.github_id,
+            telegram_id: user.telegram_id,
             created_at: user.created_at,
             has_password: user.password_hash.is_some(),
         }
@@ -220,6 +224,7 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
             &body.email,
             &body.username,
             Some(&password_hash),
+            None,
             None,
             None,
         )

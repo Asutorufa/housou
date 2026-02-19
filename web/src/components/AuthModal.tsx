@@ -4,12 +4,14 @@ import { Eye, EyeOff, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import TelegramLoginButton from "./TelegramLoginButton";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialTab?: "login" | "register";
   githubEnabled?: boolean;
+  telegramBotName?: string;
 }
 
 export default function AuthModal({
@@ -17,8 +19,9 @@ export default function AuthModal({
   onClose,
   initialTab = "login",
   githubEnabled = false,
+  telegramBotName,
 }: AuthModalProps) {
-  const { login, register, loginPasskey } = useAuth();
+  const { login, register, loginPasskey, loginTelegram } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +231,31 @@ export default function AuthModal({
                       </svg>
                       GitHub
                     </button>
+                  )}
+
+                  {telegramBotName && (
+                    <div className="flex justify-center mt-2">
+                      <TelegramLoginButton
+                        botName={telegramBotName}
+                        cornerRadius={8}
+                        buttonSize="large"
+                        onAuth={async (user) => {
+                          try {
+                            setLoading(true);
+                            await loginTelegram(user);
+                            onClose();
+                          } catch (err) {
+                            setError(
+                              err instanceof Error
+                                ? err.message
+                                : "Telegram login failed",
+                            );
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                      />
+                    </div>
                   )}
 
                   <button
