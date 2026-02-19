@@ -225,7 +225,12 @@ async fn get_movie_details(
 
     let movie = client
         .movies_api()
-        .get_movie_details(id, Some("ja-JP"), None, Some("release_dates,credits,videos"))
+        .get_movie_details(
+            id,
+            Some("ja-JP"),
+            None,
+            Some("release_dates,credits,videos"),
+        )
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {e}")))?;
 
@@ -246,11 +251,21 @@ async fn get_tv_details(
         .map_err(|_| Error::RustError("Invalid show ID format".into()))?;
 
     let tv_api = client.tv_api();
-    let show_fut = tv_api.get_tv_details(id, Some("ja-JP"), None, Some("content_ratings,credits,videos"));
+    let show_fut = tv_api.get_tv_details(
+        id,
+        Some("ja-JP"),
+        None,
+        Some("content_ratings,credits,videos"),
+    );
 
     let seasons_api = client.tv_seasons_api();
-    let season_fut =
-        seasons_api.get_tv_season_details(id, season_number, Some("ja-JP"), None, Some("credits,videos"));
+    let season_fut = seasons_api.get_tv_season_details(
+        id,
+        season_number,
+        Some("ja-JP"),
+        None,
+        Some("credits,videos"),
+    );
 
     let (show_res, season_res) = futures::join!(show_fut, season_fut);
 
