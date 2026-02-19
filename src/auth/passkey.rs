@@ -8,7 +8,6 @@ use coset::{CborSerializable, CoseKey, Label};
 use p256::EncodedPoint;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use worker::*;
@@ -274,10 +273,11 @@ struct AuthData {
     credential_data: Option<Vec<u8>>,
 }
 
-fn generate_challenge() -> String {
+fn generate_challenge() -> Result<String> {
     let mut buf = [0u8; CHALLENGE_LEN];
-    OsRng.fill_bytes(&mut buf);
-    BASE64_URL_SAFE_NO_PAD.encode(buf)
+    getrandom::fill(&mut buf)
+        .map_err(|e| Error::RustError(format!("Failed to generate random challenge: {e}")))?;
+    Ok(BASE64_URL_SAFE_NO_PAD.encode(buf))
 }
 
 fn verify_client_data(
@@ -399,7 +399,7 @@ pub async fn start_registration<S: PasskeyStore>(
     user: &User,
     config: &PasskeyConfig,
 ) -> Result<PublicKeyCredentialCreationOptions> {
-    let challenge = generate_challenge();
+    let challenge = generate_challenge()?;
     let user_handle = BASE64_URL_SAFE_NO_PAD.encode(user.id.to_string().as_bytes());
 
     let existing = store.list_passkeys(user.id).await?;
@@ -561,7 +561,7 @@ pub async fn start_login<S: PasskeyStore>(
     store: &S,
     config: &PasskeyConfig,
 ) -> Result<PublicKeyCredentialRequestOptions> {
-    let challenge = generate_challenge();
+    let challenge = generate_challenge()?;
 
     let options = PublicKeyCredentialRequestOptions {
         challenge: challenge.clone(),
