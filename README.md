@@ -19,9 +19,13 @@ Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bang
 
 ## Screenshots
 
-| Home Page | Details Modal |
-| :---: | :---: |
-| ![Home](docs/images/home.png) | ![Details](docs/images/details.png) |
+<div align="center">
+  <img src="docs/images/home.png" alt="Home Page" width="100%" />
+  <p><i>Fluid Weekly Schedule</i></p>
+  <br/>
+  <img src="docs/images/details.png" alt="Details Modal" width="100%" />
+  <p><i>Rich Metadata Details</i></p>
+</div>
 
 ## Environment Variables
 
