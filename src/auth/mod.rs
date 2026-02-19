@@ -34,20 +34,33 @@ pub fn get_db(env: &Env) -> Result<AppDatabase> {
     Ok(AppDatabase::new(d1))
 }
 
+// Helper to parse cookies from header string
+pub fn parse_cookie_values(header: &str, name: &str) -> Vec<String> {
+    Cookie::split_parse(header)
+        .filter_map(Result::ok)
+        .filter(|c| c.name() == name)
+        .map(|c| c.value().to_string())
+        .collect()
+}
+
+// Helper to get cookie values from request
+pub fn get_cookie_values(req: &Request, name: &str) -> Vec<String> {
+    let cookies_header = match req.headers().get("Cookie") {
+        Ok(Some(h)) => h,
+        _ => return Vec::new(),
+    };
+    parse_cookie_values(&cookies_header, name)
+}
+
 // Helper to get authenticated user
 pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     let db = get_db(env)?;
-    let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
 
-    // Parse cookies more robustly using cookie crate
-    for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
-        if cookie.name() == SESSION_COOKIE_NAME {
-            let token = cookie.value();
-            if let Some(user) = db.get_user_by_session_token(token).await? {
-                return Ok(Some((user, token.to_string())));
-            } else {
-                console_log!("Auth failed for token: {}", token);
-            }
+    for token in get_cookie_values(req, SESSION_COOKIE_NAME) {
+        if let Some(user) = db.get_user_by_session_token(&token).await? {
+            return Ok(Some((user, token)));
+        } else {
+            console_log!("Auth failed for token: {}", token);
         }
     }
     Ok(None)
@@ -382,17 +395,10 @@ pub async fn handle_get_item(req: Request, env: Env) -> Result<Response> {
 }
 
 pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {
-    let cookies_header = req.headers().get("Cookie")?.unwrap_or_default();
-    let mut stored_state = None;
+    let stored_states = get_cookie_values(req, OAUTH_STATE_COOKIE_NAME);
+    let stored_state = stored_states.first().map(|s| s.as_str());
 
-    for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
-        if cookie.name() == OAUTH_STATE_COOKIE_NAME {
-            stored_state = Some(cookie.value().to_string());
-            break;
-        }
-    }
-
-    if query_state.is_none() || stored_state.is_none() || query_state != stored_state.as_deref() {
+    if query_state.is_none() || stored_state.is_none() || query_state != stored_state {
         return Err(Error::RustError(
             "Invalid or missing OAuth state".to_string(),
         ));
@@ -443,5 +449,33 @@ mod tests {
 
         let insecure_oauth = create_oauth_state_cookie(state, false);
         assert!(!insecure_oauth.contains("Secure"));
+    }
+
+    #[test]
+    fn test_parse_cookie_values() {
+        // Single cookie
+        let header = "housou_session=abc";
+        let values = parse_cookie_values(header, "housou_session");
+        assert_eq!(values, vec!["abc"]);
+
+        // Multiple cookies
+        let header = "housou_session=abc; oauth_state=xyz; housou_session=def";
+        let values = parse_cookie_values(header, "housou_session");
+        assert_eq!(values, vec!["abc", "def"]);
+
+        // No matching cookie
+        let header = "oauth_state=xyz";
+        let values = parse_cookie_values(header, "housou_session");
+        assert!(values.is_empty());
+
+        // Empty header
+        let header = "";
+        let values = parse_cookie_values(header, "housou_session");
+        assert!(values.is_empty());
+
+        // Malformed cookie ignored
+        let header = "housou_session=abc; invalid_cookie; housou_session=def";
+        let values = parse_cookie_values(header, "housou_session");
+        assert_eq!(values, vec!["abc", "def"]);
     }
 }
