@@ -16,12 +16,25 @@ vi.mock("../contexts/MetadataContext", () => ({
 
 // Mock framer-motion (motion/react) to skip animations
 vi.mock("motion/react", () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   motion: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     div: ({ children, ...props }: any) => {
       // Filter out framer-motion specific props that might cause React warnings on div
-      const { layoutId, layout, initial, animate, exit, variants, transition, custom, whileHover, ...rest } = props;
+      const {
+        layoutId,
+        layout,
+        initial,
+        animate,
+        exit,
+        variants,
+        transition,
+        custom,
+        whileHover,
+        ...rest
+      } = props;
       return <div {...rest}>{children}</div>;
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,11 +54,16 @@ global.ResizeObserver = class ResizeObserver {
 
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
-  constructor(_callback: IntersectionObserverCallback, _options?: IntersectionObserverInit) {}
+  constructor(
+    _callback: IntersectionObserverCallback,
+    _options?: IntersectionObserverInit,
+  ) {}
   observe() {}
   unobserve() {}
   disconnect() {}
-  takeRecords() { return []; }
+  takeRecords() {
+    return [];
+  }
   root = null;
   rootMargin = "";
   thresholds = [];
@@ -79,12 +97,7 @@ describe("TabbedGrid", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2023-10-01T12:00:00.000Z"));
 
-    render(
-      <TabbedGrid
-        items={mockItems}
-        onOpenModal={() => {}}
-      />
-    );
+    render(<TabbedGrid items={mockItems} onOpenModal={() => {}} />);
 
     // Should show Sunday Anime
     expect(screen.getByText("Sunday Anime")).toBeInTheDocument();
@@ -95,15 +108,10 @@ describe("TabbedGrid", () => {
   });
 
   it("switches tabs and shows correct items", async () => {
-     vi.useFakeTimers();
-     vi.setSystemTime(new Date("2023-10-01T12:00:00.000Z")); // Sunday
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2023-10-01T12:00:00.000Z")); // Sunday
 
-     render(
-      <TabbedGrid
-        items={mockItems}
-        onOpenModal={() => {}}
-      />
-    );
+    render(<TabbedGrid items={mockItems} onOpenModal={() => {}} />);
 
     // Switch to real timers immediately after render so interactions work
     vi.useRealTimers();
@@ -119,7 +127,7 @@ describe("TabbedGrid", () => {
 
     // Should NOT show Sunday Anime
     await waitFor(() => {
-        expect(screen.queryByText("Sunday Anime")).not.toBeInTheDocument();
+      expect(screen.queryByText("Sunday Anime")).not.toBeInTheDocument();
     });
   });
 });
