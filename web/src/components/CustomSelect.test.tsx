@@ -91,8 +91,8 @@ describe("CustomSelect Component", () => {
     await user.keyboard("{Enter}");
 
     // Verify onValueChange was called
-    // We expect "opt2" if focus moved successfully, but checking simply called is good for a start.
-    expect(onValueChange).toHaveBeenCalled();
+    // We expect "opt2" if focus moved successfully.
+    expect(onValueChange).toHaveBeenCalledWith("opt2");
   });
 
   it("respects the isOpen controlled prop", () => {
