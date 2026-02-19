@@ -87,7 +87,7 @@ export default function TabbedGrid({
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="sticky top-0 z-30 flex justify-center px-6 pb-2 pt-6">
+      <div className=" flex justify-center px-6 pb-2">
         <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/40 bg-white/80 p-1.5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-gray-900/80">
           {WEEKDAY_DATA.map((tab) => {
             const isActive = activeTab === tab.id;
