@@ -434,7 +434,7 @@ fn extract_videos(videos: Option<models::VideosList>) -> Vec<model::UniversalVid
             site: v.site,
             name: v.name,
             type_field: v._type.map(|t| format!("{:?}", t)),
-            size: v.size.map(|s| s as i32),
+            size: v.size,
         })
         .collect()
 }
