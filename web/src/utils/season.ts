@@ -1,3 +1,10 @@
+const SEASONS = [
+  { value: "Winter", label: "冬", startMonth: 1 },
+  { value: "Spring", label: "春", startMonth: 4 },
+  { value: "Summer", label: "夏", startMonth: 7 },
+  { value: "Autumn", label: "秋", startMonth: 10 },
+];
+
 export function getSeasonOptions(
   selectedYear: string,
   currentYear: number,
@@ -15,9 +22,9 @@ export function getSeasonOptions(
 
   return [
     { value: "all", label: "全て" },
-    { value: "Winter", label: getLabel("冬", 1) },
-    { value: "Spring", label: getLabel("春", 4) },
-    { value: "Summer", label: getLabel("夏", 7) },
-    { value: "Autumn", label: getLabel("秋", 10) },
+    ...SEASONS.map((season) => ({
+      value: season.value,
+      label: getLabel(season.label, season.startMonth),
+    })),
   ];
 }
