@@ -1,7 +1,8 @@
 use crate::model::UserStatus;
 use async_trait::async_trait;
-use passkey::types::{PasskeyState, StoredPasskey};
-use passkey::{PasskeyError, PasskeyStore};
+use passkey_server::types::{PasskeyState, StoredPasskey};
+use passkey_server::{PasskeyError, PasskeyStore};
+
 use serde_derive::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
@@ -508,7 +509,8 @@ fn db_err(e: impl std::fmt::Display) -> PasskeyError {
     PasskeyError::DatabaseError(e.to_string())
 }
 
-#[async_trait(?Send)]
+#[cfg_attr(not(feature = "send"), async_trait(?Send))]
+#[cfg_attr(feature = "send", async_trait)]
 impl PasskeyStore for AppDatabase {
     async fn create_passkey(
         &self,
@@ -518,7 +520,7 @@ impl PasskeyStore for AppDatabase {
         name: &str,
         counter: i64,
         created_at: i64,
-    ) -> passkey::error::Result<()> {
+    ) -> passkey_server::error::Result<()> {
         let query = "INSERT INTO passkeys (user_id, cred_id, passkey_json, name, created_at, last_used_at, counter) VALUES (?, ?, ?, ?, ?, ?, ?)";
         self.db
             .prepare(query)
@@ -538,7 +540,10 @@ impl PasskeyStore for AppDatabase {
         Ok(())
     }
 
-    async fn get_passkey(&self, cred_id: &str) -> passkey::error::Result<Option<StoredPasskey>> {
+    async fn get_passkey(
+        &self,
+        cred_id: &str,
+    ) -> passkey_server::error::Result<Option<StoredPasskey>> {
         let query = "SELECT * FROM passkeys WHERE cred_id = ?";
         let row: Option<PasskeyRow> = self
             .db
@@ -551,7 +556,10 @@ impl PasskeyStore for AppDatabase {
         Ok(row.map(Into::into))
     }
 
-    async fn list_passkeys(&self, user_id: i32) -> passkey::error::Result<Vec<StoredPasskey>> {
+    async fn list_passkeys(
+        &self,
+        user_id: i32,
+    ) -> passkey_server::error::Result<Vec<StoredPasskey>> {
         let query = "SELECT * FROM passkeys WHERE user_id = ?";
         let results = self
             .db
@@ -565,7 +573,11 @@ impl PasskeyStore for AppDatabase {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> passkey::error::Result<()> {
+    async fn delete_passkey(
+        &self,
+        user_id: i32,
+        cred_id: &str,
+    ) -> passkey_server::error::Result<()> {
         let query = "DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?";
         self.db
             .prepare(query)
@@ -585,7 +597,7 @@ impl PasskeyStore for AppDatabase {
         cred_id: &str,
         new_counter: i64,
         last_used_at: i64,
-    ) -> passkey::error::Result<()> {
+    ) -> passkey_server::error::Result<()> {
         let query = "UPDATE passkeys SET counter = ?, last_used_at = ? WHERE cred_id = ?";
         self.db
             .prepare(query)
@@ -605,7 +617,7 @@ impl PasskeyStore for AppDatabase {
         &self,
         cred_id: &str,
         new_name: &str,
-    ) -> passkey::error::Result<()> {
+    ) -> passkey_server::error::Result<()> {
         let query = "UPDATE passkeys SET name = ? WHERE cred_id = ?";
         self.db
             .prepare(query)
@@ -622,7 +634,7 @@ impl PasskeyStore for AppDatabase {
         id: &str,
         state_json: &str,
         expires_at: i64,
-    ) -> passkey::error::Result<()> {
+    ) -> passkey_server::error::Result<()> {
         let now = Date::now().as_millis() as i64;
 
         let cleanup_stmt = self
@@ -648,7 +660,7 @@ impl PasskeyStore for AppDatabase {
         Ok(())
     }
 
-    async fn get_state(&self, id: &str) -> passkey::error::Result<Option<PasskeyState>> {
+    async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
         let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
         let now = Date::now().as_millis() as i64;
         self.db
@@ -660,7 +672,7 @@ impl PasskeyStore for AppDatabase {
             .map_err(db_err)
     }
 
-    async fn delete_state(&self, id: &str) -> passkey::error::Result<()> {
+    async fn delete_state(&self, id: &str) -> passkey_server::error::Result<()> {
         let query = "DELETE FROM passkey_states WHERE id = ?";
         self.db
             .prepare(query)

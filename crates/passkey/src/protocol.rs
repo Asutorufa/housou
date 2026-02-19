@@ -168,6 +168,10 @@ fn verify_p256_signature(
 
 // Core WebAuthn Flows
 
+/// Initiates a new passkey registration.
+///
+/// Returns the options that must be sent to the WebAuthn client (`navigator.credentials.create`).
+/// It also saves the registration session state to the provided `store`.
 pub async fn start_registration<S: PasskeyStore + ?Sized>(
     store: &S,
     user_id: i32,
@@ -232,6 +236,10 @@ pub async fn start_registration<S: PasskeyStore + ?Sized>(
     Ok(options)
 }
 
+/// Completes a passkey registration.
+///
+/// Validates the client response against the stored challenge and RP configuration.
+/// On success, a new [`StoredPasskey`](crate::types::StoredPasskey) is created via the `store`.
 pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     store: &S,
     user_id: i32,
@@ -336,6 +344,10 @@ pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     Ok(())
 }
 
+/// Initiates a passkey login flow.
+///
+/// Returns the options that must be sent to the WebAuthn client (`navigator.credentials.get`).
+/// It saves a login session state keyed by the challenge.
 pub async fn start_login<S: PasskeyStore + ?Sized>(
     store: &S,
     config: &PasskeyConfig,
@@ -361,6 +373,10 @@ pub async fn start_login<S: PasskeyStore + ?Sized>(
     Ok(options)
 }
 
+/// Completes a passkey login flow.
+///
+/// Validates the client response, signature, and counter.
+/// On success, returns the `user_id` of the authenticated user and updates the counter in the `store`.
 pub async fn finish_login<S: PasskeyStore + ?Sized>(
     store: &S,
     config: &PasskeyConfig,

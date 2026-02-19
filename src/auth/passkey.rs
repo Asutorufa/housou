@@ -1,7 +1,7 @@
 use crate::ResponseExt;
 use crate::auth;
 use crate::db::Database;
-use passkey::types::*;
+use passkey_server::types::*;
 use serde::Deserialize;
 use worker::*;
 
@@ -48,7 +48,7 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
     let config = ConfigHelper::from_req(&req, &env);
     let now = Date::now().as_millis() as i64;
 
-    let options = passkey::start_registration(
+    let options = passkey_server::start_registration(
         &db,
         user.id,
         &user.username,
@@ -72,7 +72,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
     let db = auth::get_db(&env)?;
     let now = Date::now().as_millis() as i64;
 
-    passkey::finish_registration(&db, user.id, &config, response, now)
+    passkey_server::finish_registration(&db, user.id, &config, response, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -84,7 +84,7 @@ pub async fn handle_login_start(req: Request, env: Env) -> Result<Response> {
     let config = ConfigHelper::from_req(&req, &env);
     let now = Date::now().as_millis() as i64;
 
-    let options = passkey::start_login(&db, &config, now)
+    let options = passkey_server::start_login(&db, &config, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -97,7 +97,7 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
     let db = auth::get_db(&env)?;
     let now = Date::now().as_millis() as i64;
 
-    let user_id = passkey::finish_login(&db, &config, response, now)
+    let user_id = passkey_server::finish_login(&db, &config, response, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -136,7 +136,7 @@ pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
 
     // PasskeyStore trait defines list_passkeys returning Vec<StoredPasskey>
     // We want to return PasskeySummary
-    use passkey::PasskeyStore;
+    use passkey_server::PasskeyStore;
 
     let passkeys = db
         .list_passkeys(user.id)
@@ -170,7 +170,7 @@ pub async fn handle_delete(req: Request, env: Env) -> Result<Response> {
     match id {
         Some(cred_id) => {
             let db = auth::get_db(&env)?;
-            use passkey::PasskeyStore;
+            use passkey_server::PasskeyStore;
             db.delete_passkey(user.id, &cred_id)
                 .await
                 .map_err(|e| Error::RustError(e.to_string()))?;
@@ -194,7 +194,7 @@ pub async fn handle_rename(mut req: Request, env: Env) -> Result<Response> {
 
     let body: RenameRequest = req.json().await?;
     let db = auth::get_db(&env)?;
-    use passkey::PasskeyStore;
+    use passkey_server::PasskeyStore;
 
     // Verify ownership and existence
     // PasskeyStore trait: get_passkey returns Result<Option<StoredPasskey>>

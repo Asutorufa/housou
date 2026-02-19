@@ -1,5 +1,5 @@
 [package]
-name = "passkey"
+name = "passkey-server"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,11 +14,21 @@ p256 = { version = "0.13", features = ["ecdsa", "std"] }
 sha2 = "0.10"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 thiserror = "1.0"
-getrandom = { version = "0.4", features = [
-    "wasm_js",
-] } # keeping consistent with root for WASM target
+getrandom = "0.4"
 rand_core = "0.10"
+
+[features]
+default = []
+send = []
+wasm = ["getrandom/wasm_js"]
 
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+serde_json = "1.0"
+
+[[example]]
+name = "basic"
+required-features = ["send"]

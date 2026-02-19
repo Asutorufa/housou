@@ -22,7 +22,8 @@ struct MockStore {
     states: Arc<Mutex<HashMap<String, PasskeyState>>>,
 }
 
-#[async_trait(?Send)]
+#[cfg_attr(not(feature = "send"), async_trait(?Send))]
+#[cfg_attr(feature = "send", async_trait)]
 impl PasskeyStore for MockStore {
     async fn create_passkey(
         &self,
