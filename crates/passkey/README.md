@@ -8,7 +8,7 @@ A storage-agnostic Rust implementation of the WebAuthn (Passkey) protocol.
 - **WASM Compatible**: Optimized for WASM environments like Cloudflare Workers (use `wasm` feature).
 - **Native Support**: Fully compatible with multi-threaded runtimes like Tokio (enabled by default).
 - **Easy Integration**: Provides high-level handlers for registration and authentication.
-- **Full Example**: See [`examples/basic.rs`](examples/basic.rs) for a complete Axum-based HTTP server implementation.
+- **Full Example**: See [`examples/basic.rs`](https://github.com/Asutorufa/housou/blob/main/crates/passkey/examples/basic.rs) for a complete Axum-based HTTP server implementation.
 
 ## Installation
 
@@ -18,10 +18,10 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 # For native applications (Tokio, etc.)
-passkey-server = "0.1.2"
+passkey-server = "0.1.3"
 
 # For Cloudflare Workers / WASM (non-Send)
-passkey-server = { version = "0.1.2", default-features = false, features = ["wasm"] }
+passkey-server = { version = "0.1.3", default-features = false, features = ["wasm"] }
 ```
 
 

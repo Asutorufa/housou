@@ -11,7 +11,7 @@
 //!
 //! ## Example usage
 //!
-//! For a complete, runnable example using Axum and an in-memory store, see [`examples/basic.rs`](../examples/basic.rs).
+//! For a complete, runnable example using Axum and an in-memory store, see [`examples/basic.rs`](https://github.com/Asutorufa/housou/blob/main/crates/passkey/examples/basic.rs).
 //!
 //! ```rust,no_run
 //! use passkey_server::{PasskeyConfig, PasskeyStore, start_registration, types::{StoredPasskey, PasskeyState}, error::Result};
