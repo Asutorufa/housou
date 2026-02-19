@@ -1,14 +1,14 @@
 use crate::ResponseExt;
 use crate::auth::{
-    create_session_cookie, get_auth, get_db, is_secure, SESSION_DURATION_DAYS, UserResponse,
+    SESSION_DURATION_DAYS, UserResponse, create_session_cookie, get_auth, get_db, is_secure,
 };
 use crate::db::Database;
 use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
-use worker::*;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use uuid::Uuid;
+use worker::*;
 
 #[derive(Deserialize)]
 pub struct TelegramAuthData {
@@ -157,16 +157,19 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
     };
 
     if user.password_hash.is_none() && user.github_id.is_none() {
-         // If user only has Telegram login (no password, no github), prevent unbind?
-         // But here we check password hash. If they have github, they can login via github.
-         // If they have password, they can login via password.
-         // If they ONLY have telegram, and unbind it, they lose access.
-         // So we should check if they have at least one other login method.
-         // The user structure has `password_hash`, `github_id`, `telegram_id`.
-         // Check if password or github exists.
-         if user.password_hash.is_none() && user.github_id.is_none() {
-             return Response::error("Cannot disconnect the only login method. Please set a password or connect GitHub first.", 400);
-         }
+        // If user only has Telegram login (no password, no github), prevent unbind?
+        // But here we check password hash. If they have github, they can login via github.
+        // If they have password, they can login via password.
+        // If they ONLY have telegram, and unbind it, they lose access.
+        // So we should check if they have at least one other login method.
+        // The user structure has `password_hash`, `github_id`, `telegram_id`.
+        // Check if password or github exists.
+        if user.password_hash.is_none() && user.github_id.is_none() {
+            return Response::error(
+                "Cannot disconnect the only login method. Please set a password or connect GitHub first.",
+                400,
+            );
+        }
     }
 
     let db = get_db(&env)?;

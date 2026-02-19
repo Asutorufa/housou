@@ -18,8 +18,8 @@ pub use github::{
     handle_github_authorize, handle_github_bind_authorize, handle_github_callback,
     handle_github_unbind,
 };
-pub use telegram::{handle_telegram_bind, handle_telegram_login, handle_telegram_unbind};
 use serde::Serialize;
+pub use telegram::{handle_telegram_bind, handle_telegram_login, handle_telegram_unbind};
 
 const SESSION_COOKIE_NAME: &str = "housou_session";
 pub const SESSION_DURATION_DAYS: i64 = 30;
