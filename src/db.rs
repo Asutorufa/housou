@@ -1,6 +1,7 @@
-use crate::auth::passkey::{PasskeyState, PasskeyStore, StoredPasskey, UserLookup};
 use crate::model::UserStatus;
 use async_trait::async_trait;
+use passkey::types::{PasskeyState, StoredPasskey};
+use passkey::{PasskeyError, PasskeyStore};
 use serde_derive::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
@@ -512,9 +513,9 @@ impl PasskeyStore for AppDatabase {
         public_key: &str,
         name: &str,
         counter: i64,
-    ) -> Result<()> {
+        created_at: i64,
+    ) -> passkey::error::Result<()> {
         let query = "INSERT INTO passkeys (user_id, cred_id, passkey_json, name, created_at, last_used_at, counter) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        let now = Date::now().as_millis() as i64;
         self.db
             .prepare(query)
             .bind(&[
@@ -522,48 +523,58 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_str(cred_id),
                 JsValue::from_str(public_key),
                 JsValue::from_str(name),
-                JsValue::from_f64(now as f64),
-                JsValue::from_f64(now as f64),
+                JsValue::from_f64(created_at as f64),
+                JsValue::from_f64(created_at as f64),
                 JsValue::from_f64(counter as f64),
-            ])?
+            ])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .run()
-            .await?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
-    async fn get_passkey(&self, cred_id: &str) -> Result<Option<StoredPasskey>> {
+    async fn get_passkey(&self, cred_id: &str) -> passkey::error::Result<Option<StoredPasskey>> {
         let query = "SELECT * FROM passkeys WHERE cred_id = ?";
         let row: Option<PasskeyRow> = self
             .db
             .prepare(query)
-            .bind(&[JsValue::from_str(cred_id)])?
+            .bind(&[JsValue::from_str(cred_id)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .first(None)
-            .await?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(row.map(Into::into))
     }
 
-    async fn list_passkeys(&self, user_id: i32) -> Result<Vec<StoredPasskey>> {
+    async fn list_passkeys(&self, user_id: i32) -> passkey::error::Result<Vec<StoredPasskey>> {
         let query = "SELECT * FROM passkeys WHERE user_id = ?";
         let results = self
             .db
             .prepare(query)
-            .bind(&[JsValue::from_f64(user_id as f64)])?
+            .bind(&[JsValue::from_f64(user_id as f64)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .all()
-            .await?;
-        let rows: Vec<PasskeyRow> = results.results()?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+        let rows: Vec<PasskeyRow> = results
+            .results()
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> Result<()> {
+    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> passkey::error::Result<()> {
         let query = "DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?";
         self.db
             .prepare(query)
             .bind(&[
                 JsValue::from_f64(user_id as f64),
                 JsValue::from_str(cred_id),
-            ])?
+            ])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .run()
-            .await?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
@@ -572,7 +583,7 @@ impl PasskeyStore for AppDatabase {
         cred_id: &str,
         new_counter: i64,
         last_used_at: i64,
-    ) -> Result<()> {
+    ) -> passkey::error::Result<()> {
         let query = "UPDATE passkeys SET counter = ?, last_used_at = ? WHERE cred_id = ?";
         self.db
             .prepare(query)
@@ -580,29 +591,34 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_f64(new_counter as f64),
                 JsValue::from_f64(last_used_at as f64),
                 JsValue::from_str(cred_id),
-            ])?
+            ])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .run()
-            .await?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
-    async fn update_passkey_name(&self, cred_id: &str, new_name: &str) -> Result<()> {
+    async fn update_passkey_name(&self, cred_id: &str, new_name: &str) -> passkey::error::Result<()> {
         let query = "UPDATE passkeys SET name = ? WHERE cred_id = ?";
         self.db
             .prepare(query)
-            .bind(&[JsValue::from_str(new_name), JsValue::from_str(cred_id)])?
+            .bind(&[JsValue::from_str(new_name), JsValue::from_str(cred_id)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .run()
-            .await?;
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
-    async fn save_state(&self, id: &str, state_json: &str, expires_at: i64) -> Result<()> {
+    async fn save_state(&self, id: &str, state_json: &str, expires_at: i64) -> passkey::error::Result<()> {
         let now = Date::now().as_millis() as i64;
 
         let cleanup_stmt = self
             .db
             .prepare("DELETE FROM passkey_states WHERE expires_at < ?")
-            .bind(&[JsValue::from_f64(now as f64)])?;
+            .bind(&[JsValue::from_f64(now as f64)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
 
         let insert_stmt = self
             .db
@@ -611,41 +627,37 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_str(id),
                 JsValue::from_str(state_json),
                 JsValue::from_f64(expires_at as f64),
-            ])?;
+            ])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
 
-        self.db.batch(vec![cleanup_stmt, insert_stmt]).await?;
+        self.db
+            .batch(vec![cleanup_stmt, insert_stmt])
+            .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
         Ok(())
     }
 
-    async fn get_state(&self, id: &str) -> Result<Option<PasskeyState>> {
+    async fn get_state(&self, id: &str) -> passkey::error::Result<Option<PasskeyState>> {
         let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
         let now = Date::now().as_millis() as i64;
         self.db
             .prepare(query)
-            .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])?
+            .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .first(None)
             .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))
     }
 
-    async fn delete_state(&self, id: &str) -> Result<()> {
+    async fn delete_state(&self, id: &str) -> passkey::error::Result<()> {
         let query = "DELETE FROM passkey_states WHERE id = ?";
         self.db
             .prepare(query)
-            .bind(&[JsValue::from_str(id)])?
+            .bind(&[JsValue::from_str(id)])
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
             .run()
-            .await?;
-        Ok(())
-    }
-}
-
-#[async_trait(?Send)]
-impl UserLookup for AppDatabase {
-    async fn get_user_by_id(&self, id: i32) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_f64(id as f64)])?
-            .first(None)
             .await
+            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+        Ok(())
     }
 }
