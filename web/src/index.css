@@ -93,6 +93,24 @@
   );
 }
 
+.scroll-mask-x {
+  --scroll-mask-fade-size: 20px;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--scroll-mask-fade-size),
+    black calc(100% - var(--scroll-mask-fade-size)),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--scroll-mask-fade-size),
+    black calc(100% - var(--scroll-mask-fade-size)),
+    transparent
+  );
+}
+
 /* Radix Select dropdown animation */
 @keyframes selectContentShow {
   0% {
