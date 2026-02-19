@@ -22,7 +22,8 @@ export default function VideoSection({
         <h4 className="mb-3 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
           映像特典・PV
         </h4>
-        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar snap-x snap-mandatory">
+        {/* Add padding to container to prevent hover ring from being clipped */}
+        <div className="custom-scrollbar flex gap-4 overflow-x-auto p-2 snap-x snap-mandatory">
           {youtubeVideos.map((video) => (
             <button
               key={video.key}
