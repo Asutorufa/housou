@@ -28,7 +28,7 @@ export default function VideoSection({
             <button
               key={video.key}
               onClick={() => setSelectedVideo(video.key || null)}
-              className="snap-start flex-none w-64 group relative overflow-hidden rounded-xl bg-black aspect-video ring-1 ring-white/10 hover:z-10 hover:ring-2 hover:ring-blue-500 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-left"
+              className="snap-start flex-none w-64 group relative overflow-hidden rounded-xl bg-black aspect-video ring-1 ring-white/10 hover:ring-2 hover:ring-blue-500 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-left"
             >
               <img
                 src={`https://img.youtube.com/vi/${video.key}/mqdefault.jpg`}
