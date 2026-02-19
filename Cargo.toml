@@ -22,12 +22,10 @@ regex = "1.12.3"
 js-sys = "0.3.77"
 futures = "0.3.32"
 argon2 = "0.5"
-rand_core = { version = "0.6", features = ["std", "getrandom"] }
+rand_core = "0.10"
 uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
 getrandom = { version = "0.4", features = ["wasm_js"] }
-getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
-getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 async-trait = "0.1"
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "913f798021464dffdc21f41d12c5a6b2475ff100", default-features = false, features = [
     "async",
@@ -36,7 +34,7 @@ rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074
 base64 = "0.22"
 p256 = { version = "0.13", features = ["ecdsa", "std"] } # ECDSA P-256 signatures
 sha2 = "0.10" # SHA-256 hashing
-coset = "0.3" # COSE structure parsing (CBOR Object Signing and Encryption)
+coset = "0.4" # COSE structure parsing (CBOR Object Signing and Encryption)
 ciborium = "0.2" # CBOR serialization/deserialization
 
 [profile.release]

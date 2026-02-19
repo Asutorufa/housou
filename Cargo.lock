@@ -261,9 +261,9 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "coset"
-version = "0.3.8"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4c8cc80f631f8307b887faca24dcc3abc427cd0367f6eb6188f6e8f5b7ad8fb"
+checksum = "844c9268d02cc99addebeb0dd6703508d6f0cc09ff86dda3f1350b4bccfbc00e"
 dependencies = [
  "ciborium",
  "ciborium-io",
@@ -646,11 +646,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "899def5c37c4fd7b2664648c28120ecec138e4d395b459e5ca34f9cce2dd77fd"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
  "r-efi",
  "wasip2",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -763,12 +761,10 @@ dependencies = [
  "cookie",
  "coset",
  "futures",
- "getrandom 0.2.17",
- "getrandom 0.3.4",
  "getrandom 0.4.1",
  "js-sys",
  "p256",
- "rand_core 0.6.4",
+ "rand_core 0.10.0",
  "regex",
  "rust-anilist",
  "serde",
@@ -1444,6 +1440,12 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
+
+[[package]]
+name = "rand_core"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
 name = "ref-cast"
