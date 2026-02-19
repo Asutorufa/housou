@@ -15,10 +15,7 @@ export function getSeasonLabel(
   const currentMonth = currentDate.getMonth();
   const currentSeasonIndex = Math.floor(currentMonth / 3);
 
-  const yearNum =
-    typeof selectedYear === "string"
-      ? parseInt(selectedYear, 10)
-      : selectedYear;
+  const yearNum = Number(selectedYear);
 
   if (isNaN(yearNum)) {
     return baseLabel;

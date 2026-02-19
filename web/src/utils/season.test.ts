@@ -29,7 +29,9 @@ describe("getSeasonLabel", () => {
   });
 
   it("handles string years correctly", () => {
-    expect(getSeasonLabel("Spring", "春", "2024", currentDate)).toBe("春 (予定)");
+    expect(getSeasonLabel("Spring", "春", "2024", currentDate)).toBe(
+      "春 (予定)",
+    );
     expect(getSeasonLabel("Winter", "冬", "2023", currentDate)).toBe("冬");
   });
 
