@@ -360,6 +360,17 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     let mut videos = extract_videos(show.videos);
     videos.extend(extract_videos(season.videos));
 
+    // Deduplicate videos to prevent showing the same video twice.
+    let mut seen_keys = std::collections::HashSet::new();
+    videos.retain(|v| {
+        if let (Some(site), Some(key)) = (&v.site, &v.key) {
+            seen_keys.insert((site.clone(), key.clone()))
+        } else {
+            // Keep videos without a site or key, as we can't deduplicate them.
+            true
+        }
+    });
+
     let is_finished =
         show.status.as_deref() == Some("Ended") || show.status.as_deref() == Some("Canceled");
 
@@ -1085,6 +1096,51 @@ mod tests_tv_transformation {
         let result = tv_to_unified(show, season);
 
         assert_eq!(result.content_rating, Some("G".to_string()));
+    }
+
+    #[test]
+    fn test_tv_to_unified_video_deduplication() {
+        use tmdb_client::models::{Video, VideoType, VideosList};
+
+        let create_video = |key: &str, site: &str| Video {
+            key: Some(key.to_string()),
+            site: Some(site.to_string()),
+            name: Some("Video".to_string()),
+            _type: Some(VideoType::Trailer),
+            size: Some(1080),
+            ..Default::default()
+        };
+
+        let show = models::TvDetails {
+            videos: Some(VideosList {
+                results: Some(vec![
+                    create_video("key1", "YouTube"),
+                    create_video("key2", "YouTube"),
+                ]),
+                id: None,
+            }),
+            ..Default::default()
+        };
+
+        let season = models::SeasonDetails {
+            videos: Some(VideosList {
+                results: Some(vec![
+                    create_video("key1", "YouTube"), // Duplicate
+                    create_video("key3", "YouTube"),
+                ]),
+                id: None,
+            }),
+            ..Default::default()
+        };
+
+        let result = tv_to_unified(show, season);
+
+        assert_eq!(result.videos.len(), 3);
+
+        let keys: std::collections::HashSet<_> = result.videos.iter().filter_map(|v| v.key.as_deref()).collect();
+        assert!(keys.contains("key1"));
+        assert!(keys.contains("key2"));
+        assert!(keys.contains("key3"));
     }
 }
 
