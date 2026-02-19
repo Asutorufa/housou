@@ -109,6 +109,7 @@ export default function Header({
                     setSearchQuery("");
                     setIsSearchFocused(false);
                   }}
+                  aria-label="検索をクリアして閉じる"
                   className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                   <X size={16} />
@@ -213,6 +214,7 @@ export default function Header({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsSearchFocused(true)}
+                  aria-label="検索を開く"
                   className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md transition-colors hover:border-blue-500/50 hover:bg-white dark:border-gray-700/50 dark:bg-gray-800/80 dark:hover:bg-gray-800"
                 >
                   <Search
