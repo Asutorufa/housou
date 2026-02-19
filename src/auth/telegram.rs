@@ -157,19 +157,10 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
     };
 
     if user.password_hash.is_none() && user.github_id.is_none() {
-        // If user only has Telegram login (no password, no github), prevent unbind?
-        // But here we check password hash. If they have github, they can login via github.
-        // If they have password, they can login via password.
-        // If they ONLY have telegram, and unbind it, they lose access.
-        // So we should check if they have at least one other login method.
-        // The user structure has `password_hash`, `github_id`, `telegram_id`.
-        // Check if password or github exists.
-        if user.password_hash.is_none() && user.github_id.is_none() {
-            return Response::error(
-                "Cannot disconnect the only login method. Please set a password or connect GitHub first.",
-                400,
-            );
-        }
+        return Response::error(
+            "Cannot disconnect the only login method. Please set a password or connect GitHub first.",
+            400,
+        );
     }
 
     let db = get_db(&env)?;

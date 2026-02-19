@@ -61,6 +61,20 @@ const fetcher = async (url: string) => {
   return res.json();
 };
 
+const handleResponse = async (res: Response, defaultError: string) => {
+  if (!res.ok) {
+    let message = defaultError;
+    try {
+      const json = await res.json();
+      if (json.error) message = json.error;
+    } catch {
+      // Ignore
+    }
+    throw new Error(message);
+  }
+  return res.json();
+};
+
 export function AuthProvider({
   children,
   enabled = false,
@@ -88,19 +102,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, password: hashedPassword }),
       });
-      if (!res.ok) {
-        let message = "Login failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore if parsing fails, use default message
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Login failed");
       mutate(user, false);
     },
     [mutate],
@@ -114,19 +116,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, password: hashedPassword }),
       });
-      if (!res.ok) {
-        let message = "Registration failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore if parsing fails
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Registration failed");
       mutate(user, false);
     },
     [mutate],
@@ -155,19 +145,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) {
-        let message = "Update failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Update failed");
       mutate(user, false);
       return user;
     },
@@ -190,18 +168,7 @@ export function AuthProvider({
         }),
       });
 
-      if (!res.ok) {
-        let message = "Password update failed";
-        try {
-          const json = await res.json();
-          if (json.error) {
-            message = json.error;
-          }
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
+      await handleResponse(res, "Password update failed");
     },
     [apiFetch],
   );
@@ -296,16 +263,7 @@ export function AuthProvider({
     const res = await apiFetch("/api/auth/github", {
       method: "DELETE",
     });
-    if (!res.ok) {
-      let message = "Unbind failed";
-      try {
-        const json = await res.json();
-        if (json.error) message = json.error;
-      } catch {
-        // Ignore
-      }
-      throw new Error(message);
-    }
+    await handleResponse(res, "Unbind failed");
     mutate();
   }, [apiFetch, mutate]);
 
@@ -316,17 +274,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) {
-        let message = "Login failed";
-        try {
-          const json = await res.json();
-          if (json.error) message = json.error;
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Login failed");
       mutate(user, false);
     },
     [mutate],
@@ -339,17 +287,7 @@ export function AuthProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) {
-        let message = "Bind failed";
-        try {
-          const json = await res.json();
-          if (json.error) message = json.error;
-        } catch {
-          // Ignore
-        }
-        throw new Error(message);
-      }
-      const user = await res.json();
+      const user = await handleResponse(res, "Bind failed");
       mutate(user, false);
     },
     [apiFetch, mutate],
@@ -359,16 +297,7 @@ export function AuthProvider({
     const res = await apiFetch("/api/auth/telegram", {
       method: "DELETE",
     });
-    if (!res.ok) {
-      let message = "Unbind failed";
-      try {
-        const json = await res.json();
-        if (json.error) message = json.error;
-      } catch {
-        // Ignore
-      }
-      throw new Error(message);
-    }
+    await handleResponse(res, "Unbind failed");
     mutate();
   }, [apiFetch, mutate]);
 

@@ -281,41 +281,27 @@ function ConnectedAccountsTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleUnbindGithub = async () => {
-    if (!user?.has_password && !user?.telegram_id) {
+  const handleUnbind = async (
+    serviceName: string,
+    unbindFn: () => Promise<void>,
+    hasAlternativeLogin: boolean,
+  ) => {
+    if (!hasAlternativeLogin) {
       setError(
         "連携を解除する前に、パスワードを設定するか、他のサービスと連携してください。",
       );
       return;
     }
-    if (!confirm("GitHub連携を解除してもよろしいですか？")) return;
+    if (!confirm(`${serviceName}連携を解除してもよろしいですか？`)) return;
 
     setLoading(true);
     setError(null);
     try {
-      await unbindGithub();
+      await unbindFn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unbind");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUnbindTelegram = async () => {
-    if (!user?.has_password && !user?.github_id) {
       setError(
-        "連携を解除する前に、パスワードを設定するか、他のサービスと連携してください。",
+        err instanceof Error ? err.message : `Failed to unbind ${serviceName}`,
       );
-      return;
-    }
-    if (!confirm("Telegram連携を解除してもよろしいですか？")) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      await unbindTelegram();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unbind");
     } finally {
       setLoading(false);
     }
@@ -354,7 +340,13 @@ function ConnectedAccountsTab({
 
           {user?.github_id ? (
             <button
-              onClick={handleUnbindGithub}
+              onClick={() =>
+                handleUnbind(
+                  "GitHub",
+                  unbindGithub,
+                  !!(user?.has_password || user?.telegram_id),
+                )
+              }
               disabled={loading}
               className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
             >
@@ -393,7 +385,13 @@ function ConnectedAccountsTab({
 
           {user?.telegram_id ? (
             <button
-              onClick={handleUnbindTelegram}
+              onClick={() =>
+                handleUnbind(
+                  "Telegram",
+                  unbindTelegram,
+                  !!(user?.has_password || user?.github_id),
+                )
+              }
               disabled={loading}
               className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
             >

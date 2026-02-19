@@ -43,30 +43,28 @@ export default function TelegramLoginButton({
     }
     script.setAttribute("data-request-access", requestAccess);
     script.setAttribute("data-userpic", usePic.toString());
-    script.setAttribute("data-onauth", "onTelegramAuth(user)");
+
+    // Generate unique callback name
+    const callbackName = `onTelegramAuth_${Math.random().toString(36).substring(2, 9)}`;
+    script.setAttribute("data-onauth", `${callbackName}(user)`);
 
     // Attach global callback
-    window.onTelegramAuth = (user: TelegramAuthData) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any)[callbackName] = (user: TelegramAuthData) => {
       onAuthRef.current(user);
     };
 
     ref.current.appendChild(script);
 
     return () => {
-      // Cleanup global function
-      // If multiple buttons exist, this might be problematic, but typically only one auth modal is open.
-      if (window.onTelegramAuth) {
-        // We can't easily check if it's "our" function, but resetting to undefined is safe enough
-        delete window.onTelegramAuth;
+      // Cleanup unique global function
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((window as any)[callbackName]) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (window as any)[callbackName];
       }
     };
   }, [botName, buttonSize, cornerRadius, requestAccess, usePic]);
 
   return <div ref={ref} className="flex justify-center" />;
-}
-
-declare global {
-  interface Window {
-    onTelegramAuth?: (user: TelegramAuthData) => void;
-  }
 }
