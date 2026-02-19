@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
 import { USER_STATUS_LABELS } from "../types";
+import { getSeasonLabel, SEASONS } from "../utils/season";
 import AuthModal from "./AuthModal";
 import CustomSelect from "./CustomSelect";
 import ProfileModal from "./ProfileModal";
@@ -153,10 +154,14 @@ export default function Header({
                     onValueChange={setSelectedSeason}
                     options={[
                       { value: "all", label: "全て" },
-                      { value: "Winter", label: "冬" },
-                      { value: "Spring", label: "春" },
-                      { value: "Summer", label: "夏" },
-                      { value: "Autumn", label: "秋" },
+                      ...SEASONS.map((season) => ({
+                        value: season.value,
+                        label: getSeasonLabel(
+                          season.value,
+                          season.label,
+                          selectedYear,
+                        ),
+                      })),
                     ]}
                     placeholder="シーズン"
                     isOpen={activeDropdown === "season"}

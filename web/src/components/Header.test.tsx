@@ -46,8 +46,8 @@ describe("Header Component", () => {
       />,
     );
 
-    // Verify search input is present
-    expect(screen.getByPlaceholderText("検索...")).toBeInTheDocument();
+    // Verify search button is present (search input is hidden initially)
+    expect(screen.getByLabelText("検索を開く")).toBeInTheDocument();
   });
 
   it("displays site options when the site dropdown is clicked", async () => {
@@ -89,5 +89,44 @@ describe("Header Component", () => {
     // Radix UI renders options in a Portal, so they should be in the document.
     expect(await screen.findByText("Site One")).toBeInTheDocument();
     expect(screen.getByText("Site Two")).toBeInTheDocument();
+  });
+
+  it("displays scheduled label for future seasons", async () => {
+    const user = userEvent.setup();
+    const currentYear = new Date().getFullYear();
+    const futureYear = currentYear + 1;
+    const configWithFutureYear: Config = {
+      ...mockConfig,
+      years: [currentYear, futureYear],
+    };
+
+    render(
+      <Header
+        config={configWithFutureYear}
+        selectedYear={futureYear.toString()}
+        setSelectedYear={vi.fn()}
+        selectedSeason="Winter"
+        setSelectedSeason={vi.fn()}
+        selectedSite="all"
+        setSelectedSite={vi.fn()}
+        selectedStatus="all"
+        setSelectedStatus={vi.fn()}
+        searchQuery=""
+        setSearchQuery={vi.fn()}
+      />,
+    );
+
+    // Since selectedYear is in the future, Winter should be "冬 (予定)"
+    const label = screen.getByText(/冬 \(予定\)/);
+    expect(label).toBeInTheDocument();
+
+    const trigger = label.closest("button");
+    expect(trigger).toBeInTheDocument();
+
+    await user.click(trigger!);
+
+    // Verify other seasons also have (予定)
+    expect(await screen.findByText(/春 \(予定\)/)).toBeInTheDocument();
+    expect(screen.getByText("夏 (予定)")).toBeInTheDocument();
   });
 });
