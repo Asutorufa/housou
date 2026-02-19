@@ -1,10 +1,9 @@
 use crate::auth::{
     EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR, clear_oauth_action_cookie,
     clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
-    create_session_cookie, get_auth, get_base_url, get_db, verify_oauth_state,
+    create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
 use crate::db::{AppDatabase, Database, User};
-use cookie::Cookie;
 use serde::Deserialize;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
@@ -192,18 +191,7 @@ async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> R
 }
 
 fn get_oauth_action(req: &Request) -> Option<String> {
-    let cookies_header = req
-        .headers()
-        .get("Cookie")
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    for cookie in Cookie::split_parse(cookies_header).filter_map(Result::ok) {
-        if cookie.name() == "oauth_action" {
-            return Some(cookie.value().to_string());
-        }
-    }
-    None
+    get_cookie_values(req, "oauth_action").first().cloned()
 }
 
 pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> {
