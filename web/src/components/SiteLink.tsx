@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { cn } from "../utils/cn";
 import { isValidUrl } from "../utils/urlUtils";
 
@@ -27,11 +27,13 @@ export default function SiteLink({
 
   const [faviconSrc, setFaviconSrc] = useState(ddgUrl);
   const [hasError, setHasError] = useState(false);
+  const [prevDdgUrl, setPrevDdgUrl] = useState(ddgUrl);
 
-  useEffect(() => {
+  if (prevDdgUrl !== ddgUrl) {
+    setPrevDdgUrl(ddgUrl);
     setFaviconSrc(ddgUrl);
     setHasError(false);
-  }, [ddgUrl]);
+  }
 
   if (!url || !isValidUrl(url)) return null;
 

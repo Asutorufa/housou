@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import AttributionModal from "./components/AttributionModal";
 import DetailsModal from "./components/DetailsModal";
@@ -31,30 +31,23 @@ export default function App() {
   } | null>(null);
   const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
-  // Sync URL "anime" param to modal state
-  useEffect(() => {
-    const params = new URLSearchParams(search);
-    const animeTitle = params.get("anime");
+  // Sync URL "anime" param to modal state (comparison during render)
+  const params = new URLSearchParams(search);
+  const animeTitle = params.get("anime");
 
-    if (animeTitle) {
-      // If we have items and the modal isn't open or is open with wrong item
-      if (items.length > 0 && selectedAnime?.title !== animeTitle) {
-        const item = items.find((i) => i.title === animeTitle);
-        // Note: usage of 'items' might be raw items. We need to fetch metadata if not available?
-        // The modal handles fetching metadata internally if passed 'anime' object with title?
-        // Actually, onOpenModal usually passes (title, info).
-        // If we only have title from URL, we pass title and null info, layout should handle it.
-        if (item) {
-          setSelectedAnime({ title: animeTitle, info: null });
-        }
-      }
-    } else {
-      // URL has no anime, close modal if open
-      if (selectedAnime) {
-        setSelectedAnime(null);
+  if (animeTitle) {
+    if (items.length > 0 && selectedAnime?.title !== animeTitle) {
+      const item = items.find((i) => i.title === animeTitle);
+      if (item) {
+        // Use queueMicrotask to defer state update outside of render
+        queueMicrotask(() =>
+          setSelectedAnime({ title: animeTitle, info: null }),
+        );
       }
     }
-  }, [search, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  } else if (selectedAnime) {
+    queueMicrotask(() => setSelectedAnime(null));
+  }
 
   const handleOpenModal = (title: string, info: UnifiedMetadata | null) => {
     // Optimistically select locally

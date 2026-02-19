@@ -458,7 +458,7 @@ fn extract_alternative_titles(
 
     for t in titles {
         if let (Some(iso), Some(title)) = (t.iso_3166_1, t.title) {
-            tt.entry(iso).or_insert_with(Vec::new).push(title);
+            tt.entry(iso).or_default().push(title);
         }
     }
 
