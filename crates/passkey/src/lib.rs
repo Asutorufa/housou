@@ -11,6 +11,8 @@
 //!
 //! ## Example usage
 //!
+//! For a complete, runnable example using Axum and an in-memory store, see [`examples/basic.rs`](../examples/basic.rs).
+//!
 //! ```rust,no_run
 //! use passkey_server::{PasskeyConfig, PasskeyStore, start_registration, types::{StoredPasskey, PasskeyState}, error::Result};
 //! use async_trait::async_trait;

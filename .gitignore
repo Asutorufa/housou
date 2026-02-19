@@ -4,3 +4,4 @@
 .dev.vars
 .env
 /dist
+/build
