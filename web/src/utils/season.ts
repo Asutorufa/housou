@@ -27,11 +27,10 @@ export function getSeasonLabel(
     return baseLabel;
   }
 
-  if (yearNum > currentYear) {
-    return `${baseLabel} (予定)`;
-  }
-
-  if (yearNum === currentYear && seasonIndex > currentSeasonIndex) {
+  if (
+    yearNum > currentYear ||
+    (yearNum === currentYear && seasonIndex > currentSeasonIndex)
+  ) {
     return `${baseLabel} (予定)`;
   }
 
