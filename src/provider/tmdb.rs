@@ -426,9 +426,8 @@ fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<String>
 
 fn extract_videos(videos: Option<models::VideosList>) -> Vec<model::UniversalVideo> {
     videos
-        .and_then(|v| v.results)
-        .unwrap_or_default()
         .into_iter()
+        .flat_map(|v| v.results.unwrap_or_default())
         .map(|v| model::UniversalVideo {
             key: v.key,
             site: v.site,
