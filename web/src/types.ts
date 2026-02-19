@@ -124,6 +124,14 @@ export interface UniversalEpisode {
   runtime?: number;
 }
 
+export interface UniversalVideo {
+  key?: string;
+  site?: string;
+  name?: string;
+  type?: string;
+  size?: number;
+}
+
 export interface UnifiedMetadata {
   id: string;
   sourceSite?: string;
@@ -142,6 +150,7 @@ export interface UnifiedMetadata {
   currentSeason?: number;
   runtime?: number;
   contentRating?: string;
+  videos?: UniversalVideo[];
 }
 
 export interface Selections {

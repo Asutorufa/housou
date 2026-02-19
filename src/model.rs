@@ -180,6 +180,8 @@ pub struct UnifiedMetadata {
     pub current_season: Option<i32>,
     pub runtime: Option<i32>,
     pub content_rating: Option<String>,
+    #[serde(default)]
+    pub videos: Vec<UniversalVideo>,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -221,6 +223,17 @@ pub struct UniversalStaff {
     pub name: String,
     pub role: String,
     pub department: Option<String>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UniversalVideo {
+    pub key: Option<String>,
+    pub site: Option<String>,
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub type_field: Option<String>,
+    pub size: Option<i32>,
 }
 
 #[cfg(test)]

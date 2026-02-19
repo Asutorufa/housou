@@ -225,7 +225,7 @@ async fn get_movie_details(
 
     let movie = client
         .movies_api()
-        .get_movie_details(id, Some("ja-JP"), None, Some("release_dates,credits"))
+        .get_movie_details(id, Some("ja-JP"), None, Some("release_dates,credits,videos"))
         .await
         .map_err(|e| Error::RustError(format!("Failed to fetch movie details: {e}")))?;
 
@@ -246,11 +246,11 @@ async fn get_tv_details(
         .map_err(|_| Error::RustError("Invalid show ID format".into()))?;
 
     let tv_api = client.tv_api();
-    let show_fut = tv_api.get_tv_details(id, Some("ja-JP"), None, Some("content_ratings,credits"));
+    let show_fut = tv_api.get_tv_details(id, Some("ja-JP"), None, Some("content_ratings,credits,videos"));
 
     let seasons_api = client.tv_seasons_api();
     let season_fut =
-        seasons_api.get_tv_season_details(id, season_number, Some("ja-JP"), None, Some("credits"));
+        seasons_api.get_tv_season_details(id, season_number, Some("ja-JP"), None, Some("credits,videos"));
 
     let (show_res, season_res) = futures::join!(show_fut, season_fut);
 
@@ -281,6 +281,7 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
     let content_rating = extract_movie_content_rating(movie.release_dates, movie.adult);
     let average_score = movie.vote_average.map(|v| (v * 10.0) as i32);
     let description = movie.overview;
+    let videos = extract_videos(movie.videos);
 
     UnifiedMetadata {
         source: MetadataSource::Tmdb(format!("movie/{}", movie.id.unwrap_or(0))),
@@ -300,6 +301,7 @@ fn movie_to_unified(movie: models::MovieDetails) -> model::UnifiedMetadata {
         current_season: None,
         runtime: movie.runtime,
         content_rating,
+        videos,
     }
 }
 
@@ -340,6 +342,9 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
     // Content Ratings
     let content_rating = extract_tv_content_rating(show.content_ratings, show.adult);
 
+    let mut videos = extract_videos(show.videos);
+    videos.extend(extract_videos(season.videos));
+
     let is_finished =
         show.status.as_deref() == Some("Ended") || show.status.as_deref() == Some("Canceled");
 
@@ -377,6 +382,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         current_season: Some(season_num_val),
         runtime: final_runtime,
         content_rating,
+        videos,
     }
 }
 
@@ -400,6 +406,21 @@ fn extract_studios(companies: Option<Vec<models::CompanyObject>>) -> Vec<String>
         .unwrap_or_default()
         .into_iter()
         .filter_map(|s| s.name)
+        .collect()
+}
+
+fn extract_videos(videos: Option<models::VideosList>) -> Vec<model::UniversalVideo> {
+    videos
+        .and_then(|v| v.results)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|v| model::UniversalVideo {
+            key: v.key,
+            site: v.site,
+            name: v.name,
+            type_field: v._type.map(|t| format!("{:?}", t)),
+            size: v.size.map(|s| s as i32),
+        })
         .collect()
 }
 
