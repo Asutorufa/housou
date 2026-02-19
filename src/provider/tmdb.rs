@@ -1137,7 +1137,11 @@ mod tests_tv_transformation {
 
         assert_eq!(result.videos.len(), 3);
 
-        let keys: std::collections::HashSet<_> = result.videos.iter().filter_map(|v| v.key.as_deref()).collect();
+        let keys: std::collections::HashSet<_> = result
+            .videos
+            .iter()
+            .filter_map(|v| v.key.as_deref())
+            .collect();
         assert!(keys.contains("key1"));
         assert!(keys.contains("key2"));
         assert!(keys.contains("key3"));
