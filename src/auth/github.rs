@@ -1,7 +1,7 @@
 use crate::auth::{
     EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR, clear_oauth_action_cookie,
     clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
-    create_session_cookie, get_auth, get_base_url, get_db, verify_oauth_state, get_cookie_values,
+    create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
 use crate::db::{AppDatabase, Database, User};
 use serde::Deserialize;
