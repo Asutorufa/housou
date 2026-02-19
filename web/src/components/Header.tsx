@@ -237,7 +237,7 @@ export default function Header({
                 animate={{ width: "auto", opacity: 1, scale: 1 }}
                 exit={{ width: 0, opacity: 0, scale: 0.8 }}
                 transition={{ duration: 0.2 }}
-                className="pointer-events-auto relative shrink-0 overflow-hidden"
+                className="pointer-events-auto relative shrink-0"
               >
                 {loggedIn ? (
                   <UserMenu
