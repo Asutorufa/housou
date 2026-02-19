@@ -18,10 +18,10 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 # For native applications (Tokio, etc.)
-passkey-server = { path = "path/to/crates/passkey-server" }
+passkey-server = "0.1.0"
 
 # For Cloudflare Workers / WASM (non-Send)
-passkey-server = { path = "path/to/crates/passkey-server", default-features = false, features = ["wasm"] }
+passkey-server = { version = "0.1.0", default-features = false, features = ["wasm"] }
 ```
 
 
@@ -31,8 +31,8 @@ passkey-server = { path = "path/to/crates/passkey-server", default-features = fa
 
 ```rust
 use async_trait::async_trait;
-use passkey-server::{PasskeyStore, Result};
-use passkey-server::types::{StoredPasskey, PasskeyState};
+use passkey_server::{PasskeyStore, Result};
+use passkey_server::types::{StoredPasskey, PasskeyState};
 
 struct MyDb;
 
@@ -50,7 +50,7 @@ impl PasskeyStore for MyDb {
 ### 2. Registration Flow
 
 ```rust
-use passkey-server::{PasskeyConfig, start_registration};
+use passkey_server::{PasskeyConfig, start_registration};
 
 async fn handle_registration_start() {
     let config = PasskeyConfig {

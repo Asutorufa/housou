@@ -33,6 +33,7 @@ impl ConfigHelper {
             rp_id,
             rp_name: "Housou".to_string(),
             origin,
+            state_ttl: 300,
         }
     }
 }
@@ -50,7 +51,7 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
 
     let options = passkey_server::start_registration(
         &db,
-        user.id,
+        &user.id.to_string(),
         &user.username,
         &user.username, // display_name same as username for now
         &config,
@@ -72,7 +73,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
     let db = auth::get_db(&env)?;
     let now = Date::now().as_millis() as i64;
 
-    passkey_server::finish_registration(&db, user.id, &config, response, now)
+    passkey_server::finish_registration(&db, &user.id.to_string(), &config, response, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -97,9 +98,13 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
     let db = auth::get_db(&env)?;
     let now = Date::now().as_millis() as i64;
 
-    let user_id = passkey_server::finish_login(&db, &config, response, now)
+    let user_id_str = passkey_server::finish_login(&db, &config, response, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
+
+    let user_id = user_id_str
+        .parse::<i32>()
+        .map_err(|_| Error::RustError("Invalid user ID format".into()))?;
 
     // Fetch user to create session
     let user = db
@@ -139,7 +144,7 @@ pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
     use passkey_server::PasskeyStore;
 
     let passkeys = db
-        .list_passkeys(user.id)
+        .list_passkeys(user.id.to_string())
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -171,7 +176,7 @@ pub async fn handle_delete(req: Request, env: Env) -> Result<Response> {
         Some(cred_id) => {
             let db = auth::get_db(&env)?;
             use passkey_server::PasskeyStore;
-            db.delete_passkey(user.id, &cred_id)
+            db.delete_passkey(user.id.to_string(), &cred_id)
                 .await
                 .map_err(|e| Error::RustError(e.to_string()))?;
             Response::ok("Deleted")
@@ -204,7 +209,7 @@ pub async fn handle_rename(mut req: Request, env: Env) -> Result<Response> {
         .map_err(|e| Error::RustError(e.to_string()))?;
 
     match passkey {
-        Some(pk) if pk.user_id == user.id => {
+        Some(pk) if pk.user_id == user.id.to_string() => {
             db.update_passkey_name(&body.id, &body.name)
                 .await
                 .map_err(|e| Error::RustError(e.to_string()))?;

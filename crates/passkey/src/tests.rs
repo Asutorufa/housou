@@ -4,11 +4,11 @@ use crate::store::PasskeyStore;
 use crate::types::*;
 use async_trait::async_trait;
 use base64::prelude::*;
-use coset::{Algorithm, CborSerializable, CoseKey, KeyType, Label, iana};
-use p256::SecretKey;
+use coset::{iana, Algorithm, CborSerializable, CoseKey, KeyType, Label};
 use p256::ecdsa::signature::Signer;
 use p256::ecdsa::{SigningKey, VerifyingKey};
 use p256::elliptic_curve::rand_core::OsRng;
+use p256::SecretKey;
 
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ struct MockStore {
 impl PasskeyStore for MockStore {
     async fn create_passkey(
         &self,
-        user_id: i32,
+        user_id: String,
         cred_id: &str,
         public_key: &str,
         name: &str,
@@ -35,7 +35,7 @@ impl PasskeyStore for MockStore {
         created_at: i64,
     ) -> Result<()> {
         let pk = StoredPasskey {
-            user_id,
+            user_id: user_id.clone(),
             cred_id: cred_id.to_string(),
             public_key: public_key.to_string(),
             name: name.to_string(),
@@ -54,7 +54,7 @@ impl PasskeyStore for MockStore {
         Ok(self.passkeys.lock().unwrap().get(cred_id).cloned())
     }
 
-    async fn list_passkeys(&self, user_id: i32) -> Result<Vec<StoredPasskey>> {
+    async fn list_passkeys(&self, user_id: String) -> Result<Vec<StoredPasskey>> {
         Ok(self
             .passkeys
             .lock()
@@ -65,7 +65,7 @@ impl PasskeyStore for MockStore {
             .collect())
     }
 
-    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> Result<()> {
+    async fn delete_passkey(&self, user_id: String, cred_id: &str) -> Result<()> {
         let mut passkeys = self.passkeys.lock().unwrap();
         if let Some(pk) = passkeys.get(cred_id) {
             if pk.user_id == user_id {
@@ -202,7 +202,7 @@ fn make_attestation_object(auth_data: &[u8]) -> String {
 #[tokio::test]
 async fn test_registration_flow() {
     let store = MockStore::default();
-    let user_id = 123;
+    let user_id = "123";
     let username = "testuser";
     let display_name = "Test User";
     let origin = "https://example.com";
@@ -212,6 +212,7 @@ async fn test_registration_flow() {
         rp_id: rp_id.to_string(),
         rp_name: "Test RP".to_string(),
         origin: origin.to_string(),
+        state_ttl: 300,
     };
 
     let now = 1000000000;
@@ -278,7 +279,7 @@ async fn test_registration_flow() {
 #[tokio::test]
 async fn test_login_flow() {
     let store = MockStore::default();
-    let user_id = 456;
+    let user_id = "456";
     let cred_id_bytes = b"login_cred_id";
     let cred_id = BASE64_URL_SAFE_NO_PAD.encode(cred_id_bytes);
 
@@ -288,6 +289,7 @@ async fn test_login_flow() {
         rp_id: rp_id.to_string(),
         rp_name: "Login RP".to_string(),
         origin: origin.to_string(),
+        state_ttl: 300,
     };
     let now = 2000000000;
 
@@ -299,7 +301,14 @@ async fn test_login_flow() {
     let pub_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(&cose_key);
 
     store
-        .create_passkey(user_id, &cred_id, &pub_key_b64, "Login Key", 10, now - 1000)
+        .create_passkey(
+            user_id.to_string(),
+            &cred_id,
+            &pub_key_b64,
+            "Login Key",
+            10,
+            now - 1000,
+        )
         .await
         .unwrap();
 
@@ -363,6 +372,7 @@ async fn test_origin_mismatch() {
         rp_id: "rp.com".into(),
         rp_name: "RP".into(),
         origin: "https://rp.com".into(),
+        state_ttl: 300,
     };
 
     let now = 100;

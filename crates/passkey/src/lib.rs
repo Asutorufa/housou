@@ -11,8 +11,25 @@
 //!
 //! ## Example usage
 //!
-//! ```rust,ignore
-//! use passkey_server::{PasskeyConfig, PasskeyStore, start_registration};
+//! ```rust,no_run
+//! use passkey_server::{PasskeyConfig, PasskeyStore, start_registration, types::{StoredPasskey, PasskeyState}, error::Result};
+//! use async_trait::async_trait;
+//!
+//! // Example usage requires implementing the PasskeyStore trait
+//! struct MyDatabase;
+//!
+//! #[async_trait(?Send)]
+//! impl PasskeyStore for MyDatabase {
+//!     async fn create_passkey(&self, _: String, _: &str, _: &str, _: &str, _: i64, _: i64) -> Result<()> { Ok(()) }
+//!     async fn get_passkey(&self, _: &str) -> Result<Option<StoredPasskey>> { Ok(None) }
+//!     async fn list_passkeys(&self, _: String) -> Result<Vec<StoredPasskey>> { Ok(vec![]) }
+//!     async fn delete_passkey(&self, _: String, _: &str) -> Result<()> { Ok(()) }
+//!     async fn update_passkey_counter(&self, _: &str, _: i64, _: i64) -> Result<()> { Ok(()) }
+//!     async fn update_passkey_name(&self, _: &str, _: &str) -> Result<()> { Ok(()) }
+//!     async fn save_state(&self, _: &str, _: &str, _: i64) -> Result<()> { Ok(()) }
+//!     async fn get_state(&self, _: &str) -> Result<Option<PasskeyState>> { Ok(None) }
+//!     async fn delete_state(&self, _: &str) -> Result<()> { Ok(()) }
+//! }
 //!
 //! #[tokio::main]
 //! async fn main() {
@@ -20,11 +37,11 @@
 //!         rp_id: "example.com".to_string(),
 //!         rp_name: "My App".to_string(),
 //!         origin: "https://example.com".to_string(),
+//!         state_ttl: 300,
 //!     };
 //!
-//!     // Your implementation of PasskeyStore
-//!     let store = MyDatabase::new();
-//!     let user_id = 123;
+//!     let store = MyDatabase;
+//!     let user_id = "123";
 //!     let now_ms = 1708358400000;
 //!
 //!     // 1. Start registration

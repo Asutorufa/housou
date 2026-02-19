@@ -1,16 +1,16 @@
 use async_trait::async_trait;
 use axum::{
-    Json, Router,
     extract::State,
     routing::{get, post},
+    Json, Router,
 };
 use passkey_server::types::{
     LoginResponse, PasskeyState, PublicKeyCredentialCreationOptions,
     PublicKeyCredentialRequestOptions, RegistrationResponse, StoredPasskey,
 };
 use passkey_server::{
-    PasskeyConfig, PasskeyStore, Result as PasskeyResult, finish_login, finish_registration,
-    start_login, start_registration,
+    finish_login, finish_registration, start_login, start_registration, PasskeyConfig,
+    PasskeyStore, Result as PasskeyResult,
 };
 
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ struct MemoryStore {
 impl PasskeyStore for MemoryStore {
     async fn create_passkey(
         &self,
-        user_id: i32,
+        user_id: String,
         cred_id: &str,
         public_key: &str,
         name: &str,
@@ -37,7 +37,7 @@ impl PasskeyStore for MemoryStore {
         created_at: i64,
     ) -> PasskeyResult<()> {
         let pk = StoredPasskey {
-            user_id,
+            user_id: user_id.clone(),
             cred_id: cred_id.to_string(),
             public_key: public_key.to_string(),
             name: name.to_string(),
@@ -56,7 +56,7 @@ impl PasskeyStore for MemoryStore {
         Ok(self.passkeys.lock().unwrap().get(cred_id).cloned())
     }
 
-    async fn list_passkeys(&self, user_id: i32) -> PasskeyResult<Vec<StoredPasskey>> {
+    async fn list_passkeys(&self, user_id: String) -> PasskeyResult<Vec<StoredPasskey>> {
         let pks = self.passkeys.lock().unwrap();
         Ok(pks
             .values()
@@ -65,7 +65,7 @@ impl PasskeyStore for MemoryStore {
             .collect())
     }
 
-    async fn delete_passkey(&self, _user_id: i32, cred_id: &str) -> PasskeyResult<()> {
+    async fn delete_passkey(&self, _user_id: String, cred_id: &str) -> PasskeyResult<()> {
         self.passkeys.lock().unwrap().remove(cred_id);
         Ok(())
     }
@@ -127,7 +127,7 @@ fn now_ms() -> i64 {
 async fn register_start(
     State(state): State<Arc<AppState>>,
 ) -> Json<PublicKeyCredentialCreationOptions> {
-    let user_id = 1; // In real app, get from session
+    let user_id = "1"; // In real app, get from session
     let options = start_registration(
         &state.store,
         user_id,
@@ -145,7 +145,7 @@ async fn register_finish(
     State(state): State<Arc<AppState>>,
     Json(response): Json<RegistrationResponse>,
 ) -> &'static str {
-    let user_id = 1;
+    let user_id = "1";
     finish_registration(&state.store, user_id, &state.config, response, now_ms())
         .await
         .unwrap();
@@ -182,6 +182,7 @@ async fn main() {
             rp_id: "localhost".to_string(),
             rp_name: "Example Service".to_string(),
             origin: "http://localhost:3000".to_string(),
+            state_ttl: 300,
         },
     });
 

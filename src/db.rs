@@ -494,7 +494,7 @@ struct PasskeyRow {
 impl From<PasskeyRow> for StoredPasskey {
     fn from(r: PasskeyRow) -> Self {
         Self {
-            user_id: r.user_id,
+            user_id: r.user_id.to_string(),
             cred_id: r.cred_id,
             public_key: r.passkey_json,
             name: r.name,
@@ -514,18 +514,21 @@ fn db_err(e: impl std::fmt::Display) -> PasskeyError {
 impl PasskeyStore for AppDatabase {
     async fn create_passkey(
         &self,
-        user_id: i32,
+        user_id: String,
         cred_id: &str,
         public_key: &str,
         name: &str,
         counter: i64,
         created_at: i64,
     ) -> passkey_server::error::Result<()> {
+        let user_id_int = user_id
+            .parse::<i32>()
+            .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
         let query = "INSERT INTO passkeys (user_id, cred_id, passkey_json, name, created_at, last_used_at, counter) VALUES (?, ?, ?, ?, ?, ?, ?)";
         self.db
             .prepare(query)
             .bind(&[
-                JsValue::from_f64(user_id as f64),
+                JsValue::from_f64(user_id_int as f64),
                 JsValue::from_str(cred_id),
                 JsValue::from_str(public_key),
                 JsValue::from_str(name),
@@ -558,13 +561,16 @@ impl PasskeyStore for AppDatabase {
 
     async fn list_passkeys(
         &self,
-        user_id: i32,
+        user_id: String,
     ) -> passkey_server::error::Result<Vec<StoredPasskey>> {
+        let user_id_int = user_id
+            .parse::<i32>()
+            .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
         let query = "SELECT * FROM passkeys WHERE user_id = ?";
         let results = self
             .db
             .prepare(query)
-            .bind(&[JsValue::from_f64(user_id as f64)])
+            .bind(&[JsValue::from_f64(user_id_int as f64)])
             .map_err(db_err)?
             .all()
             .await
@@ -575,14 +581,17 @@ impl PasskeyStore for AppDatabase {
 
     async fn delete_passkey(
         &self,
-        user_id: i32,
+        user_id: String,
         cred_id: &str,
     ) -> passkey_server::error::Result<()> {
+        let user_id_int = user_id
+            .parse::<i32>()
+            .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
         let query = "DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?";
         self.db
             .prepare(query)
             .bind(&[
-                JsValue::from_f64(user_id as f64),
+                JsValue::from_f64(user_id_int as f64),
                 JsValue::from_str(cred_id),
             ])
             .map_err(db_err)?

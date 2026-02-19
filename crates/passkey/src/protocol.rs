@@ -4,23 +4,22 @@ use crate::types::*;
 use base64::prelude::*;
 use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
-use p256::EncodedPoint;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
+use p256::EncodedPoint;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 // Constants
 const CHALLENGE_LEN: usize = 32;
-const STATE_TTL_SECONDS: i64 = 60 * 5;
 
 // Internal helpers
 
 #[derive(Serialize, Deserialize)]
 struct RegState {
     challenge: String,
-    user_id: i32,
+    user_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -174,16 +173,16 @@ fn verify_p256_signature(
 /// It also saves the registration session state to the provided `store`.
 pub async fn start_registration<S: PasskeyStore + ?Sized>(
     store: &S,
-    user_id: i32,
+    user_id: &str,
     username: &str,
     display_name: &str,
     config: &PasskeyConfig,
     now_ms: i64,
 ) -> Result<PublicKeyCredentialCreationOptions> {
     let challenge = generate_challenge()?;
-    let user_handle = BASE64_URL_SAFE_NO_PAD.encode(user_id.to_string().as_bytes());
+    let user_handle = BASE64_URL_SAFE_NO_PAD.encode(user_id.as_bytes());
 
-    let existing = store.list_passkeys(user_id).await?;
+    let existing = store.list_passkeys(user_id.to_string()).await?;
     let exclude_credentials = if existing.is_empty() {
         None
     } else {
@@ -226,9 +225,12 @@ pub async fn start_registration<S: PasskeyStore + ?Sized>(
     };
 
     // Persist challenge state
-    let state = RegState { challenge, user_id };
+    let state = RegState {
+        challenge,
+        user_id: user_id.to_string(),
+    };
     let state_id = format!("reg:{}", user_id);
-    let expires_at = now_ms + (STATE_TTL_SECONDS * 1000);
+    let expires_at = now_ms + (config.state_ttl * 1000);
     store
         .save_state(&state_id, &serde_json::to_string(&state)?, expires_at)
         .await?;
@@ -242,7 +244,7 @@ pub async fn start_registration<S: PasskeyStore + ?Sized>(
 /// On success, a new [`StoredPasskey`](crate::types::StoredPasskey) is created via the `store`.
 pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     store: &S,
-    user_id: i32,
+    user_id: &str,
     config: &PasskeyConfig,
     response: RegistrationResponse,
     now_ms: i64,
@@ -331,7 +333,7 @@ pub async fn finish_registration<S: PasskeyStore + ?Sized>(
 
     store
         .create_passkey(
-            user_id,
+            user_id.to_string(),
             &cred_id_b64,
             &pub_key_b64,
             &passkey_name,
@@ -365,7 +367,7 @@ pub async fn start_login<S: PasskeyStore + ?Sized>(
 
     let state = LoginState { challenge };
     let state_id = format!("login:{}", options.challenge);
-    let expires_at = now_ms + (STATE_TTL_SECONDS * 1000);
+    let expires_at = now_ms + (config.state_ttl * 1000);
     store
         .save_state(&state_id, &serde_json::to_string(&state)?, expires_at)
         .await?;
@@ -382,7 +384,7 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
     config: &PasskeyConfig,
     response: LoginResponse,
     now_ms: i64,
-) -> Result<i32> {
+) -> Result<String> {
     // 1. Parse clientDataJSON to retrieve the challenge for state lookup
     let client_data_bytes = BASE64_URL_SAFE_NO_PAD.decode(&response.response.client_data_json)?;
     let client_data_peek: ClientData = serde_json::from_slice(&client_data_bytes)?;
@@ -420,7 +422,7 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
         let uh_bytes = BASE64_URL_SAFE_NO_PAD.decode(uh_b64)?;
         let uid_str = String::from_utf8(uh_bytes)
             .map_err(|_| PasskeyError::InternalError("Invalid userHandle utf8".into()))?;
-        if uid_str != passkey.user_id.to_string() {
+        if uid_str != passkey.user_id {
             return Err(PasskeyError::UserHandleMismatch);
         }
     }

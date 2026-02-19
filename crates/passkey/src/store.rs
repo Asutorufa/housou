@@ -19,7 +19,7 @@ pub trait PasskeyStore {
     /// - `created_at`: Creation timestamp in milliseconds.
     async fn create_passkey(
         &self,
-        user_id: i32,
+        user_id: String,
         cred_id: &str,
         public_key: &str,
         name: &str,
@@ -31,10 +31,10 @@ pub trait PasskeyStore {
     async fn get_passkey(&self, cred_id: &str) -> Result<Option<StoredPasskey>>;
 
     /// List all passkeys associated with a specific user.
-    async fn list_passkeys(&self, user_id: i32) -> Result<Vec<StoredPasskey>>;
+    async fn list_passkeys(&self, user_id: String) -> Result<Vec<StoredPasskey>>;
 
     /// Delete a passkey. Implementations should verify that `user_id` owns the `cred_id`.
-    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> Result<()>;
+    async fn delete_passkey(&self, user_id: String, cred_id: &str) -> Result<()>;
 
     /// Update the signature counter and last-used timestamp after a successful login.
     async fn update_passkey_counter(

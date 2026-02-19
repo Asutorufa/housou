@@ -1,7 +1,12 @@
 [package]
 name = "passkey-server"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "A generic, storage-agnostic Passkey (WebAuthn) server implementation."
+repository = "https://github.com/Asutorufa/housou/tree/master/crates/passkey"
+license = "MIT"
+keywords = ["passkey", "webauthn", "fido2", "authentication", "wasm"]
+categories = ["authentication", "web-programming", "wasm"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

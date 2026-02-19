@@ -5,11 +5,12 @@ pub struct PasskeyConfig {
     pub rp_id: String,
     pub rp_name: String,
     pub origin: String,
+    pub state_ttl: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StoredPasskey {
-    pub user_id: i32,
+    pub user_id: String,
     pub cred_id: String,
     pub public_key: String, // Base64url-encoded COSE key
     pub name: String,
