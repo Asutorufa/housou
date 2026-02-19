@@ -8,7 +8,7 @@ A storage-agnostic Rust implementation of the WebAuthn (Passkey) protocol.
 - **WASM Compatible**: Optimized for WASM environments like Cloudflare Workers (use `wasm` feature).
 - **Native Support**: Fully compatible with multi-threaded runtimes like Tokio (enabled by default).
 - **Easy Integration**: Provides high-level handlers for registration and authentication.
-- **Full Example**: See `examples/basic.rs` for a complete Axum-based HTTP server implementation.
+- **Full Example**: See [`examples/basic.rs`](examples/basic.rs) for a complete Axum-based HTTP server implementation.
 
 ## Installation
 
@@ -18,10 +18,10 @@ Add this to your `Cargo.toml`:
 ```toml
 [dependencies]
 # For native applications (Tokio, etc.)
-passkey-server = "0.1.0"
+passkey-server = "0.1.2"
 
 # For Cloudflare Workers / WASM (non-Send)
-passkey-server = { version = "0.1.0", default-features = false, features = ["wasm"] }
+passkey-server = { version = "0.1.2", default-features = false, features = ["wasm"] }
 ```
 
 
@@ -38,7 +38,7 @@ struct MyDb;
 
 #[async_trait(?Send)]
 impl PasskeyStore for MyDb {
-    async fn create_passkey(&self, user_id: i32, cred_id: &str, public_key: &str, name: &str, counter: i64, created_at: i64) -> Result<()> {
+    async fn create_passkey(&self, user_id: String, cred_id: &str, public_key: &str, name: &str, counter: i64, created_at: i64) -> Result<()> {
 
         // Save to DB
         Ok(())
@@ -57,11 +57,12 @@ async fn handle_registration_start() {
         rp_id: "localhost".into(),
         rp_name: "Housou".into(),
         origin: "http://localhost:8787".into(),
+        state_ttl: 300,
     };
     let store = MyDb;
     let now = 1708358400000;
 
-    let options = start_registration(&store, 1, "alice", "Alice", &config, now).await.unwrap();
+    let options = start_registration(&store, "1".to_string(), "alice", "Alice", &config, now).await.unwrap();
     // Return options to frontend
 }
 ```
