@@ -21,6 +21,8 @@ describe("getSeasonOptions", () => {
 
     expect(options.find((o) => o.value === "Winter")?.label).toBe("冬 (予定)");
     expect(options.find((o) => o.value === "Spring")?.label).toBe("春 (予定)");
+    expect(options.find((o) => o.value === "Summer")?.label).toBe("夏 (予定)");
+    expect(options.find((o) => o.value === "Autumn")?.label).toBe("秋 (予定)");
   });
 
   it("marks no seasons as future in past year", () => {
@@ -30,10 +32,15 @@ describe("getSeasonOptions", () => {
 
     expect(options.find((o) => o.value === "Winter")?.label).toBe("冬");
     expect(options.find((o) => o.value === "Spring")?.label).toBe("春");
+    expect(options.find((o) => o.value === "Summer")?.label).toBe("夏");
+    expect(options.find((o) => o.value === "Autumn")?.label).toBe("秋");
   });
 
   it("handles invalid year string gracefully", () => {
     const options = getSeasonOptions("invalid", 2024, 2);
     expect(options.find((o) => o.value === "Winter")?.label).toBe("冬");
+    expect(options.find((o) => o.value === "Spring")?.label).toBe("春");
+    expect(options.find((o) => o.value === "Summer")?.label).toBe("夏");
+    expect(options.find((o) => o.value === "Autumn")?.label).toBe("秋");
   });
 });
