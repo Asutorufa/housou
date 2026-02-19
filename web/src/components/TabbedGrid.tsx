@@ -1,5 +1,7 @@
+import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
+import { twMerge } from "tailwind-merge";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import AnimeCard from "./AnimeCard";
 
@@ -13,6 +15,10 @@ const WEEKDAY_DATA = [
   { id: "6", label: "土", fullLabel: "土曜日" },
   { id: "7", label: "他", fullLabel: "その他" },
 ];
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 interface TabbedGridProps {
   items: DisplayAnimeItem[];
@@ -93,11 +99,12 @@ export default function TabbedGrid({
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
-                className={`relative z-10 flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors ${
+                className={cn(
+                  "relative z-10 flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors",
                   isActive
                     ? "text-white dark:text-slate-900"
-                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                }`}
+                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200",
+                )}
               >
                 {isActive && (
                   <motion.div

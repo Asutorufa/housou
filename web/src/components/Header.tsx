@@ -15,6 +15,9 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const filterSelectTriggerClassName =
+  "min-w-[80px] sm:min-w-[90px] max-w-[120px]";
+
 interface HeaderProps {
   config: Config | null;
   selectedYear: string;
@@ -94,7 +97,7 @@ export default function Header({
                   placeholder="年"
                   isOpen={activeDropdown === "year"}
                   onOpenChange={(open) => handleDropdownChange("year", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
+                  triggerClassName={filterSelectTriggerClassName}
                   contentClassName="z-[60]"
                 />
 
@@ -114,7 +117,7 @@ export default function Header({
                   placeholder="シーズン"
                   isOpen={activeDropdown === "season"}
                   onOpenChange={(open) => handleDropdownChange("season", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
+                  triggerClassName={filterSelectTriggerClassName}
                   contentClassName="z-[60]"
                 />
 
@@ -128,7 +131,7 @@ export default function Header({
                   placeholder="サイト"
                   isOpen={activeDropdown === "site"}
                   onOpenChange={(open) => handleDropdownChange("site", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
+                  triggerClassName={filterSelectTriggerClassName}
                   contentClassName="z-[60]"
                 />
 
@@ -153,7 +156,7 @@ export default function Header({
                       onOpenChange={(open) =>
                         handleDropdownChange("status", open)
                       }
-                      triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
+                      triggerClassName={filterSelectTriggerClassName}
                       contentClassName="z-[60]"
                     />
                   </>
