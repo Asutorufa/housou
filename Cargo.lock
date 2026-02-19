@@ -1305,7 +1305,7 @@ dependencies = [
  "coset",
  "getrandom 0.4.1",
  "p256",
- "rand_core 0.6.4",
+ "rand_core 0.10.0",
  "serde",
  "serde_json",
  "sha2",

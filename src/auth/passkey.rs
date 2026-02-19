@@ -118,6 +118,15 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
         .add_header("Set-Cookie", &auth::create_session_cookie(&token, secure))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PasskeySummary {
+    id: String,
+    name: String,
+    created_at: i64,
+    last_used_at: i64,
+}
+
 pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
     let (user, _) = match auth::get_auth(&req, &env).await? {
         Some(u) => u,
@@ -133,15 +142,6 @@ pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
         .list_passkeys(user.id)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
-
-    #[derive(serde::Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct PasskeySummary {
-        id: String,
-        name: String,
-        created_at: i64,
-        last_used_at: i64,
-    }
 
     let summary: Vec<PasskeySummary> = passkeys
         .into_iter()

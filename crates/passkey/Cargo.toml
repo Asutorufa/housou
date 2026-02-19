@@ -14,8 +14,11 @@ p256 = { version = "0.13", features = ["ecdsa", "std"] }
 sha2 = "0.10"
 uuid = { version = "1.8", features = ["v4", "serde"] }
 thiserror = "1.0"
-getrandom = { version = "0.4", features = ["wasm_js"] } # keeping consistent with root for WASM target
-rand_core = "0.6" # Note: root uses 0.10? Let me check again.
+getrandom = { version = "0.4", features = [
+    "wasm_js",
+] } # keeping consistent with root for WASM target
+rand_core = "0.10"
+
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full"] }

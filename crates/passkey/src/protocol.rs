@@ -267,21 +267,20 @@ pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     let att_obj: Value = ciborium::from_reader(att_bytes.as_slice())
         .map_err(|e| PasskeyError::InternalError(format!("Invalid attestationObject CBOR: {e}")))?;
 
-    let auth_data_bytes = match &att_obj {
-        Value::Map(m) => m
-            .iter()
-            .find(|(k, _)| k.as_text().is_some_and(|s| s == "authData"))
-            .map(|(_, v)| {
-                v.as_bytes()
-                    .ok_or(PasskeyError::InternalError("authData not bytes".into()))
-            })
-            .unwrap_or(Err(PasskeyError::InternalError("authData missing".into())))?,
-        _ => {
-            return Err(PasskeyError::InternalError(
-                "Invalid attestation object structure".into(),
-            ));
-        }
+    let Value::Map(m) = &att_obj else {
+        return Err(PasskeyError::InternalError(
+            "Invalid attestation object structure".into(),
+        ));
     };
+
+    let (_, auth_data_value) = m
+        .iter()
+        .find(|(k, _)| k.as_text().is_some_and(|s| s == "authData"))
+        .ok_or_else(|| PasskeyError::InternalError("authData missing".into()))?;
+
+    let auth_data_bytes = auth_data_value
+        .as_bytes()
+        .ok_or_else(|| PasskeyError::InternalError("authData not bytes".into()))?;
 
     // 4. Verify authData
     let auth_data = parse_auth_data(auth_data_bytes)?;

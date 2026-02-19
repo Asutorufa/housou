@@ -8,7 +8,8 @@ use coset::{Algorithm, CborSerializable, CoseKey, KeyType, Label, iana};
 use p256::SecretKey;
 use p256::ecdsa::signature::Signer;
 use p256::ecdsa::{SigningKey, VerifyingKey};
-use rand_core::OsRng;
+use p256::elliptic_curve::rand_core::OsRng;
+
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -63,8 +64,13 @@ impl PasskeyStore for MockStore {
             .collect())
     }
 
-    async fn delete_passkey(&self, _user_id: i32, cred_id: &str) -> Result<()> {
-        self.passkeys.lock().unwrap().remove(cred_id);
+    async fn delete_passkey(&self, user_id: i32, cred_id: &str) -> Result<()> {
+        let mut passkeys = self.passkeys.lock().unwrap();
+        if let Some(pk) = passkeys.get(cred_id) {
+            if pk.user_id == user_id {
+                passkeys.remove(cred_id);
+            }
+        }
         Ok(())
     }
 

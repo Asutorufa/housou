@@ -504,6 +504,10 @@ impl From<PasskeyRow> for StoredPasskey {
     }
 }
 
+fn db_err(e: impl std::fmt::Display) -> PasskeyError {
+    PasskeyError::DatabaseError(e.to_string())
+}
+
 #[async_trait(?Send)]
 impl PasskeyStore for AppDatabase {
     async fn create_passkey(
@@ -527,10 +531,10 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_f64(created_at as f64),
                 JsValue::from_f64(counter as f64),
             ])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .run()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -540,10 +544,10 @@ impl PasskeyStore for AppDatabase {
             .db
             .prepare(query)
             .bind(&[JsValue::from_str(cred_id)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .first(None)
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(row.map(Into::into))
     }
 
@@ -553,13 +557,11 @@ impl PasskeyStore for AppDatabase {
             .db
             .prepare(query)
             .bind(&[JsValue::from_f64(user_id as f64)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .all()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
-        let rows: Vec<PasskeyRow> = results
-            .results()
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
+        let rows: Vec<PasskeyRow> = results.results().map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
@@ -571,10 +573,10 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_f64(user_id as f64),
                 JsValue::from_str(cred_id),
             ])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .run()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -592,10 +594,10 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_f64(last_used_at as f64),
                 JsValue::from_str(cred_id),
             ])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .run()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -608,10 +610,10 @@ impl PasskeyStore for AppDatabase {
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(new_name), JsValue::from_str(cred_id)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .run()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -627,7 +629,7 @@ impl PasskeyStore for AppDatabase {
             .db
             .prepare("DELETE FROM passkey_states WHERE expires_at < ?")
             .bind(&[JsValue::from_f64(now as f64)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
 
         let insert_stmt = self
             .db
@@ -637,12 +639,12 @@ impl PasskeyStore for AppDatabase {
                 JsValue::from_str(state_json),
                 JsValue::from_f64(expires_at as f64),
             ])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
 
         self.db
             .batch(vec![cleanup_stmt, insert_stmt])
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 
@@ -652,10 +654,10 @@ impl PasskeyStore for AppDatabase {
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .first(None)
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))
+            .map_err(db_err)
     }
 
     async fn delete_state(&self, id: &str) -> passkey::error::Result<()> {
@@ -663,10 +665,10 @@ impl PasskeyStore for AppDatabase {
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(id)])
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?
+            .map_err(db_err)?
             .run()
             .await
-            .map_err(|e| PasskeyError::DatabaseError(e.to_string()))?;
+            .map_err(db_err)?;
         Ok(())
     }
 }
