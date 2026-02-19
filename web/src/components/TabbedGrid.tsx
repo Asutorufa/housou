@@ -1,7 +1,7 @@
-import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { twMerge } from "tailwind-merge";
+import { cn } from "../utils/cn";
+
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import AnimeCard from "./AnimeCard";
 
@@ -15,10 +15,6 @@ const WEEKDAY_DATA = [
   { id: "6", label: "土", fullLabel: "土曜日" },
   { id: "7", label: "他", fullLabel: "その他" },
 ];
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 interface TabbedGridProps {
   items: DisplayAnimeItem[];
