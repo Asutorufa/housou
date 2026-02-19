@@ -4,14 +4,14 @@ use crate::store::PasskeyStore;
 use crate::types::*;
 use async_trait::async_trait;
 use base64::prelude::*;
-use coset::{CborSerializable, CoseKey, KeyType, Label, Algorithm, iana};
-use p256::ecdsa::{SigningKey, VerifyingKey};
+use coset::{Algorithm, CborSerializable, CoseKey, KeyType, Label, iana};
 use p256::SecretKey;
+use p256::ecdsa::signature::Signer;
+use p256::ecdsa::{SigningKey, VerifyingKey};
+use rand_core::OsRng;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use rand_core::OsRng;
-use p256::ecdsa::signature::Signer;
 
 // --- Mock Store ---
 
@@ -41,7 +41,10 @@ impl PasskeyStore for MockStore {
             last_used_at: created_at,
             counter,
         };
-        self.passkeys.lock().unwrap().insert(cred_id.to_string(), pk);
+        self.passkeys
+            .lock()
+            .unwrap()
+            .insert(cred_id.to_string(), pk);
         Ok(())
     }
 
@@ -213,7 +216,11 @@ async fn test_registration_flow() {
 
     // Verify state
     let state_id = format!("reg:{}", user_id);
-    let saved_state = store.get_state(&state_id).await.unwrap().expect("State not saved");
+    let saved_state = store
+        .get_state(&state_id)
+        .await
+        .unwrap()
+        .expect("State not saved");
     assert!(saved_state.expires_at > now);
 
     // 2. Prepare Client Response
@@ -250,7 +257,8 @@ async fn test_registration_flow() {
         .expect("Finish registration failed");
 
     // Verify stored credential
-    let stored = store.get_passkey(&BASE64_URL_SAFE_NO_PAD.encode(cred_id))
+    let stored = store
+        .get_passkey(&BASE64_URL_SAFE_NO_PAD.encode(cred_id))
         .await
         .unwrap()
         .expect("Passkey not stored");
@@ -283,7 +291,8 @@ async fn test_login_flow() {
     let cose_key = make_cose_key(&public_key);
     let pub_key_b64 = BASE64_URL_SAFE_NO_PAD.encode(&cose_key);
 
-    store.create_passkey(user_id, &cred_id, &pub_key_b64, "Login Key", 10, now - 1000)
+    store
+        .create_passkey(user_id, &cred_id, &pub_key_b64, "Login Key", 10, now - 1000)
         .await
         .unwrap();
 
@@ -296,7 +305,9 @@ async fn test_login_flow() {
 
     // 2. Prepare Client Response
     let client_data_json_b64 = make_client_data(&challenge, origin, "webauthn.get");
-    let client_data_bytes = BASE64_URL_SAFE_NO_PAD.decode(&client_data_json_b64).unwrap();
+    let client_data_bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(&client_data_json_b64)
+        .unwrap();
 
     // Auth Data (flags: UP=1) -> 0x01. Counter = 11 (must be > 10)
     let auth_data = make_auth_data(rp_id, 0x01, 11, None, None);
@@ -351,7 +362,8 @@ async fn test_origin_mismatch() {
     let options = start_login(&store, &config, now).await.unwrap();
 
     // Use wrong origin
-    let client_data_json_b64 = make_client_data(&options.challenge, "https://attacker.com", "webauthn.get");
+    let client_data_json_b64 =
+        make_client_data(&options.challenge, "https://attacker.com", "webauthn.get");
 
     let response = LoginResponse {
         id: "any".into(),

@@ -599,7 +599,11 @@ impl PasskeyStore for AppDatabase {
         Ok(())
     }
 
-    async fn update_passkey_name(&self, cred_id: &str, new_name: &str) -> passkey::error::Result<()> {
+    async fn update_passkey_name(
+        &self,
+        cred_id: &str,
+        new_name: &str,
+    ) -> passkey::error::Result<()> {
         let query = "UPDATE passkeys SET name = ? WHERE cred_id = ?";
         self.db
             .prepare(query)
@@ -611,7 +615,12 @@ impl PasskeyStore for AppDatabase {
         Ok(())
     }
 
-    async fn save_state(&self, id: &str, state_json: &str, expires_at: i64) -> passkey::error::Result<()> {
+    async fn save_state(
+        &self,
+        id: &str,
+        state_json: &str,
+        expires_at: i64,
+    ) -> passkey::error::Result<()> {
         let now = Date::now().as_millis() as i64;
 
         let cleanup_stmt = self

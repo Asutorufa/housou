@@ -54,8 +54,10 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
         &user.username,
         &user.username, // display_name same as username for now
         &config,
-        now
-    ).await.map_err(|e| Error::RustError(e.to_string()))?;
+        now,
+    )
+    .await
+    .map_err(|e| Error::RustError(e.to_string()))?;
 
     Response::from_json(&options)
 }
@@ -100,7 +102,9 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
         .map_err(|e| Error::RustError(e.to_string()))?;
 
     // Fetch user to create session
-    let user = db.get_user_by_id(user_id).await?
+    let user = db
+        .get_user_by_id(user_id)
+        .await?
         .ok_or_else(|| Error::RustError("User not found".into()))?;
 
     // Create session
@@ -125,7 +129,8 @@ pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
     // We want to return PasskeySummary
     use passkey::PasskeyStore;
 
-    let passkeys = db.list_passkeys(user.id)
+    let passkeys = db
+        .list_passkeys(user.id)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -138,12 +143,15 @@ pub async fn handle_list(req: Request, env: Env) -> Result<Response> {
         last_used_at: i64,
     }
 
-    let summary: Vec<PasskeySummary> = passkeys.into_iter().map(|pk| PasskeySummary {
-        id: pk.cred_id,
-        name: pk.name,
-        created_at: pk.created_at,
-        last_used_at: pk.last_used_at,
-    }).collect();
+    let summary: Vec<PasskeySummary> = passkeys
+        .into_iter()
+        .map(|pk| PasskeySummary {
+            id: pk.cred_id,
+            name: pk.name,
+            created_at: pk.created_at,
+            last_used_at: pk.last_used_at,
+        })
+        .collect();
 
     Response::from_json(&summary)
 }
@@ -190,7 +198,8 @@ pub async fn handle_rename(mut req: Request, env: Env) -> Result<Response> {
 
     // Verify ownership and existence
     // PasskeyStore trait: get_passkey returns Result<Option<StoredPasskey>>
-    let passkey = db.get_passkey(&body.id)
+    let passkey = db
+        .get_passkey(&body.id)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 

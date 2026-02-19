@@ -1,6 +1,6 @@
-use async_trait::async_trait;
-use crate::types::{StoredPasskey, PasskeyState};
 use crate::error::Result;
+use crate::types::{PasskeyState, StoredPasskey};
+use async_trait::async_trait;
 
 #[async_trait(?Send)]
 pub trait PasskeyStore {

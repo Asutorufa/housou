@@ -1,13 +1,13 @@
 use crate::error::{PasskeyError, Result};
 use crate::store::PasskeyStore;
 use crate::types::*;
-use serde::{Deserialize, Serialize};
 use base64::prelude::*;
 use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
+use p256::EncodedPoint;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
-use p256::EncodedPoint;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -45,8 +45,9 @@ struct AuthData {
 
 fn generate_challenge() -> Result<String> {
     let mut buf = [0u8; CHALLENGE_LEN];
-    getrandom::fill(&mut buf)
-        .map_err(|e| PasskeyError::InternalError(format!("Failed to generate random challenge: {e}")))?;
+    getrandom::fill(&mut buf).map_err(|e| {
+        PasskeyError::InternalError(format!("Failed to generate random challenge: {e}"))
+    })?;
     Ok(BASE64_URL_SAFE_NO_PAD.encode(buf))
 }
 
@@ -56,8 +57,7 @@ fn verify_client_data(
     config: &PasskeyConfig,
     expected_type: &str,
 ) -> Result<(ClientData, Vec<u8>)> {
-    let bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(client_data_b64)?;
+    let bytes = BASE64_URL_SAFE_NO_PAD.decode(client_data_b64)?;
     let data: ClientData = serde_json::from_slice(&bytes)?;
 
     if data.challenge != expected_challenge {
@@ -112,11 +112,15 @@ fn verify_user_present(flags: u8) -> Result<()> {
 
 fn extract_credential(data: &[u8]) -> Result<(&[u8], &[u8])> {
     if data.len() < 18 {
-        return Err(PasskeyError::InternalError("Credential Data too short".into()));
+        return Err(PasskeyError::InternalError(
+            "Credential Data too short".into(),
+        ));
     }
     let cred_id_len = u16::from_be_bytes(data[16..18].try_into().unwrap()) as usize;
     if data.len() < 18 + cred_id_len {
-        return Err(PasskeyError::InternalError("Credential ID incomplete".into()));
+        return Err(PasskeyError::InternalError(
+            "Credential ID incomplete".into(),
+        ));
     }
     let cred_id = &data[18..18 + cred_id_len];
     let pub_key_cbor = &data[18 + cred_id_len..];
@@ -141,7 +145,9 @@ fn verify_p256_signature(
     };
 
     if x.len() != 32 || y.len() != 32 {
-        return Err(PasskeyError::InternalError("Invalid coordinate length".into()));
+        return Err(PasskeyError::InternalError(
+            "Invalid coordinate length".into(),
+        ));
     }
 
     let encoded_point = EncodedPoint::from_affine_coordinates(
@@ -155,9 +161,9 @@ fn verify_p256_signature(
     let signature = Signature::from_der(signature_der)
         .map_err(|e| PasskeyError::InvalidSignature(e.to_string()))?;
 
-    verifying_key.verify(signed_data, &signature).map_err(|e| {
-        PasskeyError::InvalidSignature(e.to_string())
-    })
+    verifying_key
+        .verify(signed_data, &signature)
+        .map_err(|e| PasskeyError::InvalidSignature(e.to_string()))
 }
 
 // Core WebAuthn Flows
@@ -216,10 +222,7 @@ pub async fn start_registration<S: PasskeyStore + ?Sized>(
     };
 
     // Persist challenge state
-    let state = RegState {
-        challenge,
-        user_id,
-    };
+    let state = RegState { challenge, user_id };
     let state_id = format!("reg:{}", user_id);
     let expires_at = now_ms + (STATE_TTL_SECONDS * 1000);
     store
@@ -245,7 +248,9 @@ pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     let state: RegState = serde_json::from_str(&record.state_json)?;
 
     if state.user_id != user_id {
-         return Err(PasskeyError::InternalError("User ID mismatch in session".into()));
+        return Err(PasskeyError::InternalError(
+            "User ID mismatch in session".into(),
+        ));
     }
 
     // 2. Verify clientDataJSON
@@ -257,8 +262,7 @@ pub async fn finish_registration<S: PasskeyStore + ?Sized>(
     )?;
 
     // 3. Parse attestation object (CBOR)
-    let att_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&response.response.attestation_object)?;
+    let att_bytes = BASE64_URL_SAFE_NO_PAD.decode(&response.response.attestation_object)?;
 
     let att_obj: Value = ciborium::from_reader(att_bytes.as_slice())
         .map_err(|e| PasskeyError::InternalError(format!("Invalid attestationObject CBOR: {e}")))?;
@@ -365,8 +369,7 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
     now_ms: i64,
 ) -> Result<i32> {
     // 1. Parse clientDataJSON to retrieve the challenge for state lookup
-    let client_data_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&response.response.client_data_json)?;
+    let client_data_bytes = BASE64_URL_SAFE_NO_PAD.decode(&response.response.client_data_json)?;
     let client_data_peek: ClientData = serde_json::from_slice(&client_data_bytes)?;
 
     let state_id = format!("login:{}", client_data_peek.challenge);
@@ -385,8 +388,7 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
     )?;
 
     // 3. Parse & verify authenticator data
-    let auth_data_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&response.response.authenticator_data)?;
+    let auth_data_bytes = BASE64_URL_SAFE_NO_PAD.decode(&response.response.authenticator_data)?;
 
     let auth_data = parse_auth_data(&auth_data_bytes)?;
     verify_rp_id_hash(&auth_data.rp_id_hash, config)?;
@@ -400,8 +402,7 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
 
     // 5. Verify user handle if present
     if let Some(ref uh_b64) = response.response.user_handle {
-        let uh_bytes = BASE64_URL_SAFE_NO_PAD
-            .decode(uh_b64)?;
+        let uh_bytes = BASE64_URL_SAFE_NO_PAD.decode(uh_b64)?;
         let uid_str = String::from_utf8(uh_bytes)
             .map_err(|_| PasskeyError::InternalError("Invalid userHandle utf8".into()))?;
         if uid_str != passkey.user_id.to_string() {
@@ -410,16 +411,14 @@ pub async fn finish_login<S: PasskeyStore + ?Sized>(
     }
 
     // 6. Verify signature
-    let pub_key_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&passkey.public_key)?;
+    let pub_key_bytes = BASE64_URL_SAFE_NO_PAD.decode(&passkey.public_key)?;
 
     let client_data_hash = Sha256::digest(&client_data_bytes);
     let mut signed_data = Vec::with_capacity(auth_data_bytes.len() + 32);
     signed_data.extend_from_slice(&auth_data_bytes);
     signed_data.extend_from_slice(&client_data_hash);
 
-    let sig_bytes = BASE64_URL_SAFE_NO_PAD
-        .decode(&response.response.signature)?;
+    let sig_bytes = BASE64_URL_SAFE_NO_PAD.decode(&response.response.signature)?;
 
     verify_p256_signature(&pub_key_bytes, &signed_data, &sig_bytes)?;
 
