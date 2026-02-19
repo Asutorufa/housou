@@ -1,17 +1,13 @@
-import { clsx, type ClassValue } from "clsx";
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { twMerge } from "tailwind-merge";
+
 import { useMetadata } from "../contexts/MetadataContext";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
+import { cn } from "../utils/cn";
 import { isDev } from "../utils/envUtils";
 import { sortSites } from "../utils/siteUtils";
 import { isValidUrl } from "../utils/urlUtils";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
 
 interface AnimeCardProps {
   item: DisplayAnimeItem;

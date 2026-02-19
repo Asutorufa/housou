@@ -1,12 +1,7 @@
-import { clsx } from "clsx";
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { twMerge } from "tailwind-merge";
 import { useAuth } from "../contexts/AuthContext";
-
-function cn(...inputs: (string | undefined | null | false)[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "../utils/cn";
 
 interface UserMenuProps {
   isOpen: boolean;

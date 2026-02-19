@@ -76,7 +76,7 @@ export default function Header({
               transition={{ type: "spring", stiffness: 350, damping: 30 }}
               className="pointer-events-auto absolute right-2 top-1/2 z-30 flex h-10 -translate-y-1/2 items-center md:right-4"
             >
-              <div className="relative h-full w-full overflow-hidden rounded-full border border-blue-500 bg-white/80 shadow-md backdrop-blur-md ring-2 ring-blue-500/20 dark:border-gray-700/50 dark:bg-gray-800/80">
+              <div className="search-container relative h-full w-full overflow-hidden rounded-full border border-blue-500 bg-white/80 shadow-md backdrop-blur-md ring-2 ring-blue-500/20 dark:border-gray-700/50 dark:bg-gray-800/80">
                 <Search
                   size={16}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500"
@@ -87,9 +87,20 @@ export default function Header({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
-                  onBlur={() => {
-                    // Optional: handle blur if needed, or rely on close button
-                    // setIsSearchFocused(false);
+                  onBlur={(e) => {
+                    // Use setTimeout to allow click events on the close button (or other elements) to fire first
+                    // Check if the new focus is still within the search container if needed,
+                    // but here we just want to close it if the user clicks outside or tabs away.
+                    // However, immediate close prevents the close button's onClick from firing.
+                    // relatedTarget check is better if the close button can receive focus.
+                    if (
+                      !e.relatedTarget ||
+                      (e.relatedTarget as HTMLElement).closest(
+                        ".search-container",
+                      ) === null
+                    ) {
+                      setTimeout(() => setIsSearchFocused(false), 150);
+                    }
                   }}
                   className="h-full w-full border-none bg-transparent py-2 pl-9 pr-10 text-sm text-gray-900 placeholder-gray-500 outline-none dark:text-gray-100 dark:placeholder-gray-400"
                 />

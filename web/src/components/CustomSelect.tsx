@@ -1,12 +1,7 @@
 import * as Select from "@radix-ui/react-select";
-import { clsx, type ClassValue } from "clsx";
 import { ChevronDown } from "lucide-react";
 import { motion } from "motion/react";
-import { twMerge } from "tailwind-merge";
-
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from "../utils/cn";
 
 export interface CustomSelectProps {
   value: string;
