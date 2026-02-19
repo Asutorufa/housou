@@ -46,8 +46,8 @@ describe("Header Component", () => {
       />,
     );
 
-    // Verify search input is present
-    expect(screen.getByPlaceholderText("検索...")).toBeInTheDocument();
+    // Verify search button is present (search input is hidden by default)
+    expect(screen.getByLabelText("検索を開く")).toBeInTheDocument();
   });
 
   it("displays site options when the site dropdown is clicked", async () => {
