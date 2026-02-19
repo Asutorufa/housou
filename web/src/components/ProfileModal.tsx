@@ -6,6 +6,7 @@ import {
   EyeOff,
   KeyRound,
   Link,
+  Loader2,
   Lock,
   Pencil,
   User,
@@ -347,6 +348,7 @@ function PasskeyTab() {
     useAuth();
   const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isListLoading, setIsListLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -357,6 +359,8 @@ function PasskeyTab() {
       setPasskeys(list);
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsListLoading(false);
     }
   }, [listPasskeys]);
 
@@ -456,7 +460,11 @@ function PasskeyTab() {
         </div>
       )}
 
-      {passkeys.length === 0 ? (
+      {isListLoading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="animate-spin text-gray-400" size={24} />
+        </div>
+      ) : passkeys.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-200 py-8 dark:border-gray-700">
           <KeyRound size={32} className="text-gray-300 dark:text-gray-600" />
           <p className="text-sm text-gray-400 dark:text-gray-500">
@@ -464,7 +472,12 @@ function PasskeyTab() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <motion.div
+          className="space-y-2"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+        >
           {passkeys.map((pk) => (
             <div
               key={pk.id}
@@ -543,7 +556,7 @@ function PasskeyTab() {
               </div>
             </div>
           ))}
-        </div>
+        </motion.div>
       )}
     </div>
   );
@@ -600,7 +613,7 @@ export default function ProfileModal({
                 animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
                 exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-48%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="fixed left-[50%] top-[50%] z-50 flex w-full max-w-md flex-col rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 focus:outline-none max-h-[85vh]"
+                className="fixed left-[50%] top-[50%] z-50 flex w-full max-w-md sm:max-w-xl flex-col rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 focus:outline-none max-h-[85vh]"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-0">
