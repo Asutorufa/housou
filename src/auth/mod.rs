@@ -45,11 +45,11 @@ pub fn parse_cookie_values(header: &str, name: &str) -> Vec<String> {
 
 // Helper to get cookie values from request
 pub fn get_cookie_values(req: &Request, name: &str) -> Vec<String> {
-    let cookies_header = match req.headers().get("Cookie") {
-        Ok(Some(h)) => h,
-        _ => return Vec::new(),
-    };
-    parse_cookie_values(&cookies_header, name)
+    if let Ok(Some(header)) = req.headers().get("Cookie") {
+        parse_cookie_values(&header, name)
+    } else {
+        Vec::new()
+    }
 }
 
 // Helper to get authenticated user
