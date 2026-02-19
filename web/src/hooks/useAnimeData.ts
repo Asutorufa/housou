@@ -4,11 +4,11 @@ import { useLocalStorage } from "usehooks-ts";
 import { STORAGE_KEY_SELECTIONS } from "../constants";
 import { useAuth } from "../contexts/AuthContext";
 import type {
-    AnimeItem,
-    DisplayAnimeItem,
-    Selections,
-    Site,
-    UserItemSummary,
+  AnimeItem,
+  DisplayAnimeItem,
+  Selections,
+  Site,
+  UserItemSummary,
 } from "../types";
 import { useConfigInitialization } from "./useConfigInitialization";
 

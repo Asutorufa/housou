@@ -101,7 +101,9 @@ describe("CustomSelect Component", () => {
     render(<CustomSelect {...defaultProps} isOpen={true} />);
 
     expect(screen.getByRole("listbox")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Option 1" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Option 1" }),
+    ).toBeInTheDocument();
   });
 
   it("renders custom icon", () => {
@@ -111,7 +113,12 @@ describe("CustomSelect Component", () => {
   });
 
   it("applies custom trigger class name", () => {
-    render(<CustomSelect {...defaultProps} triggerClassName="custom-trigger-class" />);
+    render(
+      <CustomSelect
+        {...defaultProps}
+        triggerClassName="custom-trigger-class"
+      />,
+    );
     const trigger = screen.getByRole("combobox");
     expect(trigger).toHaveClass("custom-trigger-class");
   });
