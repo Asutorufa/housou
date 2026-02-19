@@ -183,6 +183,7 @@ async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> R
                 &gh_user.login,
                 None,
                 Some(&gh_id_str),
+                None,
                 gh_user.avatar_url.as_deref(),
             )
             .await?;

@@ -175,6 +175,15 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         (Method::Delete, "/api/auth/github") if auth_enabled => {
             auth::handle_github_unbind(req, env.clone()).await
         }
+        (Method::Post, "/api/auth/telegram/login") if auth_enabled => {
+            auth::handle_telegram_login(req, env.clone()).await
+        }
+        (Method::Post, "/api/auth/telegram/bind") if auth_enabled => {
+            auth::handle_telegram_bind(req, env.clone()).await
+        }
+        (Method::Delete, "/api/auth/telegram") if auth_enabled => {
+            auth::handle_telegram_unbind(req, env.clone()).await
+        }
         (Method::Get, "/api/user/item") if auth_enabled => {
             auth::handle_get_item(req, env.clone()).await
         }

@@ -18,6 +18,9 @@ pub struct User {
     #[serde(skip_serializing)]
     #[allow(dead_code)]
     pub github_id: Option<String>,
+    #[serde(skip_serializing)]
+    #[allow(dead_code)]
+    pub telegram_id: Option<String>,
     pub created_at: i64,
 }
 
@@ -60,11 +63,13 @@ pub trait Database {
         username: &str,
         password_hash: Option<&str>,
         github_id: Option<&str>,
+        telegram_id: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<User>;
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>>;
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>>;
     async fn get_user_by_github_id(&self, github_id: &str) -> Result<Option<User>>;
+    async fn get_user_by_telegram_id(&self, telegram_id: &str) -> Result<Option<User>>;
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>>;
     async fn update_user_profile(
         &self,
@@ -75,6 +80,7 @@ pub trait Database {
     ) -> Result<()>;
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()>;
     async fn update_user_github_id(&self, id: i32, github_id: Option<&str>) -> Result<()>;
+    async fn update_user_telegram_id(&self, id: i32, telegram_id: Option<&str>) -> Result<()>;
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()>;
     #[allow(dead_code)]
@@ -187,6 +193,13 @@ impl Database for AppDatabase {
                     );",
                 ],
             ),
+            (
+                4,
+                vec![
+                    "ALTER TABLE users ADD COLUMN telegram_id TEXT UNIQUE;",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
+                ],
+            ),
         ];
 
         // Apply pending migrations
@@ -220,10 +233,11 @@ impl Database for AppDatabase {
         username: &str,
         password_hash: Option<&str>,
         github_id: Option<&str>,
+        telegram_id: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<User> {
         let created_at = Date::now().as_millis() as i64;
-        let query = "INSERT INTO users (email, username, password_hash, github_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING *";
+        let query = "INSERT INTO users (email, username, password_hash, github_id, telegram_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *";
 
         let password_val = if let Some(h) = password_hash {
             JsValue::from_str(h)
@@ -232,6 +246,11 @@ impl Database for AppDatabase {
         };
         let github_val = if let Some(g) = github_id {
             JsValue::from_str(g)
+        } else {
+            JsValue::NULL
+        };
+        let telegram_val = if let Some(t) = telegram_id {
+            JsValue::from_str(t)
         } else {
             JsValue::NULL
         };
@@ -246,6 +265,7 @@ impl Database for AppDatabase {
             JsValue::from_str(username),
             password_val,
             github_val,
+            telegram_val,
             avatar_val,
             JsValue::from_f64(created_at as f64),
         ])?;
@@ -277,6 +297,15 @@ impl Database for AppDatabase {
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(github_id)])?
+            .first(None)
+            .await
+    }
+
+    async fn get_user_by_telegram_id(&self, telegram_id: &str) -> Result<Option<User>> {
+        let query = "SELECT * FROM users WHERE telegram_id = ?";
+        self.db
+            .prepare(query)
+            .bind(&[JsValue::from_str(telegram_id)])?
             .first(None)
             .await
     }
@@ -331,6 +360,21 @@ impl Database for AppDatabase {
                 JsValue::from_str(password_hash),
                 JsValue::from_f64(id as f64),
             ])?
+            .run()
+            .await?;
+        Ok(())
+    }
+
+    async fn update_user_telegram_id(&self, id: i32, telegram_id: Option<&str>) -> Result<()> {
+        let query = "UPDATE users SET telegram_id = ? WHERE id = ?";
+        let tel_val = if let Some(t) = telegram_id {
+            JsValue::from_str(t)
+        } else {
+            JsValue::NULL
+        };
+        self.db
+            .prepare(query)
+            .bind(&[tel_val, JsValue::from_f64(id as f64)])?
             .run()
             .await?;
         Ok(())

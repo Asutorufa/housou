@@ -257,11 +257,13 @@ export default function Header({
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         githubEnabled={config?.github_enabled}
+        telegramBotName={config?.telegram_bot_name}
       />
       <ProfileModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         githubEnabled={config?.github_enabled}
+        telegramBotName={config?.telegram_bot_name}
       />
     </header>
   );
