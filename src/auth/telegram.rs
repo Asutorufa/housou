@@ -131,10 +131,10 @@ pub async fn handle_telegram_bind(mut req: Request, env: Env) -> Result<Response
     let telegram_id_str = data.id.to_string();
 
     // Check if Telegram ID is already used by another user
-    if let Some(existing) = db.get_user_by_telegram_id(&telegram_id_str).await? {
-        if existing.id != current_user.id {
-            return Response::error("Telegram account already connected to another user", 409);
-        }
+    if let Some(existing) = db.get_user_by_telegram_id(&telegram_id_str).await?
+        && existing.id != current_user.id
+    {
+        return Response::error("Telegram account already connected to another user", 409);
     }
 
     // Update user
