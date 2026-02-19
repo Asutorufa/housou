@@ -2168,7 +2168,7 @@ dependencies = [
 [[package]]
 name = "tmdb_client"
 version = "1.8.0"
-source = "git+https://github.com/asutorufa/tmdb-client-rs.git?rev=114cca9aeebdae880a7db8afb38980a81aa7ff64#114cca9aeebdae880a7db8afb38980a81aa7ff64"
+source = "git+https://github.com/asutorufa/tmdb-client-rs.git?rev=17adf938c1d9831dc150a73d59bf2ec6b186d23c#17adf938c1d9831dc150a73d59bf2ec6b186d23c"
 dependencies = [
  "async-trait",
  "chrono",
