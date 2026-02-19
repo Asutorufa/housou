@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
+import { getSeasonOptions } from "../utils/season";
 import { USER_STATUS_LABELS } from "../types";
 import AuthModal from "./AuthModal";
 import CustomSelect from "./CustomSelect";
@@ -51,6 +52,12 @@ export default function Header({
   };
 
   const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+
+  const seasonOptions = useMemo(
+    () => getSeasonOptions(selectedYear, currentYear, currentMonth),
+    [selectedYear, currentYear, currentMonth],
+  );
 
   const siteOptions = useMemo(
     () => [
@@ -151,13 +158,7 @@ export default function Header({
                   <CustomSelect
                     value={selectedSeason}
                     onValueChange={setSelectedSeason}
-                    options={[
-                      { value: "all", label: "全て" },
-                      { value: "Winter", label: "冬" },
-                      { value: "Spring", label: "春" },
-                      { value: "Summer", label: "夏" },
-                      { value: "Autumn", label: "秋" },
-                    ]}
+                    options={seasonOptions}
                     placeholder="シーズン"
                     isOpen={activeDropdown === "season"}
                     onOpenChange={(open) =>
