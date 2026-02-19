@@ -1,6 +1,10 @@
 import type { UniversalVideo } from "../../types";
 
-export default function VideoSection({ videos }: { videos?: UniversalVideo[] }) {
+export default function VideoSection({
+  videos,
+}: {
+  videos?: UniversalVideo[];
+}) {
   if (!videos || videos.length === 0) return null;
 
   // Filter for YouTube videos as they are the most common and easy to embed/link
