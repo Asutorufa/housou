@@ -94,7 +94,7 @@ export default function Header({
                   placeholder="年"
                   isOpen={activeDropdown === "year"}
                   onOpenChange={(open) => handleDropdownChange("year", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
                   contentClassName="z-[60]"
                 />
 
@@ -114,7 +114,7 @@ export default function Header({
                   placeholder="シーズン"
                   isOpen={activeDropdown === "season"}
                   onOpenChange={(open) => handleDropdownChange("season", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
                   contentClassName="z-[60]"
                 />
 
@@ -128,7 +128,7 @@ export default function Header({
                   placeholder="サイト"
                   isOpen={activeDropdown === "site"}
                   onOpenChange={(open) => handleDropdownChange("site", open)}
-                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
                   contentClassName="z-[60]"
                 />
 
@@ -153,7 +153,7 @@ export default function Header({
                       onOpenChange={(open) =>
                         handleDropdownChange("status", open)
                       }
-                      triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                      triggerClassName="min-w-[80px] sm:min-w-[90px] max-w-[120px]"
                       contentClassName="z-[60]"
                     />
                   </>
@@ -175,9 +175,8 @@ export default function Header({
             layout
             transition={{
               type: "spring",
-              stiffness: 300,
-              damping: 35,
-              mass: 0.8,
+              bounce: 0,
+              duration: 0.4,
             }}
             className={cn(
               "pointer-events-auto group relative shrink-0 overflow-hidden rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md hover:border-blue-500/50 dark:border-gray-700/50 dark:bg-gray-800/80",
@@ -186,7 +185,8 @@ export default function Header({
                 : "w-10 md:w-64",
             )}
           >
-            <div
+            <motion.div
+              layout
               className={cn(
                 "pointer-events-none absolute inset-0 flex items-center justify-center text-gray-400 md:inset-y-0 md:right-auto md:left-3 md:w-auto md:justify-start",
                 isSearchFocused &&
@@ -194,7 +194,7 @@ export default function Header({
               )}
             >
               <Search size={16} />
-            </div>
+            </motion.div>
             <input
               type="text"
               placeholder="検索..."
@@ -226,27 +226,36 @@ export default function Header({
           </motion.div>
 
           {/* User Menu */}
-          {config?.auth_enabled && (
-            <div className="pointer-events-auto shrink-0 relative">
-              {loggedIn ? (
-                <UserMenu
-                  isOpen={activeDropdown === "user"}
-                  onOpenChange={(open) => handleDropdownChange("user", open)}
-                  onOpenProfile={() => setIsProfileModalOpen(true)}
-                />
-              ) : (
-                <motion.button
-                  onClick={() => setIsAuthModalOpen(true)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
-                >
-                  <UserIcon
-                    size={16}
-                    className="text-gray-700 dark:text-gray-200"
+          <AnimatePresence mode="popLayout">
+            {config?.auth_enabled && !isSearchFocused && (
+              <motion.div
+                key="user-menu"
+                initial={{ width: "auto", opacity: 0, scale: 0.8 }}
+                animate={{ width: "auto", opacity: 1, scale: 1 }}
+                exit={{ width: 0, opacity: 0, scale: 0.8 }}
+                transition={{ duration: 0.2 }}
+                className="pointer-events-auto relative shrink-0 overflow-hidden"
+              >
+                {loggedIn ? (
+                  <UserMenu
+                    isOpen={activeDropdown === "user"}
+                    onOpenChange={(open) => handleDropdownChange("user", open)}
+                    onOpenProfile={() => setIsProfileModalOpen(true)}
                   />
-                </motion.button>
-              )}
-            </div>
-          )}
+                ) : (
+                  <motion.button
+                    onClick={() => setIsAuthModalOpen(true)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                  >
+                    <UserIcon
+                      size={16}
+                      className="text-gray-700 dark:text-gray-200"
+                    />
+                  </motion.button>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

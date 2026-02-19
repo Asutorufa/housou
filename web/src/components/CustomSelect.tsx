@@ -50,9 +50,11 @@ export default function CustomSelect({
             triggerClassName,
           )}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {icon && <span className="shrink-0">{icon}</span>}
-            <Select.Value placeholder={placeholder} />
+            <span className="truncate">
+              <Select.Value placeholder={placeholder} />
+            </span>
           </div>
           <Select.Icon className="ml-1 text-gray-400">
             <motion.div
