@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { twMerge } from "tailwind-merge";
 import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
@@ -78,85 +78,87 @@ export default function Header({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
-              className="pointer-events-auto flex items-center rounded-full border border-gray-200/50 bg-white/80 p-1 shadow-md backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/80"
+              className="pointer-events-auto flex min-w-0 max-w-full items-center rounded-full border border-gray-200/50 bg-white/80 p-1 shadow-md backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/80"
             >
-              {/* Year Select */}
-              <CustomSelect
-                value={selectedYear}
-                onValueChange={setSelectedYear}
-                options={
-                  config?.years.map((y) => ({
-                    value: y.toString(),
-                    label: y > currentYear ? `${y} (予定)` : y.toString(),
-                  })) || []
-                }
-                placeholder="年"
-                isOpen={activeDropdown === "year"}
-                onOpenChange={(open) => handleDropdownChange("year", open)}
-                triggerClassName="min-w-[80px] sm:min-w-[90px]"
-                contentClassName="z-[60]"
-              />
+              <div className="scroll-mask-x no-scrollbar flex w-full items-center overflow-x-auto px-2">
+                {/* Year Select */}
+                <CustomSelect
+                  value={selectedYear}
+                  onValueChange={setSelectedYear}
+                  options={
+                    config?.years.map((y) => ({
+                      value: y.toString(),
+                      label: y > currentYear ? `${y} (予定)` : y.toString(),
+                    })) || []
+                  }
+                  placeholder="年"
+                  isOpen={activeDropdown === "year"}
+                  onOpenChange={(open) => handleDropdownChange("year", open)}
+                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  contentClassName="z-[60]"
+                />
 
-              <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
+                <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
 
-              {/* Season Select */}
-              <CustomSelect
-                value={selectedSeason}
-                onValueChange={setSelectedSeason}
-                options={[
-                  { value: "all", label: "全て" },
-                  { value: "Winter", label: "冬" },
-                  { value: "Spring", label: "春" },
-                  { value: "Summer", label: "夏" },
-                  { value: "Autumn", label: "秋" },
-                ]}
-                placeholder="シーズン"
-                isOpen={activeDropdown === "season"}
-                onOpenChange={(open) => handleDropdownChange("season", open)}
-                triggerClassName="min-w-[80px] sm:min-w-[90px]"
-                contentClassName="z-[60]"
-              />
+                {/* Season Select */}
+                <CustomSelect
+                  value={selectedSeason}
+                  onValueChange={setSelectedSeason}
+                  options={[
+                    { value: "all", label: "全て" },
+                    { value: "Winter", label: "冬" },
+                    { value: "Spring", label: "春" },
+                    { value: "Summer", label: "夏" },
+                    { value: "Autumn", label: "秋" },
+                  ]}
+                  placeholder="シーズン"
+                  isOpen={activeDropdown === "season"}
+                  onOpenChange={(open) => handleDropdownChange("season", open)}
+                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  contentClassName="z-[60]"
+                />
 
-              <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
+                <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
 
-              {/* Site Select */}
-              <CustomSelect
-                value={selectedSite}
-                onValueChange={setSelectedSite}
-                options={siteOptions}
-                placeholder="サイト"
-                isOpen={activeDropdown === "site"}
-                onOpenChange={(open) => handleDropdownChange("site", open)}
-                triggerClassName="min-w-[80px] sm:min-w-[90px]"
-                contentClassName="z-[60]"
-              />
+                {/* Site Select */}
+                <CustomSelect
+                  value={selectedSite}
+                  onValueChange={setSelectedSite}
+                  options={siteOptions}
+                  placeholder="サイト"
+                  isOpen={activeDropdown === "site"}
+                  onOpenChange={(open) => handleDropdownChange("site", open)}
+                  triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                  contentClassName="z-[60]"
+                />
 
-              {/* Status Select (Only if logged in) */}
-              {loggedIn && (
-                <>
-                  <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
-                  <CustomSelect
-                    value={selectedStatus}
-                    onValueChange={setSelectedStatus}
-                    options={[
-                      { value: "all", label: "全て" },
-                      ...Object.entries(USER_STATUS_LABELS).map(
-                        ([value, label]) => ({
-                          value,
-                          label: label as string,
-                        }),
-                      ),
-                    ]}
-                    placeholder="状態"
-                    isOpen={activeDropdown === "status"}
-                    onOpenChange={(open) =>
-                      handleDropdownChange("status", open)
-                    }
-                    triggerClassName="min-w-[80px] sm:min-w-[90px]"
-                    contentClassName="z-[60]"
-                  />
-                </>
-              )}
+                {/* Status Select (Only if logged in) */}
+                {loggedIn && (
+                  <>
+                    <div className="h-4 w-px bg-gray-300 dark:bg-gray-600" />
+                    <CustomSelect
+                      value={selectedStatus}
+                      onValueChange={setSelectedStatus}
+                      options={[
+                        { value: "all", label: "全て" },
+                        ...Object.entries(USER_STATUS_LABELS).map(
+                          ([value, label]) => ({
+                            value,
+                            label: label as string,
+                          }),
+                        ),
+                      ]}
+                      placeholder="状態"
+                      isOpen={activeDropdown === "status"}
+                      onOpenChange={(open) =>
+                        handleDropdownChange("status", open)
+                      }
+                      triggerClassName="min-w-[80px] sm:min-w-[90px]"
+                      contentClassName="z-[60]"
+                    />
+                  </>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
