@@ -47,11 +47,11 @@ describe("CustomSelect Component", () => {
     const listbox = await screen.findByRole("listbox");
     expect(listbox).toBeInTheDocument();
 
-    const option1 = screen.getByRole("option", { name: "Option 1" });
-    const option2 = screen.getByRole("option", { name: "Option 2" });
-
-    expect(option1).toBeInTheDocument();
-    expect(option2).toBeInTheDocument();
+    for (const option of options) {
+      expect(
+        screen.getByRole("option", { name: option.label }),
+      ).toBeInTheDocument();
+    }
   });
 
   it("calls onValueChange when an option is selected via click", async () => {
