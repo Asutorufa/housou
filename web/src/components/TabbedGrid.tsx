@@ -1,16 +1,18 @@
-import * as Tabs from "@radix-ui/react-tabs";
-import { clsx, type ClassValue } from "clsx";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { twMerge } from "tailwind-merge";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import AnimeCard from "./AnimeCard";
 
-function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土", "他"];
+const WEEKDAY_DATA = [
+  { id: "0", label: "日", fullLabel: "日曜日" },
+  { id: "1", label: "月", fullLabel: "月曜日" },
+  { id: "2", label: "火", fullLabel: "火曜日" },
+  { id: "3", label: "水", fullLabel: "水曜日" },
+  { id: "4", label: "木", fullLabel: "木曜日" },
+  { id: "5", label: "金", fullLabel: "金曜日" },
+  { id: "6", label: "土", fullLabel: "土曜日" },
+  { id: "7", label: "他", fullLabel: "その他" },
+];
 
 interface TabbedGridProps {
   items: DisplayAnimeItem[];
@@ -82,33 +84,43 @@ export default function TabbedGrid({
   const dayItems = groupedItems[dayIndex];
 
   return (
-    <Tabs.Root
-      value={activeTab}
-      onValueChange={handleTabChange}
-      className="flex flex-col gap-6"
-    >
-      <Tabs.List className="scrollbar-hide no-scrollbar ring-offset-background flex gap-2 overflow-x-auto pb-6">
-        {WEEKDAYS.map((label, index) => (
-          <Tabs.Trigger
-            key={index}
-            value={index.toString()}
-            className={cn(
-              "relative rounded-full px-5 py-2.5 text-sm font-bold whitespace-nowrap transition-colors outline-none",
-              "bg-white text-gray-600 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-200",
-              "z-10 data-[state=active]:text-white",
-            )}
-          >
-            {activeTab === index.toString() && (
-              <motion.div
-                layoutId="activeTab"
-                className="absolute inset-0 -z-10 rounded-full bg-blue-500 shadow-lg shadow-blue-500/30"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-              />
-            )}
-            {label}
-          </Tabs.Trigger>
-        ))}
-      </Tabs.List>
+    <div className="flex flex-col gap-6">
+      <div className="sticky top-0 z-30 flex justify-center px-6 pb-2 pt-6">
+        <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/40 bg-white/80 p-1.5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-gray-900/80">
+          {WEEKDAY_DATA.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id)}
+                className={`relative z-10 flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors ${
+                  isActive
+                    ? "text-white dark:text-slate-900"
+                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="air-tab-pill"
+                    className="absolute inset-0 -z-10 rounded-full bg-slate-900 shadow-lg dark:bg-slate-100"
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">{tab.label}</span>
+                {isActive && (
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-xs opacity-60"
+                  >
+                    · {tab.fullLabel}
+                  </motion.span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div
         className="relative -mx-2 overflow-hidden"
@@ -156,6 +168,6 @@ export default function TabbedGrid({
           </motion.div>
         </AnimatePresence>
       </div>
-    </Tabs.Root>
+    </div>
   );
 }
