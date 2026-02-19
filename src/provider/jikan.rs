@@ -212,6 +212,7 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         current_season: None,
         runtime: None,
         content_rating: None,
+        videos: vec![],
     }
 }
 

@@ -113,6 +113,7 @@ pub fn anilist_to_unified(media: rust_anilist::models::Anime) -> model::UnifiedM
         current_season: None,
         runtime: media.duration.map(|d| d as i32),
         content_rating: None,
+        videos: vec![],
     }
 }
 

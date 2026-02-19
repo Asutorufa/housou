@@ -15,6 +15,7 @@ import InfoBadges from "./InfoBadges";
 import MultilingualTitles from "./MultilingualTitles";
 import StaffSection from "./StaffSection";
 import StudioSection from "./StudioSection";
+import VideoSection from "./VideoSection";
 
 interface DetailsModalProps {
   isOpen: boolean;
@@ -176,6 +177,9 @@ function DetailsModalContent({
                 </div>
               </div>
             )}
+
+            {/* Videos */}
+            <VideoSection videos={info?.videos} />
 
             {/* Episodes List */}
             <EpisodeList episodes={info?.episodesList} />
