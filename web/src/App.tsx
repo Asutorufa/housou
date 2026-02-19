@@ -43,7 +43,6 @@ export default function App() {
   const setSelectedStatus = (status: string) =>
     setSelections((prev) => ({ ...prev, status }));
 
-
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
       <Header
@@ -68,7 +67,9 @@ export default function App() {
         ) : error && items.length === 0 ? (
           <div className="flex min-h-[50vh] items-center justify-center p-4 text-red-500">
             <div className="text-center">
-              <h2 className="mb-2 text-xl font-bold">Unable to load anime list</h2>
+              <h2 className="mb-2 text-xl font-bold">
+                Unable to load anime list
+              </h2>
               <p className="opacity-80">{error}</p>
             </div>
           </div>
