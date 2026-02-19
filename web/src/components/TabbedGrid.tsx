@@ -132,7 +132,7 @@ export default function TabbedGrid({
                     <motion.div
                       key={item.title}
                       layout="position"
-                      className="mb-1 break-inside-avoid sm:mb-2 md:mb-4"
+                      className="mb-1 break-inside-avoid p-2 sm:mb-2 md:mb-4"
                     >
                       <AnimeCard
                         item={item}
