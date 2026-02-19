@@ -73,7 +73,9 @@ pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Respons
     let data: TelegramAuthData = req.json().await?;
     let bot_token = env.var("TELEGRAM_BOT_TOKEN")?.to_string();
 
-    verify_telegram_auth(&data, &bot_token)?;
+    if let Err(e) = verify_telegram_auth(&data, &bot_token) {
+        return Response::error(e.to_string(), 401);
+    }
 
     let db = get_db(&env)?;
     let telegram_id_str = data.id.to_string();
@@ -88,11 +90,17 @@ pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Respons
         let username = data.username.unwrap_or_else(|| data.first_name.clone()); // Fallback to first_name if username is missing
 
         // Ensure username uniqueness
+        // Try original, if taken try random suffix
         let mut final_username = username.clone();
-        let mut counter = 1;
-        while (db.get_user_by_username(&final_username).await?).is_some() {
-            final_username = format!("{}_{}", username, counter);
-            counter += 1;
+        if (db.get_user_by_username(&final_username).await?).is_some() {
+            // Append 4 random hex chars using Uuid
+            let suffix = Uuid::new_v4().simple().to_string();
+            final_username = format!("{}_{}", username, &suffix[..4]);
+
+            // If still taken (extremely unlikely), append telegram_id
+            if (db.get_user_by_username(&final_username).await?).is_some() {
+                final_username = format!("{}_{}", username, data.id);
+            }
         }
 
         db.create_user(
@@ -125,7 +133,9 @@ pub async fn handle_telegram_bind(mut req: Request, env: Env) -> Result<Response
     let data: TelegramAuthData = req.json().await?;
     let bot_token = env.var("TELEGRAM_BOT_TOKEN")?.to_string();
 
-    verify_telegram_auth(&data, &bot_token)?;
+    if let Err(e) = verify_telegram_auth(&data, &bot_token) {
+        return Response::error(e.to_string(), 401);
+    }
 
     let db = get_db(&env)?;
     let telegram_id_str = data.id.to_string();
