@@ -275,7 +275,8 @@ struct AuthData {
 
 fn generate_challenge() -> Result<String> {
     let mut buf = [0u8; CHALLENGE_LEN];
-    getrandom::fill(&mut buf).map_err(|e| Error::RustError(format!("Failed to generate random challenge: {e}")))?;
+    getrandom::fill(&mut buf)
+        .map_err(|e| Error::RustError(format!("Failed to generate random challenge: {e}")))?;
     Ok(BASE64_URL_SAFE_NO_PAD.encode(buf))
 }
 
