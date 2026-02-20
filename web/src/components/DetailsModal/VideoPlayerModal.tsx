@@ -36,10 +36,10 @@ export default function VideoPlayerModal({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ duration: 0.2 }}
-                  className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
+                  className="relative w-full max-w-5xl rounded-2xl bg-black shadow-2xl ring-1 ring-white/10"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="relative aspect-video w-full">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-2xl">
                     <iframe
                       src={`https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0`}
                       title="YouTube video player"
