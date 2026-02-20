@@ -306,7 +306,13 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
     let hostname = &query.domain;
 
     // Basic validation to prevent SSRF
-    if hostname.is_empty() || hostname.contains('/') || hostname.contains(':') {
+    let is_ip_address = hostname.parse::<std::net::IpAddr>().is_ok();
+    if hostname.is_empty()
+        || hostname.contains('/')
+        || hostname.contains(':')
+        || is_ip_address
+        || hostname == "localhost"
+    {
         return Response::error("Bad Request: invalid domain", 400);
     }
 

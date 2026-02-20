@@ -88,8 +88,11 @@ export default function TabbedGrid({
 
   const dayIndex = parseInt(activeTab);
 
-  const dayItems = useMemo(() => {
-    const list: { item: DisplayAnimeItem; time: number }[] = [];
+  const groupedItems = useMemo(() => {
+    const groups: { item: DisplayAnimeItem; time: number }[][] = Array.from(
+      { length: 8 },
+      () => [],
+    );
     items.forEach((item) => {
       let itemDayIndex = 7;
       let time = 0;
@@ -101,13 +104,15 @@ export default function TabbedGrid({
           time = t;
         }
       }
-      if (itemDayIndex === dayIndex) {
-        list.push({ item, time });
-      }
+      groups[itemDayIndex].push({ item, time });
     });
 
-    return list.sort((a, b) => a.time - b.time).map((g) => g.item);
-  }, [items, dayIndex]);
+    return groups.map((group) =>
+      group.sort((a, b) => a.time - b.time).map((g) => g.item),
+    );
+  }, [items]);
+
+  const dayItems = groupedItems[dayIndex];
 
   return (
     <div className="flex flex-col gap-6">
