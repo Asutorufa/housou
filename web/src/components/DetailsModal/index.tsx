@@ -37,8 +37,8 @@ export default function DetailsModal(props: DetailsModalProps) {
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <AnimatePresence>
         {isOpen && (
-          <Dialog.Portal>
-            <Dialog.Overlay asChild>
+          <Dialog.Portal forceMount>
+            <Dialog.Overlay asChild forceMount>
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -48,6 +48,7 @@ export default function DetailsModal(props: DetailsModalProps) {
             </Dialog.Overlay>
             <Dialog.Content
               asChild
+              forceMount
               onInteractOutside={(e) => {
                 // If interacting with an element outside the React root (like an extension popup),
                 // prevent the modal from closing.
