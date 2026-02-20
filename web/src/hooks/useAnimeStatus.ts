@@ -6,6 +6,7 @@ interface UseAnimeStatusProps {
   title: string;
   initialStatus?: UserStatus;
   initialScore?: number;
+  beginAt?: string;
   onUpdate?: () => void;
 }
 
@@ -13,6 +14,7 @@ export function useAnimeStatus({
   title,
   initialStatus,
   initialScore,
+  beginAt,
   onUpdate,
 }: UseAnimeStatusProps) {
   const { apiFetch } = useAuth();
@@ -30,11 +32,19 @@ export function useAnimeStatus({
     // Optimistic update
     setLocalStatus(status);
 
+    // Convert ISO date string to Unix timestamp (milliseconds)
+    const beginAtTs = beginAt ? new Date(beginAt).getTime() : undefined;
+
     try {
       await apiFetch("/api/user/item", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, status, score: initialScore }),
+        body: JSON.stringify({
+          title,
+          status,
+          score: initialScore,
+          begin_at: beginAtTs,
+        }),
       });
       // Optionally notify parent to refresh list
       onUpdate?.();

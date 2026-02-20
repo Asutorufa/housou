@@ -86,23 +86,25 @@ export default function TabbedGrid({
     setLocation(`${location}?${params.toString()}`);
   };
 
+  const dayIndex = parseInt(activeTab);
+
   const groupedItems = useMemo(() => {
     const groups: { item: DisplayAnimeItem; time: number }[][] = Array.from(
       { length: 8 },
       () => [],
     );
     items.forEach((item) => {
-      let dayIndex = 7;
+      let itemDayIndex = 7;
       let time = 0;
       if (item.begin) {
         const date = new Date(item.begin);
         const t = date.getTime();
         if (!isNaN(t)) {
-          dayIndex = date.getDay();
+          itemDayIndex = date.getDay();
           time = t;
         }
       }
-      groups[dayIndex].push({ item, time });
+      groups[itemDayIndex].push({ item, time });
     });
 
     return groups.map((group) =>
@@ -110,13 +112,12 @@ export default function TabbedGrid({
     );
   }, [items]);
 
-  const dayIndex = parseInt(activeTab);
   const dayItems = groupedItems[dayIndex];
 
   return (
     <div className="flex flex-col gap-6">
       <div className=" flex justify-center px-6 pb-2">
-        <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-full border border-white/40 bg-white/80 p-1.5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-gray-900/80">
+        <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200/40 bg-white/70 p-1 shadow-lg backdrop-blur-xl ring-1 ring-black/5 dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10">
           {WEEKDAY_DATA.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -126,14 +127,14 @@ export default function TabbedGrid({
                 className={cn(
                   "relative z-10 flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors",
                   isActive
-                    ? "text-white dark:text-slate-900"
+                    ? "text-white"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200",
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="air-tab-pill"
-                    className="absolute inset-0 -z-10 rounded-full bg-slate-900 shadow-lg dark:bg-slate-100"
+                    className="absolute inset-0 -z-10 rounded-full bg-blue-500 shadow-lg shadow-blue-500/25 dark:bg-blue-600 dark:shadow-blue-600/25"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
@@ -169,13 +170,13 @@ export default function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <div className="columns-2 gap-1 sm:gap-2 md:gap-4 lg:columns-3 xl:columns-4">
+              <div className="columns-2 gap-3 sm:gap-4 md:columns-3 lg:gap-6 xl:columns-4">
                 <AnimatePresence mode="popLayout" initial={false}>
                   {dayItems.map((item) => (
                     <motion.div
                       key={item.title}
                       layout="position"
-                      className="mb-1 break-inside-avoid p-2 sm:mb-2 md:mb-4"
+                      className="mb-3 break-inside-avoid sm:mb-4 lg:mb-6"
                     >
                       <AnimeCard
                         item={item}

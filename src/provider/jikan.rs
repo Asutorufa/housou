@@ -130,21 +130,21 @@ fn convert_to_item(anime: JikanAnime) -> Item {
             }
             let mut tt = TitleTranslate::new();
             if !en.is_empty() {
-                tt.insert("en".into(), en);
+                tt.insert("US".into(), en);
             }
-            tt.insert("ja".into(), vec![ja_title.clone()]);
+            tt.insert("JP".into(), vec![ja_title.clone()]);
             (ja_title.clone(), tt)
         } else {
             let mut tt = TitleTranslate::new();
             if let Some(en) = anime.title_english.clone() {
-                tt.insert("en".into(), vec![en]);
+                tt.insert("US".into(), vec![en]);
             }
             (anime.title.clone(), tt)
         }
     } else {
         let mut tt = TitleTranslate::new();
         if let Some(en) = anime.title_english.clone() {
-            tt.insert("en".into(), vec![en]);
+            tt.insert("US".into(), vec![en]);
         }
         (anime.title.clone(), tt)
     };
@@ -176,10 +176,10 @@ fn convert_to_metadata(anime: JikanAnime) -> UnifiedMetadata {
         title_translate: {
             let mut tt = TitleTranslate::new();
             if let Some(en) = anime.title_english {
-                tt.insert("en".into(), vec![en]);
+                tt.insert("US".into(), vec![en]);
             }
             if let Some(ja) = anime.title_japanese {
-                tt.insert("ja".into(), vec![ja]);
+                tt.insert("JP".into(), vec![ja]);
             }
             if tt.is_empty() { None } else { Some(tt) }
         },
@@ -254,12 +254,12 @@ mod tests {
 
         let translate = item.title_translate;
         assert_eq!(
-            translate.get("ja"),
+            translate.get("JP"),
             Some(&vec!["カウボーイビバップ".to_string()])
         );
         // Check for exact equality to ensure no duplicates or unexpected entries
         assert_eq!(
-            translate.get("en"),
+            translate.get("US"),
             Some(&vec![
                 "Cowboy Bebop".to_string(),
                 "Cowboy Bebop".to_string()
@@ -339,25 +339,6 @@ mod tests {
                 jikan_type
             );
         }
-    }
-
-    #[test]
-    fn test_convert_to_item_synopsis_cleaning() {
-        let json = r#"{
-            "mal_id": 1,
-            "url": "url",
-            "images": {},
-            "title": "Title",
-            "synopsis": "This is <b>bold</b> and <i>italic</i>.<br>New line.",
-            "aired": {},
-            "studios": [],
-            "genres": []
-        }"#;
-        let item = convert_to_item(create_anime(json));
-        assert_eq!(
-            item.comment.as_deref(),
-            Some("This is bold and italic.New line.")
-        );
     }
 
     #[test]

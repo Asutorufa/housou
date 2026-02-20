@@ -5,6 +5,7 @@ import { useSmartMetadata } from "../hooks/useSmartMetadata";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { cn } from "../utils/cn";
+import { observeLazy, unobserveLazy } from "../utils/lazyObserver";
 import { sortSites } from "../utils/siteUtils";
 import { isValidUrl } from "../utils/urlUtils";
 import SiteLink from "./SiteLink";
@@ -29,23 +30,17 @@ export default function AnimeCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !isEnabled) {
-          setIsEnabled(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "200px" },
-    );
+    if (isEnabled || !cardRef.current) return;
+    const element = cardRef.current;
 
-    if (cardRef.current) {
-      observer.observe(cardRef.current);
-    }
+    observeLazy(element, () => {
+      setIsEnabled(true);
+    });
 
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item.title]);
+    return () => {
+      unobserveLazy(element);
+    };
+  }, [item.title, isEnabled]);
 
   const sitesToShow = useMemo(() => {
     let sites = item.sites || [];

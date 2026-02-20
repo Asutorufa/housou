@@ -1,4 +1,5 @@
 use serde_derive::Serialize;
+use time::{Date as TimeDate, Month};
 use worker::*;
 
 use crate::db::Database;
@@ -13,6 +14,21 @@ pub struct ConfigResponse {
     pub auth_enabled: bool,
     pub github_enabled: bool,
     pub telegram_bot_name: Option<String>,
+}
+
+#[derive(serde_derive::Deserialize)]
+struct ItemsQuery {
+    year: Option<i32>,
+    season: Option<String>,
+}
+
+#[derive(serde_derive::Deserialize)]
+struct MetadataQuery {
+    tmdb_id: Option<String>,
+    mal_id: Option<String>,
+    anilist_id: Option<String>,
+    title: Option<String>,
+    begin: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -64,7 +80,7 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
     let site_meta = fetch_site_meta().await?;
 
     // Fixed range of years to avoid fetching all month files just to get the list
-    let current_year = js_sys::Date::new_0().get_full_year() as i32;
+    let current_year = crate::utils::now_utc().year();
     // Add +1 year for future schedule
     let years: Vec<i32> = (config::START_YEAR..=current_year + 1).rev().collect();
 
@@ -91,23 +107,16 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
 
 pub async fn handle_items(req: Request, _env: Env) -> Result<Response> {
     let url = req.url()?;
-    let mut year_param = None;
-    let mut season_param = None;
+    let query_str = url.query().unwrap_or("");
+    let query: ItemsQuery = serde_urlencoded::from_str(query_str)
+        .map_err(|e| Error::RustError(format!("Invalid query: {}", e)))?;
 
-    for (k, v) in url.query_pairs() {
-        match k.as_ref() {
-            "year" => year_param = Some(v),
-            "season" => season_param = Some(v),
-            _ => {}
-        }
-    }
-
-    let target_year = match year_param.as_deref().and_then(|y| y.parse::<i32>().ok()) {
+    let target_year = match query.year {
         Some(y) => y,
         None => return Response::error("Bad Request: 'year' parameter is required", 400),
     };
 
-    let target_season = match season_param.as_deref() {
+    let target_season = match query.season.as_deref() {
         Some("all") | None | Some("") => None,
         Some(s) => Some(s),
     };
@@ -116,45 +125,101 @@ pub async fn handle_items(req: Request, _env: Env) -> Result<Response> {
     Response::from_json(&items)
 }
 
-pub async fn handle_user_status(mut req: Request, env: Env) -> Result<Response> {
-    let titles: Vec<String> = match req.json().await {
-        Ok(t) => t,
-        Err(_) => {
-            return Response::error("Bad Request: Body must be a list of strings", 400);
-        }
+pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match auth::get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
     };
 
-    let (user, _) = match auth::get_auth(&req, &env).await {
-        Ok(Some(auth_data)) => auth_data,
-        Ok(None) => return Response::error("Unauthorized", 401),
-        Err(e) => {
-            console_error!("Auth error: {}", e);
-            return Response::error("Internal Server Error", 500);
-        }
-    };
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: ItemsQuery = serde_urlencoded::from_str(query_str).unwrap_or(ItemsQuery {
+        year: None,
+        season: None,
+    });
 
     match auth::get_db(&env) {
-        Ok(db) => match db.get_user_items_by_titles(user.id, &titles).await {
-            Ok(user_items) => {
-                let status_map: std::collections::HashMap<_, _> = user_items
-                    .into_iter()
-                    .map(|ui| {
-                        (
-                            ui.title,
-                            db::UserItemSummary {
-                                status: ui.status,
-                                score: ui.score,
-                            },
-                        )
-                    })
-                    .collect();
-                Response::from_json(&status_map)
+        Ok(db) => {
+            let user_items = if let Some(year) = query.year
+                && let Some(season) = query.season.as_deref()
+                && season != "all"
+            {
+                // Calculate timestamp range for the season
+                let (start_month, end_month) = match season {
+                    "Winter" => (1, 3),
+                    "Spring" => (4, 6),
+                    "Summer" => (7, 9),
+                    "Autumn" => (10, 12),
+                    _ => (1, 12),
+                };
+
+                // Approximate timestamps (milliseconds)
+                let start_month = match Month::try_from(start_month as u8) {
+                    Ok(m) => m,
+                    Err(_) => Month::January,
+                };
+                let start_date =
+                    TimeDate::from_calendar_date(year, start_month, 1).unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
+                    });
+                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
+
+                let next_month_year = if end_month == 12 { year + 1 } else { year };
+                let next_month = if end_month == 12 { 1 } else { end_month + 1 };
+                let next_month_m = match Month::try_from(next_month as u8) {
+                    Ok(m) => m,
+                    Err(_) => Month::January,
+                };
+                let end_date = TimeDate::from_calendar_date(next_month_year, next_month_m, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(next_month_year, Month::January, 1).unwrap()
+                    });
+                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
+
+                db.get_user_items_by_range(user.id, start_ts, end_ts).await
+            } else if let Some(year) = query.year {
+                // If only year is provided, fetch for the whole year
+                let start_date = TimeDate::from_calendar_date(year, Month::January, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
+                    });
+                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
+
+                let next_year = year + 1;
+                let end_date = TimeDate::from_calendar_date(next_year, Month::January, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(next_year, Month::January, 1).unwrap()
+                    });
+                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
+
+                db.get_user_items_by_range(user.id, start_ts, end_ts).await
+            } else {
+                db.get_user_items_all(user.id).await
+            };
+
+            match user_items {
+                Ok(user_items) => {
+                    let status_map: std::collections::HashMap<String, db::UserItemSummary> =
+                        user_items
+                            .into_iter()
+                            .map(|item| {
+                                (
+                                    item.title,
+                                    db::UserItemSummary {
+                                        status: item.status,
+                                        score: item.score,
+                                    },
+                                )
+                            })
+                            .collect();
+                    Response::from_json(&status_map)
+                }
+                Err(e) => {
+                    console_error!("Failed to fetch user items: {}", e);
+                    Response::error("Internal Server Error", 500)
+                }
             }
-            Err(e) => {
-                console_error!("Failed to fetch user items: {}", e);
-                Response::error("Internal Server Error", 500)
-            }
-        },
+        }
         Err(e) => {
             console_error!("Failed to get DB connection: {}", e);
             Response::error("Internal Server Error", 500)
@@ -201,35 +266,96 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
     }
 
     let url = req.url()?;
-    let mut tmdb_id = None;
-    let mut mal_id = None;
-    let mut anilist_id = None;
-    let mut title = None;
-    let mut begin_param = None;
+    let query_str = url.query().unwrap_or("");
+    let query: MetadataQuery = serde_urlencoded::from_str(query_str).unwrap_or(MetadataQuery {
+        tmdb_id: None,
+        mal_id: None,
+        anilist_id: None,
+        title: None,
+        begin: None,
+    });
 
-    for (k, v) in url.query_pairs() {
-        match k.as_ref() {
-            "tmdb_id" => tmdb_id = Some(v),
-            "mal_id" => mal_id = Some(v),
-            "anilist_id" => anilist_id = Some(v),
-            "title" => title = Some(v),
-            "begin" => begin_param = Some(v),
-            _ => {}
-        }
-    }
-
-    let year = begin_param
+    let year = query
+        .begin
         .as_deref()
         .and_then(|d| d.get(0..4))
         .and_then(|y| y.parse::<i32>().ok());
 
     let args = provider::MetadataArgs {
-        tmdb_id: tmdb_id.as_deref(),
-        mal_id: mal_id.as_deref(),
-        anilist_id: anilist_id.as_deref(),
-        title: title.as_deref(),
+        tmdb_id: query.tmdb_id.as_deref(),
+        mal_id: query.mal_id.as_deref(),
+        anilist_id: query.anilist_id.as_deref(),
+        title: query.title.as_deref(),
         year,
     };
 
     provider::get_metadata(args, &env).await
+}
+
+#[derive(serde_derive::Deserialize)]
+struct FaviconQuery {
+    domain: String,
+}
+
+pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: FaviconQuery = serde_urlencoded::from_str(query_str)
+        .map_err(|e| Error::RustError(format!("Invalid query: {}", e)))?;
+
+    let hostname = &query.domain;
+
+    // Basic validation to prevent SSRF
+    let is_ip_address = hostname.parse::<std::net::IpAddr>().is_ok();
+    if hostname.is_empty()
+        || hostname.contains('/')
+        || hostname.contains(':')
+        || is_ip_address
+        || hostname == "localhost"
+    {
+        return Response::error("Bad Request: invalid domain", 400);
+    }
+
+    let providers = [
+        format!("https://{}/favicon.ico", hostname),
+        format!(
+            "https://www.google.com/s2/favicons?domain={}&sz=32",
+            hostname
+        ),
+        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
+    ];
+
+    for provider_url in &providers {
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get);
+
+        let request = Request::new_with_init(provider_url, &init)?;
+        let response = Fetch::Request(request).send().await;
+
+        if let Ok(mut resp) = response
+            && resp.status_code() == 200
+        {
+            // Read the favicon bytes from upstream
+            let bytes = resp.bytes().await?;
+
+            let headers = Headers::new();
+            if let Some(ct) = resp.headers().get("Content-Type")? {
+                headers.set("Content-Type", &ct)?;
+            } else {
+                headers.set("Content-Type", "image/x-icon")?;
+            }
+            headers.set(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_FAVICON),
+            )?;
+
+            return Ok(Response::from_bytes(bytes)?.with_headers(headers));
+        }
+    }
+
+    // No favicon found from any provider
+    Response::error("Not Found", 404)?.add_header(
+        "Cache-Control",
+        &format!("public, max-age={}", config::CACHE_TTL_FAVICON_404),
+    )
 }

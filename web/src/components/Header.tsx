@@ -3,8 +3,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import type { Config } from "../types";
-import { getSeasonOptions } from "../utils/season";
 import { USER_STATUS_LABELS } from "../types";
+import { getSeasonOptions } from "../utils/season";
 import AuthModal from "./AuthModal";
 import CustomSelect from "./CustomSelect";
 import ProfileModal from "./ProfileModal";
@@ -95,23 +95,19 @@ export default function Header({
                   onChange={(e) => setSearchQuery(e.target.value)}
                   autoFocus
                   onBlur={(e) => {
-                    // Use setTimeout to allow click events on the close button (or other elements) to fire first
-                    // Check if the new focus is still within the search container if needed,
-                    // but here we just want to close it if the user clicks outside or tabs away.
-                    // However, immediate close prevents the close button's onClick from firing.
-                    // relatedTarget check is better if the close button can receive focus.
                     if (
                       !e.relatedTarget ||
                       (e.relatedTarget as HTMLElement).closest(
                         ".search-container",
                       ) === null
                     ) {
-                      setTimeout(() => setIsSearchFocused(false), 150);
+                      setIsSearchFocused(false);
                     }
                   }}
                   className="h-full w-full border-none bg-transparent py-2 pl-9 pr-10 text-sm text-gray-900 placeholder-gray-500 outline-none dark:text-gray-100 dark:placeholder-gray-400"
                 />
                 <button
+                  onPointerDown={(e) => e.preventDefault()}
                   onClick={() => {
                     setSearchQuery("");
                     setIsSearchFocused(false);
@@ -133,7 +129,7 @@ export default function Header({
               className="flex w-full items-center justify-between gap-3"
             >
               {/* Filter Group (Left) */}
-              <div className="pointer-events-auto flex min-w-0 max-w-full items-center rounded-full border border-gray-200/50 bg-white/80 p-1 shadow-md backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-800/80">
+              <div className="pointer-events-auto flex min-w-0 max-w-full items-center rounded-full border border-gray-200/40 bg-white/70 p-1 shadow-lg backdrop-blur-xl ring-1 ring-black/5 dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10">
                 <div className="scroll-mask-x no-scrollbar flex w-full items-center overflow-x-auto px-2">
                   {/* Year Select */}
                   <CustomSelect
@@ -216,7 +212,7 @@ export default function Header({
                 <button
                   onClick={() => setIsSearchFocused(true)}
                   aria-label="検索を開く"
-                  className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/50 bg-white/80 shadow-md backdrop-blur-md transition-colors hover:border-blue-500/50 hover:bg-white dark:border-gray-700/50 dark:bg-gray-800/80 dark:hover:bg-gray-800"
+                  className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/40 bg-white/70 shadow-lg backdrop-blur-xl ring-1 ring-black/5 transition-colors hover:border-blue-500/50 hover:bg-white dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10 dark:hover:bg-gray-800"
                 >
                   <Search
                     size={16}

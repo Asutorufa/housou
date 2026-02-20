@@ -24,7 +24,16 @@ pub enum Language {
     ZhHant,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    serde_repr::Serialize_repr,
+    serde_repr::Deserialize_repr,
+)]
 #[repr(i32)]
 pub enum UserStatus {
     #[default]
@@ -34,33 +43,6 @@ pub enum UserStatus {
     OnHold = 3,
     Dropped = 4,
     PlanToWatch = 5,
-}
-
-impl serde::Serialize for UserStatus {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_i32(*self as i32)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for UserStatus {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let v = i32::deserialize(deserializer)?;
-        match v {
-            0 => Ok(UserStatus::Unregistered),
-            1 => Ok(UserStatus::Watching),
-            2 => Ok(UserStatus::Completed),
-            3 => Ok(UserStatus::OnHold),
-            4 => Ok(UserStatus::Dropped),
-            5 => Ok(UserStatus::PlanToWatch),
-            _ => Ok(UserStatus::Unregistered),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

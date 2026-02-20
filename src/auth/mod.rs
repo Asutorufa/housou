@@ -1,6 +1,7 @@
 use crate::ResponseExt;
 use crate::db::{AppDatabase, Database, User};
 use crate::model::UserStatus;
+use crate::utils;
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -68,64 +69,57 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     Ok(None)
 }
 
-pub fn create_session_cookie(token: &str, secure: bool) -> String {
-    Cookie::build((SESSION_COOKIE_NAME, token))
+fn build_cookie(name: &str, value: &str, days: i64, minutes: i64, secure: bool) -> String {
+    let mut duration = Duration::seconds(0);
+    if days > 0 {
+        duration = Duration::days(days);
+    } else if minutes > 0 {
+        duration = Duration::minutes(minutes);
+    }
+
+    Cookie::build((name, value))
         .path("/")
         .http_only(true)
         .secure(secure)
-        .same_site(SameSite::Lax) // Changed to Lax for easier dev/redirects
-        .max_age(Duration::days(SESSION_DURATION_DAYS))
+        .same_site(SameSite::Lax)
+        .max_age(duration)
         .to_string()
+}
+
+pub fn create_session_cookie(token: &str, secure: bool) -> String {
+    build_cookie(SESSION_COOKIE_NAME, token, SESSION_DURATION_DAYS, 0, secure)
 }
 
 fn clear_session_cookie(secure: bool) -> String {
-    Cookie::build((SESSION_COOKIE_NAME, ""))
-        .path("/")
-        .http_only(true)
-        .secure(secure)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::seconds(0))
-        .to_string()
+    build_cookie(SESSION_COOKIE_NAME, "", 0, 0, secure)
 }
 
 pub(crate) fn create_oauth_state_cookie(state: &str, secure: bool) -> String {
-    Cookie::build((OAUTH_STATE_COOKIE_NAME, state))
-        .path("/")
-        .http_only(true)
-        .secure(secure)
-        .same_site(SameSite::Lax) // Lax needed for redirect flow
-        .max_age(Duration::minutes(OAUTH_STATE_DURATION_MINUTES))
-        .to_string()
+    build_cookie(
+        OAUTH_STATE_COOKIE_NAME,
+        state,
+        0,
+        OAUTH_STATE_DURATION_MINUTES,
+        secure,
+    )
 }
 
 pub(crate) fn clear_oauth_state_cookie(secure: bool) -> String {
-    Cookie::build((OAUTH_STATE_COOKIE_NAME, ""))
-        .path("/")
-        .http_only(true)
-        .secure(secure)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::seconds(0))
-        .to_string()
+    build_cookie(OAUTH_STATE_COOKIE_NAME, "", 0, 0, secure)
 }
 
 pub(crate) fn create_oauth_action_cookie(action: &str, secure: bool) -> String {
-    Cookie::build((OAUTH_ACTION_COOKIE_NAME, action))
-        .path("/")
-        .http_only(true)
-        .secure(secure)
-        .same_site(SameSite::Lax) // Lax needed for redirect flow
-        .max_age(Duration::minutes(OAUTH_STATE_DURATION_MINUTES))
-        .to_string()
+    build_cookie(
+        OAUTH_ACTION_COOKIE_NAME,
+        action,
+        0,
+        OAUTH_STATE_DURATION_MINUTES,
+        secure,
+    )
 }
 
 pub(crate) fn clear_oauth_action_cookie(secure: bool) -> String {
-    Cookie::build((OAUTH_ACTION_COOKIE_NAME, ""))
-        .path("/")
-        .http_only(true)
-        .secure(secure)
-        .same_site(SameSite::Lax)
-        .max_age(Duration::seconds(0))
-        .to_string()
+    build_cookie(OAUTH_ACTION_COOKIE_NAME, "", 0, 0, secure)
 }
 
 pub(crate) fn get_base_url(env: &Env) -> String {
@@ -167,6 +161,7 @@ struct UpdateItemRequest {
     title: String,
     status: UserStatus,
     score: Option<i32>,
+    begin_at: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -202,12 +197,12 @@ fn get_argon2_instance() -> &'static Argon2<'static> {
     ARGON2_INSTANCE.get_or_init(Argon2::default)
 }
 
-pub fn hash_password(password: &str) -> std::result::Result<String, String> {
+pub fn hash_password(password: &str) -> std::result::Result<String, Error> {
     let salt = SaltString::generate(&mut OsRng);
     get_argon2_instance()
         .hash_password(password.as_bytes(), &salt)
         .map(|h| h.to_string())
-        .map_err(|e| e.to_string())
+        .map_err(|e| Error::RustError(e.to_string()))
 }
 
 pub fn verify_password(password: &str, hash: &str) -> bool {
@@ -220,18 +215,25 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+pub async fn create_user_session(db: &AppDatabase, user_id: i32, secure: bool) -> Result<String> {
+    let token = Uuid::new_v4().to_string();
+    let expires_at = utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    db.create_session(user_id, &token, expires_at).await?;
+    Ok(create_session_cookie(&token, secure))
+}
+
 pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
 
     if (db.get_user_by_email(&body.email).await?).is_some() {
-        return Response::error("Email already registered", 400);
+        return Response::error(EMAIL_IN_USE_ERR, 400);
     }
     if (db.get_user_by_username(&body.username).await?).is_some() {
-        return Response::error("Username already taken", 400);
+        return Response::error(USERNAME_TAKEN_ERR, 400);
     }
 
-    let password_hash = hash_password(&body.password).map_err(Error::RustError)?;
+    let password_hash = hash_password(&body.password)?;
     let user = db
         .create_user(
             &body.email,
@@ -243,14 +245,8 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
         )
         .await?;
 
-    // Auto login
-    let token = Uuid::new_v4().to_string();
-    let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-    db.create_session(user.id, &token, expires_at).await?;
-
-    let secure = is_secure(&env);
-    Response::from_json(&UserResponse::from(user))?
-        .add_header("Set-Cookie", &create_session_cookie(&token, secure))
+    let session_cookie = create_user_session(&db, user.id, is_secure(&env)).await?;
+    Response::from_json(&UserResponse::from(user))?.add_header("Set-Cookie", &session_cookie)
 }
 
 pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
@@ -272,13 +268,8 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
         return Response::error("Invalid credentials", 401);
     }
 
-    let token = Uuid::new_v4().to_string();
-    let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-    db.create_session(user.id, &token, expires_at).await?;
-
-    let secure = is_secure(&env);
-    Response::from_json(&UserResponse::from(user))?
-        .add_header("Set-Cookie", &create_session_cookie(&token, secure))
+    let session_cookie = create_user_session(&db, user.id, is_secure(&env)).await?;
+    Response::from_json(&UserResponse::from(user))?.add_header("Set-Cookie", &session_cookie)
 }
 
 pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
@@ -311,7 +302,7 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
         && let Some(existing) = db.get_user_by_username(&body.username).await?
         && existing.id != user.id
     {
-        return Response::error("Username already taken", 409);
+        return Response::error(USERNAME_TAKEN_ERR, 409);
     }
 
     // Check unique email if changed and provided
@@ -320,7 +311,7 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
         && let Some(existing) = db.get_user_by_email(email).await?
         && existing.id != user.id
     {
-        return Response::error("Email already in use", 409);
+        return Response::error(EMAIL_IN_USE_ERR, 409);
     }
 
     db.update_user_profile(
@@ -358,7 +349,7 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
         }
     }
 
-    let new_password_hash = hash_password(&body.new_password).map_err(Error::RustError)?;
+    let new_password_hash = hash_password(&body.new_password)?;
     db.update_user_password(user.id, &new_password_hash).await?;
 
     Response::ok("Password updated")
@@ -373,30 +364,9 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
     let body: UpdateItemRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    db.update_user_item(user.id, &body.title, body.status, body.score)
+    db.update_user_item(user.id, &body.title, body.status, body.score, body.begin_at)
         .await?;
     Response::ok("Updated")
-}
-
-pub async fn handle_get_item(req: Request, env: Env) -> Result<Response> {
-    let (user, _) = match get_auth(&req, &env).await? {
-        Some(u) => u,
-        None => return Response::error("Unauthorized", 401),
-    };
-
-    let url = req.url()?;
-    let title = url
-        .query_pairs()
-        .find(|(k, _)| k == "title")
-        .map(|(_, v)| v.to_string());
-
-    if let Some(t) = title {
-        let db = get_db(&env)?;
-        let item = db.get_user_item(user.id, &t).await?;
-        Response::from_json(&item)
-    } else {
-        Response::error("Missing title", 400)
-    }
 }
 
 pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {

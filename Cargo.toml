@@ -38,6 +38,9 @@ rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074
 sha2 = "0.10.9"
 hmac = "0.12.1"
 hex = "0.4.3"
+serde_repr = "0.1.20"
+serde_urlencoded = "0.7.1"
+time = { version = "0.3", features = ["macros", "wasm-bindgen", "parsing"] }
 
 [profile.release]
 opt-level = "z"

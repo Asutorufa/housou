@@ -1,14 +1,22 @@
-import { render, screen, waitFor, act } from "@testing-library/react";
-import AnimeCard from "./AnimeCard";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SiteMeta, DisplayAnimeItem } from "../types";
-import React from "react";
-import { isDev } from "../utils/envUtils";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MetadataProvider } from "../contexts/MetadataContext";
+import { DisplayAnimeItem, MetadataRequest, SiteMeta } from "../types";
+import { isDev } from "../utils/envUtils";
+import AnimeCard from "./AnimeCard";
 
 // Mock envUtils
 vi.mock("../utils/envUtils", () => ({
   isDev: vi.fn(),
+}));
+
+// Mock lazyObserver
+let lazyCallback: (() => void) | null = null;
+vi.mock("../utils/lazyObserver", () => ({
+  observeLazy: vi.fn((el, cb) => {
+    lazyCallback = cb;
+  }),
+  unobserveLazy: vi.fn(),
 }));
 
 const mockItemXSS: DisplayAnimeItem = {
@@ -81,39 +89,26 @@ const mockItemFetch: DisplayAnimeItem = {
 };
 
 describe("AnimeCard fetchMetadata", () => {
-  let observerCallback: IntersectionObserverCallback;
-  const observeMock = vi.fn();
-  const disconnectMock = vi.fn();
-  const originalIntersectionObserver = window.IntersectionObserver;
-
   beforeEach(() => {
-    // Mock IntersectionObserver
-    const MockIntersectionObserver = vi.fn();
-    MockIntersectionObserver.mockImplementation(function (
-      cb: IntersectionObserverCallback,
-    ) {
-      observerCallback = cb;
-      return {
-        observe: observeMock,
-        disconnect: disconnectMock,
-        unobserve: vi.fn(),
-        takeRecords: vi.fn(),
-        root: null,
-        rootMargin: "",
-        thresholds: [],
-      };
-    });
-    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
-
     // Mock fetch
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve([{}]) as Promise<unknown>,
-    } as Response);
+    const mockFetch = vi.fn().mockImplementation(async (_url, options) => {
+      const body = JSON.parse(
+        (options?.body as string) || "[]",
+      ) as (MetadataRequest & { request_id: string })[];
+      return {
+        ok: true,
+        json: async () =>
+          body.map((req) => ({
+            request_id: req.request_id,
+            metadata: { id: "1", title: { native: req.title } },
+          })),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", mockFetch);
   });
 
   afterEach(() => {
-    window.IntersectionObserver = originalIntersectionObserver;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -125,23 +120,23 @@ describe("AnimeCard fetchMetadata", () => {
     );
 
     // Simulate intersection
-    const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
-    if (observerCallback) {
+    if (lazyCallback) {
       act(() => {
-        observerCallback([mockEntry], {} as IntersectionObserver);
+        lazyCallback!();
       });
     }
 
     // Allow debounce to fire
     await waitFor(
       () => {
-        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(window.fetch).toHaveBeenCalledTimes(1);
       },
       { timeout: 1000 },
     );
 
-    const urlString = vi.mocked(global.fetch).mock.calls[0][0] as string;
-    const opts = vi.mocked(global.fetch).mock.calls[0][1];
+    const callArray = vi.mocked(window.fetch).mock.calls[0];
+    const urlString = callArray[0] as string;
+    const opts = callArray[1];
 
     expect(urlString).toBe("/api/metadata");
     expect(opts?.method).toBe("POST");
@@ -164,7 +159,7 @@ describe("AnimeCard fetchMetadata", () => {
     vi.mocked(isDev).mockReturnValue(false);
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
+    vi.mocked(window.fetch).mockRejectedValue(new Error("Network error"));
 
     render(
       <MetadataProvider>
@@ -173,10 +168,9 @@ describe("AnimeCard fetchMetadata", () => {
     );
 
     // Simulate intersection
-    const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
-    if (observerCallback) {
+    if (lazyCallback) {
       act(() => {
-        observerCallback([mockEntry], {} as IntersectionObserver);
+        lazyCallback!();
       });
     }
 
@@ -209,7 +203,7 @@ describe("AnimeCard fetchMetadata", () => {
     vi.mocked(isDev).mockReturnValue(true);
 
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(global.fetch).mockRejectedValue(new Error("Network error"));
+    vi.mocked(window.fetch).mockRejectedValue(new Error("Network error"));
 
     render(
       <MetadataProvider>
@@ -218,10 +212,9 @@ describe("AnimeCard fetchMetadata", () => {
     );
 
     // Simulate intersection
-    const mockEntry = { isIntersecting: true } as IntersectionObserverEntry;
-    if (observerCallback) {
+    if (lazyCallback) {
       act(() => {
-        observerCallback([mockEntry], {} as IntersectionObserver);
+        lazyCallback!();
       });
     }
 

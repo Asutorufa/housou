@@ -14,6 +14,8 @@ pub const CACHE_TTL_API: i32 = ONE_DAY; // 24 hours for API responses
 pub const CACHE_TTL_FINISHED: i32 = 30 * ONE_DAY; // 30 days for finished titles
 pub const CACHE_TTL_ONGOING: i32 = 7 * ONE_DAY; // 1 week for ongoing titles
 pub const CACHE_TTL_JIKAN: i32 = ONE_DAY; // 1 day for Jikan API responses
+pub const CACHE_TTL_FAVICON: i32 = 30 * ONE_DAY; // 30 days for favicon
+pub const CACHE_TTL_FAVICON_404: i32 = ONE_DAY; // 1 day for favicon 404
 
 // Cache Version
 pub const CACHE_VERSION: &str = "v3";

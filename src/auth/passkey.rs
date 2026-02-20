@@ -47,7 +47,7 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
     };
     let db = auth::get_db(&env)?;
     let config = ConfigHelper::from_req(&req, &env);
-    let now = Date::now().as_millis() as i64;
+    let now = crate::utils::now_utc_ms();
 
     let options = passkey_server::start_registration(
         &db,
@@ -69,11 +69,11 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
         None => return Response::error("Unauthorized", 401),
     };
     let config = ConfigHelper::from_req(&req, &env);
-    let response: RegistrationResponse = req.json().await?;
+    let body: RegistrationResponse = req.json().await?;
     let db = auth::get_db(&env)?;
-    let now = Date::now().as_millis() as i64;
+    let now = crate::utils::now_utc_ms();
 
-    passkey_server::finish_registration(&db, &user.id.to_string(), &config, response, now)
+    passkey_server::finish_registration(&db, &user.id.to_string(), &config, body, now)
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
@@ -83,7 +83,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
 pub async fn handle_login_start(req: Request, env: Env) -> Result<Response> {
     let db = auth::get_db(&env)?;
     let config = ConfigHelper::from_req(&req, &env);
-    let now = Date::now().as_millis() as i64;
+    let now = crate::utils::now_utc_ms();
 
     let options = passkey_server::start_login(&db, &config, now)
         .await
@@ -96,7 +96,7 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
     let config = ConfigHelper::from_req(&req, &env);
     let response: LoginResponse = req.json().await?;
     let db = auth::get_db(&env)?;
-    let now = Date::now().as_millis() as i64;
+    let now = crate::utils::now_utc_ms();
 
     let user_id_str = passkey_server::finish_login(&db, &config, response, now)
         .await
@@ -115,7 +115,7 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
     // Create session
     let token = uuid::Uuid::new_v4().to_string();
     let expires_at =
-        Date::now().as_millis() as i64 + (auth::SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+        crate::utils::now_utc_ms() + (auth::SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
     let secure = auth::is_secure(&env);

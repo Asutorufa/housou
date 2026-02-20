@@ -92,15 +92,8 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
 
         let is_auth_route =
             url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
-        // We also want to skip caching /api/items if the user is authenticated, because the response is personalized.
-        // Checking for cookie presence is a simple heuristic.
-        let has_session_cookie = req
-            .headers()
-            .get("Cookie")?
-            .unwrap_or_default()
-            .contains("housou_session");
 
-        if is_auth_route || (url.path() == "/api/items" && has_session_cookie) {
+        if is_auth_route {
             router(req, env.clone()).await
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
@@ -109,12 +102,8 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
             // Generate new response
             let mut fresh_resp = router(req, env.clone()).await?;
 
-            // Cache successful GET responses (except auth and personalized items)
-            if url.path().starts_with("/api")
-                && !is_auth_route
-                && !(url.path() == "/api/items" && has_session_cookie)
-                && fresh_resp.status_code() == 200
-            {
+            // Cache successful GET responses (except auth)
+            if url.path().starts_with("/api") && !is_auth_route && fresh_resp.status_code() == 200 {
                 if !fresh_resp.headers().has("Cache-Control")? {
                     fresh_resp = fresh_resp.add_header(
                         "Cache-Control",
@@ -131,98 +120,102 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
 }
 
 async fn router(req: Request, env: Env) -> Result<Response> {
-    let method = req.method();
-    let path = req.path();
-
-    // Check if Auth is enabled (DB binding exists)
     let auth_enabled = env.d1("DB").is_ok();
 
-    match (method.clone(), path.as_str()) {
-        (Method::Get, "/api/config") => handlers::handle_config(req, env).await,
-        (Method::Get, "/api/items") => handlers::handle_items(req, env).await,
-        (Method::Post, "/api/user/status") if auth_enabled => {
-            handlers::handle_user_status(req, env).await
-        }
-        (Method::Get, "/api/metadata") | (Method::Post, "/api/metadata") => {
-            handlers::handle_metadata(req, env).await
-        }
-        // Auth Routes (Only if enabled)
-        (Method::Post, "/api/auth/register") if auth_enabled => {
-            auth::handle_register(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/login") if auth_enabled => {
-            auth::handle_login(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/logout") if auth_enabled => {
-            auth::handle_logout(req, env.clone()).await
-        }
-        (Method::Get, "/api/auth/me") if auth_enabled => auth::handle_me(req, env.clone()).await,
-        (Method::Put, "/api/auth/profile") if auth_enabled => {
-            auth::handle_update_profile(req, env.clone()).await
-        }
-        (Method::Put, "/api/auth/password") if auth_enabled => {
-            auth::handle_change_password(req, env.clone()).await
-        }
-        (Method::Get, "/api/auth/github/authorize") if auth_enabled => {
-            auth::handle_github_authorize(req, env.clone()).await
-        }
-        (Method::Get, "/api/auth/github/callback") if auth_enabled => {
-            auth::handle_github_callback(req, env.clone()).await
-        }
-        (Method::Get, "/api/auth/github/bind") if auth_enabled => {
-            auth::handle_github_bind_authorize(req, env.clone()).await
-        }
-        (Method::Delete, "/api/auth/github") if auth_enabled => {
-            auth::handle_github_unbind(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/telegram/login") if auth_enabled => {
-            auth::handle_telegram_login(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/telegram/bind") if auth_enabled => {
-            auth::handle_telegram_bind(req, env.clone()).await
-        }
-        (Method::Delete, "/api/auth/telegram") if auth_enabled => {
-            auth::handle_telegram_unbind(req, env.clone()).await
-        }
-        (Method::Get, "/api/user/item") if auth_enabled => {
-            auth::handle_get_item(req, env.clone()).await
-        }
-        (Method::Post, "/api/user/item") if auth_enabled => {
-            auth::handle_update_item(req, env.clone()).await
-        }
+    let mut router = Router::with_data(env.clone());
 
-        // Passkey Routes
-        (Method::Post, "/api/auth/passkey/register/start") if auth_enabled => {
-            auth::passkey::handle_register_start(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/passkey/register/finish") if auth_enabled => {
-            auth::passkey::handle_register_finish(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/passkey/login/start") if auth_enabled => {
-            auth::passkey::handle_login_start(req, env.clone()).await
-        }
-        (Method::Post, "/api/auth/passkey/login/finish") if auth_enabled => {
-            auth::passkey::handle_login_finish(req, env.clone()).await
-        }
-        (Method::Get, "/api/auth/passkey") if auth_enabled => {
-            auth::passkey::handle_list(req, env.clone()).await
-        }
-        (Method::Delete, "/api/auth/passkey") if auth_enabled => {
-            auth::passkey::handle_delete(req, env.clone()).await
-        }
-        (Method::Patch, "/api/auth/passkey") if auth_enabled => {
-            auth::passkey::handle_rename(req, env.clone()).await
-        }
+    router = router
+        .get_async("/api/config", |req, ctx| async move {
+            handlers::handle_config(req, ctx.data).await
+        })
+        .get_async("/api/items", |req, ctx| async move {
+            handlers::handle_items(req, ctx.data).await
+        })
+        .get_async("/api/metadata", |req, ctx| async move {
+            handlers::handle_metadata(req, ctx.data).await
+        })
+        .post_async("/api/metadata", |req, ctx| async move {
+            handlers::handle_metadata(req, ctx.data).await
+        })
+        .get_async("/api/favicon", |req, ctx| async move {
+            handlers::handle_favicon(req, ctx.data).await
+        });
 
-        // Handle Options for CORS on auth routes
-        (Method::Options, path)
-            if path.starts_with("/api/auth")
-                || path.starts_with("/api/user")
-                || path.starts_with("/api/metadata") =>
-        {
-            Response::empty()
-        }
-
-        _ => Response::error("Not Found", 404),
+    if auth_enabled {
+        router = router
+            .get_async("/api/user/status", |req, ctx| async move {
+                handlers::handle_user_status(req, ctx.data).await
+            })
+            .post_async("/api/auth/register", |req, ctx| async move {
+                auth::handle_register(req, ctx.data).await
+            })
+            .post_async("/api/auth/login", |req, ctx| async move {
+                auth::handle_login(req, ctx.data).await
+            })
+            .post_async("/api/auth/logout", |req, ctx| async move {
+                auth::handle_logout(req, ctx.data).await
+            })
+            .get_async("/api/auth/me", |req, ctx| async move {
+                auth::handle_me(req, ctx.data).await
+            })
+            .put_async("/api/auth/profile", |req, ctx| async move {
+                auth::handle_update_profile(req, ctx.data).await
+            })
+            .put_async("/api/auth/password", |req, ctx| async move {
+                auth::handle_change_password(req, ctx.data).await
+            })
+            .get_async("/api/auth/github/authorize", |req, ctx| async move {
+                auth::handle_github_authorize(req, ctx.data).await
+            })
+            .get_async("/api/auth/github/callback", |req, ctx| async move {
+                auth::handle_github_callback(req, ctx.data).await
+            })
+            .get_async("/api/auth/github/bind", |req, ctx| async move {
+                auth::handle_github_bind_authorize(req, ctx.data).await
+            })
+            .delete_async("/api/auth/github", |req, ctx| async move {
+                auth::handle_github_unbind(req, ctx.data).await
+            })
+            .post_async("/api/auth/telegram/login", |req, ctx| async move {
+                auth::handle_telegram_login(req, ctx.data).await
+            })
+            .post_async("/api/auth/telegram/bind", |req, ctx| async move {
+                auth::handle_telegram_bind(req, ctx.data).await
+            })
+            .delete_async("/api/auth/telegram", |req, ctx| async move {
+                auth::handle_telegram_unbind(req, ctx.data).await
+            })
+            .post_async("/api/user/item", |req, ctx| async move {
+                auth::handle_update_item(req, ctx.data).await
+            })
+            .post_async("/api/auth/passkey/register/start", |req, ctx| async move {
+                auth::passkey::handle_register_start(req, ctx.data).await
+            })
+            .post_async("/api/auth/passkey/register/finish", |req, ctx| async move {
+                auth::passkey::handle_register_finish(req, ctx.data).await
+            })
+            .post_async("/api/auth/passkey/login/start", |req, ctx| async move {
+                auth::passkey::handle_login_start(req, ctx.data).await
+            })
+            .post_async("/api/auth/passkey/login/finish", |req, ctx| async move {
+                auth::passkey::handle_login_finish(req, ctx.data).await
+            })
+            .get_async("/api/auth/passkey", |req, ctx| async move {
+                auth::passkey::handle_list(req, ctx.data).await
+            })
+            .delete_async("/api/auth/passkey", |req, ctx| async move {
+                auth::passkey::handle_delete(req, ctx.data).await
+            })
+            .patch_async("/api/auth/passkey", |req, ctx| async move {
+                auth::passkey::handle_rename(req, ctx.data).await
+            });
     }
+
+    // Handle Options for CORS on auth routes
+    router = router
+        .options("/api/metadata", |_, _| Response::empty())
+        .options("/api/user/*path", |_, _| Response::empty())
+        .options("/api/auth/*path", |_, _| Response::empty());
+
+    router.run(req, env).await
 }

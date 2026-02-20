@@ -1,4 +1,5 @@
 use crate::model::UserStatus;
+use crate::utils;
 use async_trait::async_trait;
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
@@ -39,6 +40,7 @@ pub struct UserItem {
     pub status: UserStatus,
     pub score: Option<i32>,
     pub updated_at: i64,
+    pub begin_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,13 +96,28 @@ pub trait Database {
         title: &str,
         status: UserStatus,
         score: Option<i32>,
+        begin_at: Option<i64>,
     ) -> Result<()>;
-    async fn get_user_item(&self, user_id: i32, title: &str) -> Result<Option<UserItem>>;
-    async fn get_user_items_by_titles(
+    async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>>;
+    async fn get_user_items_by_range(
         &self,
         user_id: i32,
-        titles: &[String],
+        start_ts: i64,
+        end_ts: i64,
     ) -> Result<Vec<UserItem>>;
+}
+
+trait IntoJsValue {
+    fn to_js(&self) -> JsValue;
+}
+
+impl<T: AsRef<str>> IntoJsValue for Option<T> {
+    fn to_js(&self) -> JsValue {
+        match self {
+            Some(s) => JsValue::from_str(s.as_ref()),
+            None => JsValue::NULL,
+        }
+    }
 }
 
 pub struct AppDatabase {
@@ -110,6 +127,21 @@ pub struct AppDatabase {
 impl AppDatabase {
     pub fn new(db: D1Database) -> Self {
         Self { db }
+    }
+
+    async fn get_user_by_field(&self, field: &str, value: JsValue) -> Result<Option<User>> {
+        let query = format!("SELECT * FROM users WHERE {} = ?", field);
+        self.db.prepare(&query).bind(&[value])?.first(None).await
+    }
+
+    async fn update_user_field(&self, id: i32, field: &str, value: JsValue) -> Result<()> {
+        let query = format!("UPDATE users SET {} = ? WHERE id = ?", field);
+        self.db
+            .prepare(&query)
+            .bind(&[value, JsValue::from_f64(id as f64)])?
+            .run()
+            .await?;
+        Ok(())
     }
 }
 
@@ -200,6 +232,13 @@ impl Database for AppDatabase {
                     "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
                 ],
             ),
+            (
+                5,
+                vec![
+                    "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
+                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
+                ],
+            ),
         ];
 
         // Apply pending migrations
@@ -214,7 +253,7 @@ impl Database for AppDatabase {
                     statements.push(self.db.prepare(query));
                 }
 
-                let now = Date::now().as_millis() as i64;
+                let now = utils::now_utc_ms();
                 statements.push(self.db.prepare(INSERT_MIGRATION_QUERY).bind(&[
                     JsValue::from_f64(version as f64),
                     JsValue::from_f64(now as f64),
@@ -236,37 +275,16 @@ impl Database for AppDatabase {
         telegram_id: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<User> {
-        let created_at = Date::now().as_millis() as i64;
+        let created_at = utils::now_utc_ms();
         let query = "INSERT INTO users (email, username, password_hash, github_id, telegram_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *";
-
-        let password_val = if let Some(h) = password_hash {
-            JsValue::from_str(h)
-        } else {
-            JsValue::NULL
-        };
-        let github_val = if let Some(g) = github_id {
-            JsValue::from_str(g)
-        } else {
-            JsValue::NULL
-        };
-        let telegram_val = if let Some(t) = telegram_id {
-            JsValue::from_str(t)
-        } else {
-            JsValue::NULL
-        };
-        let avatar_val = if let Some(a) = avatar_url {
-            JsValue::from_str(a)
-        } else {
-            JsValue::NULL
-        };
 
         let stmt = self.db.prepare(query).bind(&[
             JsValue::from_str(email),
             JsValue::from_str(username),
-            password_val,
-            github_val,
-            telegram_val,
-            avatar_val,
+            password_hash.to_js(),
+            github_id.to_js(),
+            telegram_id.to_js(),
+            avatar_url.to_js(),
             JsValue::from_f64(created_at as f64),
         ])?;
 
@@ -275,47 +293,27 @@ impl Database for AppDatabase {
     }
 
     async fn get_user_by_email(&self, email: &str) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE email = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(email)])?
-            .first(None)
+        self.get_user_by_field("email", JsValue::from_str(email))
             .await
     }
 
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_f64(id as f64)])?
-            .first(None)
+        self.get_user_by_field("id", JsValue::from_f64(id as f64))
             .await
     }
 
     async fn get_user_by_github_id(&self, github_id: &str) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE github_id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(github_id)])?
-            .first(None)
+        self.get_user_by_field("github_id", JsValue::from_str(github_id))
             .await
     }
 
     async fn get_user_by_telegram_id(&self, telegram_id: &str) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE telegram_id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(telegram_id)])?
-            .first(None)
+        self.get_user_by_field("telegram_id", JsValue::from_str(telegram_id))
             .await
     }
 
     async fn get_user_by_username(&self, username: &str) -> Result<Option<User>> {
-        let query = "SELECT * FROM users WHERE username = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(username)])?
-            .first(None)
+        self.get_user_by_field("username", JsValue::from_str(username))
             .await
     }
 
@@ -339,11 +337,7 @@ impl Database for AppDatabase {
 
         // Always update avatar_url, setting to NULL if None (explicit clear)
         updates.push("avatar_url = ?");
-        if let Some(avatar) = new_avatar_url {
-            bindings.push(JsValue::from_str(avatar));
-        } else {
-            bindings.push(JsValue::NULL);
-        }
+        bindings.push(new_avatar_url.to_js());
 
         let query = format!("UPDATE users SET {} WHERE id = ?", updates.join(", "));
         bindings.push(JsValue::from_f64(id as f64));
@@ -353,46 +347,18 @@ impl Database for AppDatabase {
     }
 
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()> {
-        let query = "UPDATE users SET password_hash = ? WHERE id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_str(password_hash),
-                JsValue::from_f64(id as f64),
-            ])?
-            .run()
-            .await?;
-        Ok(())
+        self.update_user_field(id, "password_hash", JsValue::from_str(password_hash))
+            .await
     }
 
     async fn update_user_telegram_id(&self, id: i32, telegram_id: Option<&str>) -> Result<()> {
-        let query = "UPDATE users SET telegram_id = ? WHERE id = ?";
-        let tel_val = if let Some(t) = telegram_id {
-            JsValue::from_str(t)
-        } else {
-            JsValue::NULL
-        };
-        self.db
-            .prepare(query)
-            .bind(&[tel_val, JsValue::from_f64(id as f64)])?
-            .run()
-            .await?;
-        Ok(())
+        self.update_user_field(id, "telegram_id", telegram_id.to_js())
+            .await
     }
 
     async fn update_user_github_id(&self, id: i32, github_id: Option<&str>) -> Result<()> {
-        let query = "UPDATE users SET github_id = ? WHERE id = ?";
-        let gh_val = if let Some(g) = github_id {
-            JsValue::from_str(g)
-        } else {
-            JsValue::NULL
-        };
-        self.db
-            .prepare(query)
-            .bind(&[gh_val, JsValue::from_f64(id as f64)])?
-            .run()
-            .await?;
-        Ok(())
+        self.update_user_field(id, "github_id", github_id.to_js())
+            .await
     }
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()> {
@@ -411,7 +377,7 @@ impl Database for AppDatabase {
 
     async fn get_session(&self, token: &str) -> Result<Option<Session>> {
         let query = "SELECT * FROM sessions WHERE token = ? AND expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
@@ -421,7 +387,7 @@ impl Database for AppDatabase {
 
     async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>> {
         let query = "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
@@ -445,15 +411,27 @@ impl Database for AppDatabase {
         title: &str,
         status: UserStatus,
         score: Option<i32>,
+        begin_at: Option<i64>,
     ) -> Result<()> {
-        let updated_at = Date::now().as_millis() as i64;
+        let updated_at = utils::now_utc_ms();
         // SQLite upsert
-        let query = "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at)
-                     VALUES (?, ?, ?, ?, ?)
-                     ON CONFLICT(user_id, title) DO UPDATE SET status = excluded.status, score = excluded.score, updated_at = excluded.updated_at";
+        let query =
+            "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at, begin_at)
+                     VALUES (?, ?, ?, ?, ?, ?)
+                     ON CONFLICT(user_id, title) DO UPDATE SET 
+                        status = excluded.status, 
+                        score = excluded.score, 
+                        updated_at = excluded.updated_at,
+                        begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)";
 
         let score_val = if let Some(s) = score {
             JsValue::from_f64(s as f64)
+        } else {
+            JsValue::NULL
+        };
+
+        let begin_val = if let Some(b) = begin_at {
+            JsValue::from_f64(b as f64)
         } else {
             JsValue::NULL
         };
@@ -466,57 +444,49 @@ impl Database for AppDatabase {
                 JsValue::from_f64(status as i32 as f64),
                 score_val,
                 JsValue::from_f64(updated_at as f64),
+                begin_val,
             ])?
             .run()
             .await?;
         Ok(())
     }
 
-    async fn get_user_item(&self, user_id: i32, title: &str) -> Result<Option<UserItem>> {
-        let query = "SELECT * FROM user_items_v2 WHERE user_id = ? AND title = ?";
-        self.db
+    async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>> {
+        let query = "SELECT * FROM user_items_v2 WHERE user_id = ? AND status != 0";
+        let results = self
+            .db
             .prepare(query)
-            .bind(&[JsValue::from_f64(user_id as f64), JsValue::from_str(title)])?
-            .first(None)
-            .await
+            .bind(&[JsValue::from_f64(user_id as f64)])?
+            .all()
+            .await?;
+
+        let rows: Vec<UserItem> = results.results()?;
+        Ok(rows)
     }
 
-    async fn get_user_items_by_titles(
+    async fn get_user_items_by_range(
         &self,
         user_id: i32,
-        titles: &[String],
+        start_ts: i64,
+        end_ts: i64,
     ) -> Result<Vec<UserItem>> {
-        if titles.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // Chunk to avoid "too many SQL variables" error (D1 limit is 100 per query)
-        let mut statements = Vec::new();
-        for chunk in titles.chunks(50) {
-            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let query = format!(
-                "SELECT * FROM user_items_v2 WHERE user_id = ? AND title IN ({placeholders})"
-            );
-
-            let mut bindings = Vec::with_capacity(chunk.len() + 1);
-            bindings.push(JsValue::from_f64(user_id as f64));
-            for title in chunk {
-                bindings.push(JsValue::from_str(title));
-            }
-
-            statements.push(self.db.prepare(&query).bind(&bindings)?);
-        }
-
-        let all_results: Vec<UserItem> = self
+        // Fetch items within the time range OR items that don't have begin_at yet (to avoid missing data during transition)
+        let query = "SELECT * FROM user_items_v2 
+                     WHERE user_id = ? AND status != 0 
+                     AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))";
+        let results = self
             .db
-            .batch(statements)
-            .await?
-            .into_iter()
-            .map(|res| res.results())
-            .collect::<Result<Vec<_>>>()?
-            .concat();
+            .prepare(query)
+            .bind(&[
+                JsValue::from_f64(user_id as f64),
+                JsValue::from_f64(start_ts as f64),
+                JsValue::from_f64(end_ts as f64),
+            ])?
+            .all()
+            .await?;
 
-        Ok(all_results)
+        let rows: Vec<UserItem> = results.results()?;
+        Ok(rows)
     }
 }
 
@@ -688,7 +658,7 @@ impl PasskeyStore for AppDatabase {
         state_json: &str,
         expires_at: i64,
     ) -> passkey_server::error::Result<()> {
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
 
         let cleanup_stmt = self
             .db
@@ -715,7 +685,7 @@ impl PasskeyStore for AppDatabase {
 
     async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
         let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])
