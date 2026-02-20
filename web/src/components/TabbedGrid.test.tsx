@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { DisplayAnimeItem } from "../types";
 import TabbedGrid from "./TabbedGrid";
@@ -32,9 +33,14 @@ vi.mock("../contexts/MetadataContext", () => ({
 // Mock framer-motion (motion/react) to skip animations
 vi.mock("motion/react", () => {
   return {
-    AnimatePresence: ({ children }: any) => <>{children}</>,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
     motion: {
-      div: ({ children, ...props }: any) => {
+      div: ({
+        children,
+        ...props
+      }: { children: React.ReactNode } & Record<string, unknown>) => {
         // Filter out framer-motion specific props that might cause React warnings on div
         const {
           layoutId,
@@ -50,16 +56,24 @@ vi.mock("motion/react", () => {
         } = props;
         return <div {...rest}>{children}</div>;
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      h3: ({ children, ...props }: any) => {
+      h3: ({
+        children,
+        ...props
+      }: { children: React.ReactNode } & Record<string, unknown>) => {
         const { layoutId, ...rest } = props;
         return <h3 {...rest}>{children}</h3>;
       },
-      h1: ({ children, ...props }: any) => {
+      h1: ({
+        children,
+        ...props
+      }: { children: React.ReactNode } & Record<string, unknown>) => {
         const { layoutId, ...rest } = props;
         return <h1 {...rest}>{children}</h1>;
       },
-      span: ({ children, ...props }: any) => {
+      span: ({
+        children,
+        ...props
+      }: { children: React.ReactNode } & Record<string, unknown>) => {
         const { layoutId, initial, animate, exit, transition, ...rest } = props;
         return <span {...rest}>{children}</span>;
       },

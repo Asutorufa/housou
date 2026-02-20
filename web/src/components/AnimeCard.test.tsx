@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MetadataProvider } from "../contexts/MetadataContext";
-import { DisplayAnimeItem, SiteMeta } from "../types";
+import { DisplayAnimeItem, MetadataRequest, SiteMeta } from "../types";
 import { isDev } from "../utils/envUtils";
 import AnimeCard from "./AnimeCard";
 
@@ -91,12 +91,14 @@ const mockItemFetch: DisplayAnimeItem = {
 describe("AnimeCard fetchMetadata", () => {
   beforeEach(() => {
     // Mock fetch
-    const mockFetch = vi.fn().mockImplementation(async (url, options) => {
-      const body = JSON.parse((options?.body as string) || "[]");
+    const mockFetch = vi.fn().mockImplementation(async (_url, options) => {
+      const body = JSON.parse(
+        (options?.body as string) || "[]",
+      ) as (MetadataRequest & { request_id: string })[];
       return {
         ok: true,
         json: async () =>
-          body.map((req: any) => ({
+          body.map((req) => ({
             request_id: req.request_id,
             metadata: { id: "1", title: { native: req.title } },
           })),
