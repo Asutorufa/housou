@@ -5,8 +5,9 @@ use crate::utils;
 use worker::*;
 
 pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
-    let current_year = js_sys::Date::new_0().get_full_year() as i32;
-    let current_season_str = get_current_season();
+    let now = crate::utils::now_utc();
+    let current_year = now.year();
+    let current_season_str = get_current_season_from_now(now);
 
     // Determine if we should use Jikan (Future) or Bangumi (Past/Present)
     let is_future = is_future_season(year, season, current_year, current_season_str);
@@ -79,8 +80,8 @@ fn get_season_from_month(month: u32) -> &'static str {
     }
 }
 
-fn get_current_season() -> &'static str {
-    let month = js_sys::Date::new_0().get_month() + 1;
+fn get_current_season_from_now(now: time::OffsetDateTime) -> &'static str {
+    let month = now.month() as u32;
     get_season_from_month(month)
 }
 

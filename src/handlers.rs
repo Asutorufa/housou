@@ -1,4 +1,5 @@
 use serde_derive::Serialize;
+use time::{Date as TimeDate, Month};
 use worker::*;
 
 use crate::db::Database;
@@ -79,7 +80,7 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
     let site_meta = fetch_site_meta().await?;
 
     // Fixed range of years to avoid fetching all month files just to get the list
-    let current_year = js_sys::Date::new_0().get_full_year() as i32;
+    let current_year = crate::utils::now_utc().year();
     // Add +1 year for future schedule
     let years: Vec<i32> = (config::START_YEAR..=current_year + 1).rev().collect();
 
@@ -152,24 +153,44 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
                     _ => (1, 12),
                 };
 
-                // Approximate timestamps (seconds)
-                // We use 00:00:00 of the 1st day of start_month
-                // to 23:59:59 of the last day of end_month.
-                // For simplicity, we can just use the start of the next month as end bound.
+                // Approximate timestamps (milliseconds)
+                let start_month = match Month::try_from(start_month as u8) {
+                    Ok(m) => m,
+                    Err(_) => Month::January,
+                };
+                let start_date =
+                    TimeDate::from_calendar_date(year, start_month, 1).unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
+                    });
+                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
+
                 let next_month_year = if end_month == 12 { year + 1 } else { year };
                 let next_month = if end_month == 12 { 1 } else { end_month + 1 };
-
-                let start_ts =
-                    js_sys::Date::parse(&format!("{year:04}-{start_month:02}-01T00:00:00Z")) as i64;
-                let end_ts = js_sys::Date::parse(&format!(
-                    "{next_month_year:04}-{next_month:02}-01T00:00:00Z"
-                )) as i64;
+                let next_month_m = match Month::try_from(next_month as u8) {
+                    Ok(m) => m,
+                    Err(_) => Month::January,
+                };
+                let end_date = TimeDate::from_calendar_date(next_month_year, next_month_m, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(next_month_year, Month::January, 1).unwrap()
+                    });
+                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
 
                 db.get_user_items_by_range(user.id, start_ts, end_ts).await
             } else if let Some(year) = query.year {
                 // If only year is provided, fetch for the whole year
-                let start_ts = js_sys::Date::parse(&format!("{year:04}-01-01T00:00:00Z")) as i64;
-                let end_ts = js_sys::Date::parse(&format!("{}:01-01T00:00:00Z", year + 1)) as i64;
+                let start_date = TimeDate::from_calendar_date(year, Month::January, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
+                    });
+                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
+
+                let next_year = year + 1;
+                let end_date = TimeDate::from_calendar_date(next_year, Month::January, 1)
+                    .unwrap_or_else(|_| {
+                        TimeDate::from_calendar_date(next_year, Month::January, 1).unwrap()
+                    });
+                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
 
                 db.get_user_items_by_range(user.id, start_ts, end_ts).await
             } else {
@@ -269,4 +290,66 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
     };
 
     provider::get_metadata(args, &env).await
+}
+
+#[derive(serde_derive::Deserialize)]
+struct FaviconQuery {
+    domain: String,
+}
+
+pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: FaviconQuery = serde_urlencoded::from_str(query_str)
+        .map_err(|e| Error::RustError(format!("Invalid query: {}", e)))?;
+
+    let hostname = &query.domain;
+
+    // Basic validation to prevent SSRF
+    if hostname.is_empty() || hostname.contains('/') || hostname.contains(':') {
+        return Response::error("Bad Request: invalid domain", 400);
+    }
+
+    let providers = [
+        format!("https://{}/favicon.ico", hostname),
+        format!(
+            "https://www.google.com/s2/favicons?domain={}&sz=32",
+            hostname
+        ),
+        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
+    ];
+
+    for provider_url in &providers {
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get);
+
+        let request = Request::new_with_init(provider_url, &init)?;
+        let response = Fetch::Request(request).send().await;
+
+        if let Ok(mut resp) = response
+            && resp.status_code() == 200
+        {
+            // Read the favicon bytes from upstream
+            let bytes = resp.bytes().await?;
+
+            let headers = Headers::new();
+            if let Some(ct) = resp.headers().get("Content-Type")? {
+                headers.set("Content-Type", &ct)?;
+            } else {
+                headers.set("Content-Type", "image/x-icon")?;
+            }
+            headers.set(
+                "Cache-Control",
+                &format!("public, max-age={}", config::CACHE_TTL_FAVICON),
+            )?;
+
+            return Ok(Response::from_bytes(bytes)?.with_headers(headers));
+        }
+    }
+
+    // No favicon found from any provider
+    Response::error("Not Found", 404)?.add_header(
+        "Cache-Control",
+        &format!("public, max-age={}", config::CACHE_TTL_FAVICON_404),
+    )
 }

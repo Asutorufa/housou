@@ -136,6 +136,9 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         })
         .post_async("/api/metadata", |req, ctx| async move {
             handlers::handle_metadata(req, ctx.data).await
+        })
+        .get_async("/api/favicon", |req, ctx| async move {
+            handlers::handle_favicon(req, ctx.data).await
         });
 
     if auth_enabled {

@@ -56,3 +56,12 @@ pub fn normalize_title_translate(
     }
     normalized
 }
+
+pub fn now_utc() -> time::OffsetDateTime {
+    let millis = Date::now().as_millis();
+    time::OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000).unwrap()
+}
+
+pub fn now_utc_ms() -> i64 {
+    Date::now().as_millis() as i64
+}

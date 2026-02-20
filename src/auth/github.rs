@@ -263,7 +263,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
             // Create session
             let token = Uuid::new_v4().to_string();
             let expires_at =
-                Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+                crate::utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
             db.create_session(user.id, &token, expires_at).await?;
 
             let mut resp = Response::redirect(Url::parse(&base_url)?)?;

@@ -21,15 +21,7 @@ export default function MultilingualTitles({
   // Helper check to see if a string is substantially similar to an already seen string
   const hasSeenTitle = (normalized: string) => {
     if (seenTitles.has(normalized)) return true;
-
-    // Check if the new title is a substring of an existing title or vice versa
-    if (normalized.length > 5) {
-      for (const seen of seenTitles) {
-        if (seen.includes(normalized) || normalized.includes(seen)) {
-          return true;
-        }
-      }
-    }
+    // Substring check removed to avoid hiding legitimate distinct titles
     return false;
   };
 

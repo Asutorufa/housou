@@ -22,20 +22,14 @@ export default function SiteLink({
   stopPropagation = true,
 }: SiteLinkProps) {
   const hostname = url && isValidUrl(url) ? new URL(url).hostname : "";
-  const ddgUrl = `https://icons.duckduckgo.com/ip3/${hostname}.ico`;
-  const googleUrl = `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
 
-  const [faviconSrc, setFaviconSrc] = useState(ddgUrl);
   const [hasError, setHasError] = useState(false);
-  const [prevDdgUrl, setPrevDdgUrl] = useState(ddgUrl);
-
-  if (prevDdgUrl !== ddgUrl) {
-    setPrevDdgUrl(ddgUrl);
-    setFaviconSrc(ddgUrl);
-    setHasError(false);
-  }
 
   if (!url || !isValidUrl(url)) return null;
+
+  const faviconSrc = hostname
+    ? `/api/favicon?domain=${encodeURIComponent(hostname)}`
+    : null;
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (stopPropagation) {
@@ -57,19 +51,13 @@ export default function SiteLink({
     >
       {icon ? (
         icon
-      ) : !hasError ? (
+      ) : faviconSrc && !hasError ? (
         <img
           src={faviconSrc}
           alt=""
           className="h-3.5 w-3.5 flex-shrink-0"
           loading="lazy"
-          onError={() => {
-            if (faviconSrc === ddgUrl) {
-              setFaviconSrc(googleUrl);
-            } else {
-              setHasError(true);
-            }
-          }}
+          onError={() => setHasError(true)}
         />
       ) : null}
       <span className="flex items-center gap-1">{children || label}</span>

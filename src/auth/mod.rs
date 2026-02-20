@@ -1,6 +1,7 @@
 use crate::ResponseExt;
 use crate::db::{AppDatabase, Database, User};
 use crate::model::UserStatus;
+use crate::utils;
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -216,7 +217,7 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
 
 pub async fn create_user_session(db: &AppDatabase, user_id: i32, secure: bool) -> Result<String> {
     let token = Uuid::new_v4().to_string();
-    let expires_at = Date::now().as_millis() as i64 + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+    let expires_at = utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user_id, &token, expires_at).await?;
     Ok(create_session_cookie(&token, secure))
 }

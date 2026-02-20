@@ -1,4 +1,5 @@
 use crate::model::UserStatus;
+use crate::utils;
 use async_trait::async_trait;
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
@@ -252,7 +253,7 @@ impl Database for AppDatabase {
                     statements.push(self.db.prepare(query));
                 }
 
-                let now = Date::now().as_millis() as i64;
+                let now = utils::now_utc_ms();
                 statements.push(self.db.prepare(INSERT_MIGRATION_QUERY).bind(&[
                     JsValue::from_f64(version as f64),
                     JsValue::from_f64(now as f64),
@@ -274,7 +275,7 @@ impl Database for AppDatabase {
         telegram_id: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<User> {
-        let created_at = Date::now().as_millis() as i64;
+        let created_at = utils::now_utc_ms();
         let query = "INSERT INTO users (email, username, password_hash, github_id, telegram_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *";
 
         let stmt = self.db.prepare(query).bind(&[
@@ -376,7 +377,7 @@ impl Database for AppDatabase {
 
     async fn get_session(&self, token: &str) -> Result<Option<Session>> {
         let query = "SELECT * FROM sessions WHERE token = ? AND expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
@@ -386,7 +387,7 @@ impl Database for AppDatabase {
 
     async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>> {
         let query = "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
@@ -412,7 +413,7 @@ impl Database for AppDatabase {
         score: Option<i32>,
         begin_at: Option<i64>,
     ) -> Result<()> {
-        let updated_at = Date::now().as_millis() as i64;
+        let updated_at = utils::now_utc_ms();
         // SQLite upsert
         let query =
             "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at, begin_at)
@@ -657,7 +658,7 @@ impl PasskeyStore for AppDatabase {
         state_json: &str,
         expires_at: i64,
     ) -> passkey_server::error::Result<()> {
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
 
         let cleanup_stmt = self
             .db
@@ -684,7 +685,7 @@ impl PasskeyStore for AppDatabase {
 
     async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
         let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
-        let now = Date::now().as_millis() as i64;
+        let now = utils::now_utc_ms();
         self.db
             .prepare(query)
             .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])
