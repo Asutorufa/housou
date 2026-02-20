@@ -186,20 +186,13 @@ export const handlers = [
   }),
 
   // User Item Handlers
-  http.get("/api/user/item", ({ request }) => {
-    const url = new URL(request.url);
-    const itemId = url.searchParams.get("item_id");
-
-    if (itemId === "100") {
-      return HttpResponse.json({
-        user_id: 1,
-        item_id: "100",
+  http.get("/api/user/status", () => {
+    return HttpResponse.json({
+      "Test Anime 1": {
         status: 1, // Watching
         score: 8,
-        updated_at: Date.now(),
-      });
-    }
-    return new HttpResponse(null, { status: 404 });
+      },
+    });
   }),
 
   http.post("/api/user/item", async () => {

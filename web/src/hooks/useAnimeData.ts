@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useLocalStorage } from "usehooks-ts";
 import { STORAGE_KEY_SELECTIONS } from "../constants";
@@ -38,6 +38,7 @@ export function useAnimeData() {
     useConfigInitialization(setSelections);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const { loggedIn, apiFetch } = useAuth();
 
@@ -69,14 +70,13 @@ export function useAnimeData() {
     Record<string, UserItemSummary>
   >(
     loggedIn && config?.auth_enabled && itemsUrl && fetchedItems?.length
-      ? ["/api/user/status", itemsUrl]
+      ? `/api/user/status?year=${selectedYear}&season=${selectedSeason}`
       : null,
-    async ([url]) => {
+    async (url: string) => {
       const res = await apiFetch(url, {
-        method: "POST",
+        method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(fetchedItems!.map((i) => i.title)),
       });
       if (!res.ok) {
         throw new Error("Failed to fetch statuses");
@@ -113,15 +113,17 @@ export function useAnimeData() {
     }
 
     if (selectedStatus && selectedStatus !== "all") {
-      const status = parseInt(selectedStatus);
-      filtered = filtered.filter((item) => {
-        const itemStatus = item.userStatus || 0;
-        return itemStatus === status;
-      });
+      const status = parseInt(selectedStatus, 10);
+      if (!isNaN(status)) {
+        filtered = filtered.filter((item) => {
+          const itemStatus = item.userStatus || 0;
+          return itemStatus === status;
+        });
+      }
     }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (deferredSearchQuery) {
+      const query = deferredSearchQuery.toLowerCase();
       filtered = filtered.filter((item) => {
         if (item.title.toLowerCase().includes(query)) return true;
         if (item.titleTranslate) {
@@ -137,7 +139,7 @@ export function useAnimeData() {
       `Filtered items: ${filtered.length}/${items.length} (Status: ${selectedStatus})`,
     );
     return filtered;
-  }, [items, selectedSite, selectedStatus, searchQuery]);
+  }, [items, selectedSite, selectedStatus, deferredSearchQuery]);
 
   const loading = initLoading || itemsLoading;
 

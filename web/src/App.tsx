@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import AttributionModal from "./components/AttributionModal";
 import DetailsModal from "./components/DetailsModal";
@@ -25,33 +25,29 @@ export default function App() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
 
-  const [selectedAnime, setSelectedAnime] = useState<{
-    title: string;
-    info: UnifiedMetadata | null;
-  } | null>(null);
+  const [cachedInfo, setCachedInfo] = useState<UnifiedMetadata | null>(null);
   const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
-  // Sync URL "anime" param to modal state (comparison during render)
+  // Derive selected anime directly from URL
   const params = new URLSearchParams(search);
   const animeTitle = params.get("anime");
+  const selectedAnime = animeTitle
+    ? { title: animeTitle, info: cachedInfo }
+    : null;
 
-  if (animeTitle) {
-    if (items.length > 0 && selectedAnime?.title !== animeTitle) {
-      const item = items.find((i) => i.title === animeTitle);
-      if (item) {
-        // Use queueMicrotask to defer state update outside of render
-        queueMicrotask(() =>
-          setSelectedAnime({ title: animeTitle, info: null }),
-        );
-      }
+  // We delay opening the modal on initial deep-link load until the grid is mounted.
+  // This ensures Framer Motion's `layoutId` animation originates from the card rather than conflicting.
+  const [isGridReady, setIsGridReady] = useState(false);
+  useEffect(() => {
+    if (!loading) {
+      const timer = requestAnimationFrame(() => setIsGridReady(true));
+      return () => cancelAnimationFrame(timer);
     }
-  } else if (selectedAnime) {
-    queueMicrotask(() => setSelectedAnime(null));
-  }
+  }, [loading]);
 
   const handleOpenModal = (title: string, info: UnifiedMetadata | null) => {
-    // Optimistically select locally
-    setSelectedAnime({ title, info });
+    // Cache info for immediate presentation in the modal
+    setCachedInfo(info);
 
     // Update URL
     const params = new URLSearchParams(search);
@@ -60,8 +56,8 @@ export default function App() {
   };
 
   const handleCloseModal = () => {
-    // Optimistically close locally
-    setSelectedAnime(null);
+    // Clear cache
+    setCachedInfo(null);
 
     // Update URL
     const params = new URLSearchParams(search);
@@ -135,7 +131,7 @@ export default function App() {
       </main>
 
       <DetailsModal
-        isOpen={!!selectedAnime}
+        isOpen={!!selectedAnime && isGridReady}
         onClose={handleCloseModal}
         anime={selectedAnime}
         items={items}

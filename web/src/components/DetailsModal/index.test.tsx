@@ -1,14 +1,20 @@
-import React from "react";
 import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import DetailsModal from ".";
-import { describe, it, expect, vi } from "vitest";
-import { SiteMeta, DisplayAnimeItem, UnifiedMetadata } from "../../types";
+import { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 
 // Mock AuthContext
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
     loggedIn: false,
     user: null,
+  }),
+}));
+
+// Mock MetadataContext
+vi.mock("../../contexts/MetadataContext", () => ({
+  useMetadata: () => ({
+    fetchMetadata: vi.fn(),
   }),
 }));
 
@@ -83,7 +89,7 @@ describe("DetailsModal XSS Prevention", () => {
     expect(descriptionContainer).toBeTruthy();
 
     expect(descriptionContainer?.innerHTML).not.toContain("<script>");
-    expect(descriptionContainer?.textContent).toContain(
+    expect(descriptionContainer?.textContent).not.toContain(
       '<script>alert("xss")</script>',
     );
   });

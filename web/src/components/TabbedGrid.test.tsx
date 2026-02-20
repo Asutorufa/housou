@@ -1,11 +1,26 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import "@testing-library/jest-dom";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
-import TabbedGrid from "./TabbedGrid";
+import { describe, expect, it, vi } from "vitest";
 import type { DisplayAnimeItem } from "../types";
-import "@testing-library/jest-dom";
-import React from "react";
+import TabbedGrid from "./TabbedGrid";
+
+// Mock wouter
+let mockLocation = "/";
+let mockSearch = "";
+
+vi.mock("wouter", () => ({
+  useLocation: () => [
+    mockLocation,
+    (loc: string) => {
+      const [path, search] = loc.split("?");
+      mockLocation = path;
+      mockSearch = search || "";
+    },
+  ],
+  useSearch: () => mockSearch,
+}));
 
 // Mock MetadataContext
 vi.mock("../contexts/MetadataContext", () => ({
@@ -15,62 +30,75 @@ vi.mock("../contexts/MetadataContext", () => ({
 }));
 
 // Mock framer-motion (motion/react) to skip animations
-vi.mock("motion/react", () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  motion: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    div: ({ children, ...props }: any) => {
-      // Filter out framer-motion specific props that might cause React warnings on div
-      const {
-        layoutId,
-        layout,
-        initial,
-        animate,
-        exit,
-        variants,
-        transition,
-        custom,
-        whileHover,
-        ...rest
-      } = props;
-      return <div {...rest}>{children}</div>;
+vi.mock("motion/react", () => {
+  return {
+    AnimatePresence: ({ children }: any) => <>{children}</>,
+    motion: {
+      div: ({ children, ...props }: any) => {
+        // Filter out framer-motion specific props that might cause React warnings on div
+        const {
+          layoutId,
+          layout,
+          initial,
+          animate,
+          exit,
+          variants,
+          transition,
+          custom,
+          whileHover,
+          ...rest
+        } = props;
+        return <div {...rest}>{children}</div>;
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      h3: ({ children, ...props }: any) => {
+        const { layoutId, ...rest } = props;
+        return <h3 {...rest}>{children}</h3>;
+      },
+      h1: ({ children, ...props }: any) => {
+        const { layoutId, ...rest } = props;
+        return <h1 {...rest}>{children}</h1>;
+      },
+      span: ({ children, ...props }: any) => {
+        const { layoutId, initial, animate, exit, transition, ...rest } = props;
+        return <span {...rest}>{children}</span>;
+      },
     },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    h3: ({ children, ...props }: any) => {
-      const { layoutId, ...rest } = props;
-      return <h3 {...rest}>{children}</h3>;
-    },
-  },
-}));
+  };
+});
 
 // Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-};
+vi.stubGlobal(
+  "ResizeObserver",
+  class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  },
+);
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
-  constructor(
-    _callback: IntersectionObserverCallback,
-    _options?: IntersectionObserverInit,
-  ) {}
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-  root = null;
-  rootMargin = "";
-  thresholds = [];
-};
+vi.stubGlobal(
+  "IntersectionObserver",
+  class IntersectionObserver {
+    constructor(
+      _callback: IntersectionObserverCallback,
+      _options?: IntersectionObserverInit,
+    ) {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+    root = null;
+    rootMargin = "";
+    thresholds = [];
+  },
+);
 
 // Mock window.scrollTo
-window.scrollTo = vi.fn();
+vi.stubGlobal("scrollTo", vi.fn());
 
 const mockItems: DisplayAnimeItem[] = [
   {
@@ -118,8 +146,8 @@ describe("TabbedGrid", () => {
 
     const user = userEvent.setup();
 
-    // Tabs.Trigger usually has role="tab"
-    const mondayTab = screen.getByRole("tab", { name: "月" });
+    // The new design uses buttons instead of elements with role="tab"
+    const mondayTab = screen.getByRole("button", { name: /月/ });
     await user.click(mondayTab);
 
     // Should show Monday Anime

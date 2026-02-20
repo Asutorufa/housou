@@ -13,12 +13,23 @@ vi.mock("../contexts/AuthContext", () => ({
 
 // Mock fetch
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.stubGlobal("fetch", mockFetch);
+
+const mockLocalStorage = {
+  getItem: vi.fn(() =>
+    JSON.stringify({ year: "2024", season: "all", site: "all", status: "all" }),
+  ),
+  setItem: vi.fn(),
+  clear: vi.fn(),
+};
+Object.defineProperty(window, "localStorage", {
+  value: mockLocalStorage,
+});
 
 describe("useAnimeData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    mockLocalStorage.clear();
   });
 
   afterEach(() => {

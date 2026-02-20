@@ -37,7 +37,7 @@ export default function DetailsModal(props: DetailsModalProps) {
     <Dialog.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <AnimatePresence>
         {isOpen && (
-          <Dialog.Portal forceMount>
+          <Dialog.Portal>
             <Dialog.Overlay asChild>
               <motion.div
                 initial={{ opacity: 0 }}
@@ -76,17 +76,18 @@ function DetailsModalContent({
 
   // Use smart hook for metadata
   // We pass anime.info as initial data if it exists.
-  // We only enable the hook if we have an originalItem to fetch from.
+  // Enable the hook if we found the item OR if we have the title from URL
   const { metadata: info, loading } = useSmartMetadata(
-    originalItem!, // We assume originalItem exists if title is valid, or hook handles undefined naturally if typed correctly (hook expects DisplayAnimeItem)
+    originalItem || ({ title } as DisplayAnimeItem), // Use a dummy item with just title if originalItem isn't loaded yet
     anime?.info || null,
-    !!originalItem, // Only enable if we found the item
+    !!originalItem || !!title,
   );
 
   const { currentStatus, updateStatus } = useAnimeStatus({
     title,
     initialStatus: originalItem?.userStatus,
     initialScore: originalItem?.userScore,
+    beginAt: originalItem?.begin,
     onUpdate,
   });
 
@@ -111,7 +112,7 @@ function DetailsModalContent({
     >
       <motion.div
         layoutId={`card-${title}`}
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}

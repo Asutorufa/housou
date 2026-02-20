@@ -1,12 +1,21 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MetadataProvider } from "../contexts/MetadataContext";
-import AnimeCard from "./AnimeCard";
 import type { DisplayAnimeItem } from "../types";
+import AnimeCard from "./AnimeCard";
+
+// Mock lazyObserver
+const lazyCallbacks: (() => void)[] = [];
+vi.mock("../utils/lazyObserver", () => ({
+  observeLazy: vi.fn((el, cb) => {
+    lazyCallbacks.push(cb);
+  }),
+  unobserveLazy: vi.fn(),
+}));
 
 // Mock fetch
 const fetchMock = vi.fn();
-global.fetch = fetchMock;
+vi.stubGlobal("fetch", fetchMock);
 
 const mockItem1: DisplayAnimeItem = {
   title: "Anime 1",
@@ -29,6 +38,10 @@ const mockItem2: DisplayAnimeItem = {
 };
 
 describe("AnimeCard Batching", () => {
+  beforeEach(() => {
+    lazyCallbacks.length = 0;
+    fetchMock.mockReset();
+  });
   test("batches multiple metadata requests into one", async () => {
     // Setup fetch mock to return success
     fetchMock.mockImplementation(async (url, options) => {
@@ -56,28 +69,7 @@ describe("AnimeCard Batching", () => {
       return { ok: false };
     });
 
-    // Mock IntersectionObserver to trigger immediately
-    const MockIntersectionObserver = vi.fn();
-    MockIntersectionObserver.mockImplementation(function (
-      callback: IntersectionObserverCallback,
-    ) {
-      setTimeout(() => {
-        callback(
-          [{ isIntersecting: true } as IntersectionObserverEntry],
-          {} as IntersectionObserver,
-        );
-      }, 10);
-      return {
-        observe: vi.fn(),
-        disconnect: vi.fn(),
-        unobserve: vi.fn(),
-        takeRecords: vi.fn(),
-        root: null,
-        rootMargin: "",
-        thresholds: [],
-      };
-    });
-    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    // lazyObserver is mocked globally in this file
 
     render(
       <MetadataProvider>
@@ -85,6 +77,11 @@ describe("AnimeCard Batching", () => {
         <AnimeCard item={mockItem2} onOpenModal={() => {}} />
       </MetadataProvider>,
     );
+
+    // Simulate intersection for all cards
+    act(() => {
+      lazyCallbacks.forEach((cb) => cb());
+    });
 
     // Wait for debounce (100ms) + small buffer
     await waitFor(
@@ -141,28 +138,7 @@ describe("AnimeCard Batching", () => {
     };
     const failItem: DisplayAnimeItem = { ...mockItem2, title: "Fail Anime" };
 
-    // Mock IO
-    const MockIntersectionObserver = vi.fn();
-    MockIntersectionObserver.mockImplementation(function (
-      callback: IntersectionObserverCallback,
-    ) {
-      setTimeout(() => {
-        callback(
-          [{ isIntersecting: true } as IntersectionObserverEntry],
-          {} as IntersectionObserver,
-        );
-      }, 10);
-      return {
-        observe: vi.fn(),
-        disconnect: vi.fn(),
-        unobserve: vi.fn(),
-        takeRecords: vi.fn(),
-        root: null,
-        rootMargin: "",
-        thresholds: [],
-      };
-    });
-    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    // lazyObserver is mocked globally in this file
 
     render(
       <MetadataProvider>
@@ -170,6 +146,11 @@ describe("AnimeCard Batching", () => {
         <AnimeCard item={failItem} onOpenModal={() => {}} />
       </MetadataProvider>,
     );
+
+    // Simulate intersection for all cards
+    act(() => {
+      lazyCallbacks.forEach((cb) => cb());
+    });
 
     // Wait for batch request
     await waitFor(

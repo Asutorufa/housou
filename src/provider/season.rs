@@ -46,7 +46,13 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
         let url = format!("{}items/{}/{:02}.json", config::BASE_DATA_URL, year, month);
         futures.push(async move {
             match utils::fetch_json::<Vec<Item>>(&url).await {
-                Ok(Some(items)) => Ok(items),
+                Ok(Some(mut items)) => {
+                    for item in &mut items {
+                        item.title_translate =
+                            utils::normalize_title_translate(&item.title_translate);
+                    }
+                    Ok(items)
+                }
                 Ok(None) => {
                     console_log!("Month data not found (404), skipping: {}", url);
                     Ok(Vec::new())
