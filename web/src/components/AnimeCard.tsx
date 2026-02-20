@@ -128,16 +128,12 @@ export default function AnimeCard({
         className="flex flex-1 flex-col gap-2 p-3 md:gap-3 md:p-4"
       >
         <div className="flex flex-col gap-1">
-          {loading && !metadata ? (
-            <Skeleton className="h-5 w-3/4" />
-          ) : (
-            <motion.h3
-              layoutId={`title-${item.title}`}
-              className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
-            >
-              {item.title}
-            </motion.h3>
-          )}
+          <motion.h3
+            layoutId={`title-${item.title}`}
+            className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
+          >
+            {item.title}
+          </motion.h3>
         </div>
 
         {/* Tags */}

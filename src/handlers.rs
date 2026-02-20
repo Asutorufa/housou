@@ -317,12 +317,12 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
     }
 
     let providers = [
-        format!("https://{}/favicon.ico", hostname),
+        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
         format!(
             "https://www.google.com/s2/favicons?domain={}&sz=32",
             hostname
         ),
-        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
+        format!("https://{}/favicon.ico", hostname),
     ];
 
     for provider_url in &providers {

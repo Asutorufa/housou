@@ -16,7 +16,13 @@ function EpisodeItem({ ep }: { ep: UniversalEpisode }) {
 
   return (
     <div
-      onClick={() => isOverflowing && setIsExpanded(!isExpanded)}
+      onClick={() => {
+        if (!isOverflowing) return;
+        const selection = window.getSelection();
+        // If the user has selected text, do not collapse/expand
+        if (selection && selection.toString().length > 0) return;
+        setIsExpanded(!isExpanded);
+      }}
       className={`group/ep flex flex-col gap-1.5 rounded-xl border border-gray-100 bg-gray-50 p-2.5 text-sm transition-colors hover:bg-white dark:border-gray-700/50 dark:bg-gray-900/40 dark:hover:bg-gray-800 ${
         isExpanded ? "bg-white dark:bg-gray-800" : ""
       } ${isOverflowing ? "cursor-pointer" : ""}`}

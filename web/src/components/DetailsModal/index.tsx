@@ -46,7 +46,18 @@ export default function DetailsModal(props: DetailsModalProps) {
                 className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
               />
             </Dialog.Overlay>
-            <Dialog.Content asChild>
+            <Dialog.Content
+              asChild
+              onInteractOutside={(e) => {
+                // If interacting with an element outside the React root (like an extension popup),
+                // prevent the modal from closing.
+                const target = e.target as HTMLElement;
+                const root = document.getElementById("root");
+                if (root && !root.contains(target)) {
+                  e.preventDefault();
+                }
+              }}
+            >
               {/*
                 We use title as a key to force remount when switching anime.
                 This ensures all local state (like status optimistic updates) is reset cleanly.
@@ -116,7 +127,7 @@ function DetailsModalContent({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex max-h-[85vh] w-full max-w-4xl cursor-default flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none dark:bg-gray-800"
+        className="relative flex max-h-[85vh] w-full max-w-4xl cursor-auto flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
         <Dialog.Close asChild>
