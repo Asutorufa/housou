@@ -160,4 +160,107 @@ describe("DetailsModal XSS Prevention", () => {
     // So innerHTML should be "Line 1\nLine 2\nLine 3" (approximately)
     expect(descriptionContainer?.innerHTML).toContain("Line 1\nLine 2\nLine 3");
   });
+
+  it("adds rel='noopener noreferrer' to links with target='_blank'", () => {
+    const mockAnimeWithLink = {
+      ...mockAnime,
+      info: {
+        ...mockAnime.info,
+        description:
+          '<a href="http://example.com" target="_blank">External Link</a>',
+      } as UnifiedMetadata,
+    };
+
+    render(
+      <DetailsModal
+        isOpen={true}
+        onClose={() => {}}
+        anime={mockAnimeWithLink}
+        items={mockItems}
+        siteMeta={mockSiteMeta}
+      />,
+    );
+
+    const descriptionContainer =
+      screen.getByText("あらすじ").nextElementSibling;
+    expect(descriptionContainer).toBeTruthy();
+
+    const link = descriptionContainer?.querySelector("a");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("href")).toBe("http://example.com");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("adds rel='noopener noreferrer' to links with case-insensitive target='_BLANK'", () => {
+    const mockAnimeWithLink = {
+      ...mockAnime,
+      info: {
+        ...mockAnime.info,
+        description:
+          '<a href="http://example.com" target="_BLANK">External Link</a>',
+      } as UnifiedMetadata,
+    };
+
+    render(
+      <DetailsModal
+        isOpen={true}
+        onClose={() => {}}
+        anime={mockAnimeWithLink}
+        items={mockItems}
+        siteMeta={mockSiteMeta}
+      />,
+    );
+
+    const descriptionContainer =
+      screen.getByText("あらすじ").nextElementSibling;
+    expect(descriptionContainer).toBeTruthy();
+
+    const link = descriptionContainer?.querySelector("a");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("target")).toBe("_BLANK");
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("handles existing rel attributes and prevents partial matches", () => {
+    const mockAnimeWithLink = {
+      ...mockAnime,
+      info: {
+        ...mockAnime.info,
+        description:
+          '<a href="http://example.com" target="_blank" rel="nofollow fake-noopener">External Link</a>',
+      } as UnifiedMetadata,
+    };
+
+    render(
+      <DetailsModal
+        isOpen={true}
+        onClose={() => {}}
+        anime={mockAnimeWithLink}
+        items={mockItems}
+        siteMeta={mockSiteMeta}
+      />,
+    );
+
+    const descriptionContainer =
+      screen.getByText("あらすじ").nextElementSibling;
+    expect(descriptionContainer).toBeTruthy();
+
+    const link = descriptionContainer?.querySelector("a");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("target")).toBe("_blank");
+    // Should preserve 'nofollow' and 'fake-noopener', and add 'noopener' and 'noreferrer'
+    // Order in Set iteration is insertion order, but Set implementation might vary slightly?
+    // Usually it preserves insertion order.
+    // 'nofollow', 'fake-noopener', 'noopener', 'noreferrer'
+    const rel = link?.getAttribute("rel") || "";
+    expect(rel).toContain("nofollow");
+    expect(rel).toContain("fake-noopener");
+    expect(rel).toContain("noopener");
+    expect(rel).toContain("noreferrer");
+    // Ensure tokens are distinct
+    const tokens = rel.split(" ");
+    expect(tokens).toContain("noopener");
+    expect(tokens).toContain("noreferrer");
+  });
 });
