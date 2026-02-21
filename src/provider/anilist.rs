@@ -193,7 +193,7 @@ mod tests {
             "siteUrl": "https://anilist.co/anime/12345",
             "isAdult": false,
             "relations": { "edges": [] }, // Required field
-            "staff": { "nodes": [] }, // Required field? (Wait, staff is Option<Vec<Person>> with custom deserializer)
+            "staff": { "nodes": [] }, // Required field (key must be present, but value can be null)
             "isFavourite": false,
             "isFavouriteBlocked": false
         });
@@ -283,5 +283,34 @@ mod tests {
         assert!(unified.characters.is_empty());
         assert!(!unified.is_finished); // RELEASING -> false
         assert_eq!(unified.runtime, None);
+    }
+
+    #[test]
+    fn test_anilist_to_unified_with_null_staff() {
+        let anime_json = json!({
+            "id": 11111,
+            "title": {
+                "romaji": "Null Staff Anime",
+                "native": "Null Staff Anime"
+            },
+            "format": "TV",
+            "status": "FINISHED",
+            "description": "",
+            "coverImage": {},
+            "siteUrl": "https://anilist.co/anime/11111",
+            "isAdult": false,
+            "relations": { "edges": [] },
+            "characters": { "edges": [] },
+            "staff": null,
+            "studios": { "nodes": [] },
+            "externalLinks": [],
+            "streamingEpisodes": []
+        });
+
+        // This should not panic if staff is optional
+        let anime = create_anime_from_json(anime_json);
+        let unified = anilist_to_unified(anime);
+
+        assert!(unified.staff.is_empty());
     }
 }
