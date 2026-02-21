@@ -15,6 +15,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type PasskeySummary, useAuth } from "../contexts/AuthContext";
+import { formInputClassName } from "../styles/uiClasses";
 import TelegramLoginButton from "./TelegramLoginButton";
 
 interface ProfileModalProps {
@@ -26,9 +27,6 @@ interface ProfileModalProps {
 
 const tabTriggerClass =
   "relative flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium text-gray-600 transition-colors data-[state=active]:text-gray-900 dark:text-gray-400 dark:data-[state=active]:text-gray-100";
-
-const inputClass =
-  "w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:text-gray-100";
 
 function ProfileTab({
   user,
@@ -84,7 +82,7 @@ function ProfileTab({
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={inputClass}
+          className={formInputClassName}
         />
       </div>
 
@@ -97,7 +95,7 @@ function ProfileTab({
           required
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className={inputClass}
+          className={formInputClassName}
         />
       </div>
 
@@ -110,7 +108,7 @@ function ProfileTab({
           value={avatarUrl}
           onChange={(e) => setAvatarUrl(e.target.value)}
           placeholder="https://example.com/avatar.png"
-          className={inputClass}
+          className={formInputClassName}
         />
       </div>
 
@@ -196,7 +194,7 @@ function SecurityTab() {
               type={showOldPassword ? "text" : "password"}
               value={oldPassword}
               onChange={(e) => setOldPassword(e.target.value)}
-              className={`${inputClass} pr-10`}
+              className={`${formInputClassName} pr-10`}
             />
             <button
               type="button"
@@ -221,7 +219,7 @@ function SecurityTab() {
             required
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            className={`${inputClass} pr-10`}
+            className={`${formInputClassName} pr-10`}
           />
           <button
             type="button"
@@ -242,7 +240,7 @@ function SecurityTab() {
           required
           value={confirmNewPassword}
           onChange={(e) => setConfirmNewPassword(e.target.value)}
-          className={inputClass}
+          className={formInputClassName}
         />
       </div>
 

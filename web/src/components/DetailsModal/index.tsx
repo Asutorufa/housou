@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
+import { focusRingClassName } from "../../styles/uiClasses";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
 import { sortSites } from "../../utils/siteUtils";
@@ -31,6 +32,7 @@ interface DetailsModalProps {
 
 export default function DetailsModal(props: DetailsModalProps) {
   const { isOpen, onClose, anime } = props;
+  const { items, siteMeta, onUpdate } = props;
   const { title } = anime || { title: "" };
 
   return (
@@ -63,7 +65,14 @@ export default function DetailsModal(props: DetailsModalProps) {
                 We use title as a key to force remount when switching anime.
                 This ensures all local state (like status optimistic updates) is reset cleanly.
               */}
-              <DetailsModalContent key={title} {...props} />
+              <DetailsModalContent
+                key={title}
+                onClose={onClose}
+                anime={anime}
+                items={items}
+                siteMeta={siteMeta}
+                onUpdate={onUpdate}
+              />
             </Dialog.Content>
           </Dialog.Portal>
         )}
@@ -132,7 +141,9 @@ function DetailsModalContent({
         onClick={(e) => e.stopPropagation()}
       >
         <Dialog.Close asChild>
-          <button className="absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 focus:ring-2 focus:ring-white/20 focus:outline-none dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20">
+          <button
+            className={`absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 ${focusRingClassName}`}
+          >
             <X size={24} />
           </button>
         </Dialog.Close>
@@ -162,6 +173,11 @@ function DetailsModalContent({
                   {title}
                 </motion.h1>
               </Dialog.Title>
+              <Dialog.Description asChild>
+                <p className="sr-only">
+                  作品詳細モーダルです。あらすじ、外部リンク、キャスト、スタッフ、エピソード情報を確認できます。
+                </p>
+              </Dialog.Description>
 
               {/* Status Selector (Only if logged in) */}
               {loggedIn && (

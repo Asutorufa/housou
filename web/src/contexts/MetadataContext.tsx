@@ -1,4 +1,11 @@
-import { createContext, useCallback, useContext, useMemo, useRef } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import type { MetadataRequest, UnifiedMetadata } from "../types";
 
 interface MetadataContextType {
@@ -34,6 +41,7 @@ interface BatchResponseItem {
 
 const MAX_BATCH_SIZE = 10;
 const DEBOUNCE_MS = 120;
+const MAX_CACHE_SIZE = 500;
 
 /** Generate a stable cache key from request parameters */
 function makeCacheKey(req: MetadataRequest): string {
@@ -54,6 +62,14 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
   const cacheRef = useRef<Map<string, Promise<UnifiedMetadata | null>>>(
     new Map(),
   );
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
 
   const scheduleFlush = useCallback((fn: () => Promise<void>) => {
     if (timeoutRef.current) {
@@ -165,6 +181,12 @@ export function MetadataProvider({ children }: MetadataProviderProps) {
       });
 
       cacheRef.current.set(key, promise);
+      if (cacheRef.current.size > MAX_CACHE_SIZE) {
+        const oldestKey = cacheRef.current.keys().next().value;
+        if (oldestKey) {
+          cacheRef.current.delete(oldestKey);
+        }
+      }
       return promise;
     },
     [flush, scheduleFlush],

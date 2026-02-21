@@ -2,6 +2,7 @@ import { Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { glassPillClassName, iconButtonClassName } from "../styles/uiClasses";
 import type { Config } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { getSeasonOptions } from "../utils/season";
@@ -113,7 +114,7 @@ export default function Header({
                     setIsSearchFocused(false);
                   }}
                   aria-label="検索をクリアして閉じる"
-                  className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  className="absolute right-3 top-1/2 flex -translate-y-1/2 cursor-pointer items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                   <X size={16} />
                 </button>
@@ -129,7 +130,9 @@ export default function Header({
               className="flex w-full items-center justify-between gap-3"
             >
               {/* Filter Group (Left) */}
-              <div className="pointer-events-auto flex min-w-0 max-w-full items-center rounded-full border border-gray-200/40 bg-white/70 p-1 shadow-lg backdrop-blur-xl ring-1 ring-black/5 dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10">
+              <div
+                className={`${glassPillClassName} pointer-events-auto flex min-w-0 max-w-full items-center p-1`}
+              >
                 <div className="scroll-mask-x no-scrollbar flex w-full items-center overflow-x-auto px-2">
                   {/* Year Select */}
                   <CustomSelect
@@ -212,7 +215,7 @@ export default function Header({
                 <button
                   onClick={() => setIsSearchFocused(true)}
                   aria-label="検索を開く"
-                  className="pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full border border-gray-200/40 bg-white/70 shadow-lg backdrop-blur-xl ring-1 ring-black/5 transition-colors hover:border-blue-500/50 hover:bg-white dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10 dark:hover:bg-gray-800"
+                  className={`${iconButtonClassName} ${glassPillClassName} hover:border-blue-500/50 hover:bg-white dark:hover:bg-gray-800`}
                 >
                   <Search
                     size={16}
@@ -233,7 +236,7 @@ export default function Header({
                     ) : (
                       <button
                         onClick={() => setIsAuthModalOpen(true)}
-                        className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                        className={`${iconButtonClassName} border border-gray-200 bg-white shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700`}
                       >
                         <UserIcon
                           size={16}

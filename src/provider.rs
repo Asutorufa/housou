@@ -57,7 +57,7 @@ struct CacheKeyParams<'a> {
 }
 
 /// Helper to generate a cache key URL for a request
-fn get_cache_key(req: &MetadataRequest, host: &str) -> String {
+fn get_cache_key(req: &MetadataRequest, cache_origin: &str) -> String {
     let params = CacheKeyParams {
         anilist_id: req.anilist_id.as_ref(),
         mal_id: req.mal_id.as_ref(),
@@ -66,16 +66,16 @@ fn get_cache_key(req: &MetadataRequest, host: &str) -> String {
         year: req.year,
     };
     let qs = serde_urlencoded::to_string(&params).unwrap_or_default();
-    format!("https://{}/api/metadata?{}", host, qs)
+    format!("{}/api/metadata?{}", cache_origin, qs)
 }
 
 pub async fn fetch_metadata(
     req: &MetadataRequest,
     env: &Env,
-    host: &str,
+    cache_origin: &str,
 ) -> Result<model::UnifiedMetadata> {
     let cache = Cache::open(format!("housou-cache-{}", crate::config::CACHE_VERSION)).await;
-    let cache_key = get_cache_key(req, host);
+    let cache_key = get_cache_key(req, cache_origin);
 
     // 1. Check Cache
     if let Ok(Some(mut resp)) = cache.get(&cache_key, true).await
@@ -159,7 +159,11 @@ async fn fetch_metadata_from_providers(
     ))
 }
 
-pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response> {
+pub async fn get_metadata(
+    args: MetadataArgs<'_>,
+    env: &Env,
+    cache_origin: &str,
+) -> Result<Response> {
     // Convert args to owned Request for internal function
     // For legacy/single requests, we use a dummy host or extract from env if possible.
     // But this function signature doesn't provide URL/Host.
@@ -173,7 +177,7 @@ pub async fn get_metadata(args: MetadataArgs<'_>, env: &Env) -> Result<Response>
         year: args.year,
     };
 
-    let unified = fetch_metadata(&req, env, "api.housou.local").await?;
+    let unified = fetch_metadata(&req, env, cache_origin).await?;
     create_response(&unified, env, None)
 }
 
@@ -191,4 +195,27 @@ fn create_response(
     };
 
     Response::from_json(unified)?.add_header("Cache-Control", &format!("public, max-age={ttl}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_key_is_stable() {
+        let req = MetadataRequest {
+            request_id: Some("abc".into()),
+            tmdb_id: Some("tv/1".into()),
+            mal_id: Some("2".into()),
+            anilist_id: Some("3".into()),
+            title: Some("Test".into()),
+            year: Some(2026),
+        };
+
+        let key1 = get_cache_key(&req, "https://example.com");
+        let key2 = get_cache_key(&req, "https://example.com");
+        assert_eq!(key1, key2);
+        assert!(key1.starts_with("https://example.com/api/metadata?"));
+        assert!(!key1.contains("request_id"));
+    }
 }

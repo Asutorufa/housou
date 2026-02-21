@@ -1,3 +1,5 @@
+import { focusRingClassName } from "../styles/uiClasses";
+
 interface FooterProps {
   onOpenAttribution: () => void;
 }
@@ -11,7 +13,7 @@ export default function Footer({ onOpenAttribution }: FooterProps) {
             href="https://github.com/Asutorufa/housou"
             target="_blank"
             rel="noopener noreferrer"
-            className="transition-colors hover:text-gray-900 dark:hover:text-gray-100"
+            className={`rounded-md transition-colors hover:text-gray-900 dark:hover:text-gray-100 ${focusRingClassName}`}
           >
             <svg
               role="img"
@@ -30,7 +32,7 @@ export default function Footer({ onOpenAttribution }: FooterProps) {
           <span className="hidden sm:inline">•</span>
           <button
             onClick={onOpenAttribution}
-            className="transition-colors hover:text-blue-500 hover:underline"
+            className={`rounded-md transition-colors hover:text-blue-500 hover:underline ${focusRingClassName}`}
           >
             Data Sources & Attribution
           </button>

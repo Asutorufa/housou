@@ -1,12 +1,43 @@
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import type { ReactNode } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { focusRingClassName, iconButtonClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
 interface UserMenuProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenProfile: () => void;
+}
+
+interface UserMenuActionButtonProps {
+  label: string;
+  icon: ReactNode;
+  onClick: () => void;
+  tone?: "default" | "danger";
+}
+
+function UserMenuActionButton({
+  label,
+  icon,
+  onClick,
+  tone = "default",
+}: UserMenuActionButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        `flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${focusRingClassName}`,
+        tone === "danger"
+          ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+          : "text-gray-700 hover:bg-blue-50 hover:text-blue-600 dark:text-gray-200 dark:hover:bg-blue-900/30 dark:hover:text-blue-400",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 }
 
 export default function UserMenu({
@@ -21,7 +52,7 @@ export default function UserMenu({
       <motion.button
         onClick={() => onOpenChange(!isOpen)}
         className={cn(
-          "flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:bg-gray-50 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700",
+          `${iconButtonClassName} overflow-hidden border border-gray-200 bg-white shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700`,
           isOpen && "ring-2 ring-blue-500/20",
         )}
       >
@@ -61,27 +92,24 @@ export default function UserMenu({
                 </p>
               </div>
 
-              <button
+              <UserMenuActionButton
+                label="プロフィール"
+                icon={<Settings size={16} />}
                 onClick={() => {
                   onOpenProfile();
                   onOpenChange(false);
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:text-gray-200 dark:hover:bg-blue-900/30 dark:hover:text-blue-400"
-              >
-                <Settings size={16} />
-                プロフィール
-              </button>
+              />
 
-              <button
+              <UserMenuActionButton
+                label="ログアウト"
+                icon={<LogOut size={16} />}
+                tone="danger"
                 onClick={() => {
                   logout();
                   onOpenChange(false);
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-              >
-                <LogOut size={16} />
-                ログアウト
-              </button>
+              />
             </motion.div>
           </>
         )}

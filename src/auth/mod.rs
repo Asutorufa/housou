@@ -62,8 +62,6 @@ pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>
     for token in get_cookie_values(req, SESSION_COOKIE_NAME) {
         if let Some(user) = db.get_user_by_session_token(&token).await? {
             return Ok(Some((user, token)));
-        } else {
-            console_log!("Auth failed for token: {}", token);
         }
     }
     Ok(None)

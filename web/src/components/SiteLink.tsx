@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import { focusRingClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 import { isValidUrl } from "../utils/urlUtils";
 
@@ -45,7 +46,8 @@ export default function SiteLink({
       rel="noopener noreferrer"
       onClick={handleClick}
       className={cn(
-        "flex items-center gap-1.5 transition-all active:scale-95",
+        "flex items-center gap-1.5 rounded-md transition-all active:scale-95",
+        focusRingClassName,
         className,
       )}
     >

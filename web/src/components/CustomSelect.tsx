@@ -1,6 +1,7 @@
 import * as Select from "@radix-ui/react-select";
 import { ChevronDown } from "lucide-react";
 import { motion } from "motion/react";
+import { focusRingClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
 export interface CustomSelectProps {
@@ -39,7 +40,8 @@ export default function CustomSelect({
         <motion.button
           className={cn(
             "inline-flex cursor-pointer items-center justify-between rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-700 transition-colors duration-200 sm:text-sm dark:text-gray-200",
-            "ring-0 outline-none focus:ring-0 focus:outline-none focus-visible:ring-0 focus-visible:outline-none",
+            "ring-0 outline-none",
+            focusRingClassName,
             "hover:bg-gray-100 dark:hover:bg-gray-700/50",
             isOpen && "text-blue-600 dark:text-blue-400",
             triggerClassName,

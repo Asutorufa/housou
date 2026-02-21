@@ -56,6 +56,12 @@ export default function AnimeCard({
 
   const coverUrl =
     metadata?.coverImage?.extraLarge || metadata?.coverImage?.large;
+  const beginDate = useMemo(() => {
+    if (!item.begin) return null;
+    const parsed = new Date(item.begin);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toISOString().split("T")[0];
+  }, [item.begin]);
 
   return (
     <motion.div
@@ -173,9 +179,9 @@ export default function AnimeCard({
                   {genre}
                 </span>
               ))}
-              {item.begin && (
+              {beginDate && (
                 <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700 ring-1 ring-blue-500/10 dark:bg-blue-900/30 dark:text-blue-300">
-                  {new Date(item.begin).toISOString().split("T")[0]}
+                  {beginDate}
                 </span>
               )}
             </>

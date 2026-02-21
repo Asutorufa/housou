@@ -4,6 +4,7 @@ import { Eye, EyeOff, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { formInputClassName } from "../styles/uiClasses";
 import TelegramLoginButton from "./TelegramLoginButton";
 
 interface AuthModalProps {
@@ -121,7 +122,7 @@ export default function AuthModal({
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:text-gray-100"
+                        className={formInputClassName}
                         placeholder="name@example.com"
                       />
                     </div>
@@ -136,7 +137,7 @@ export default function AuthModal({
                           required
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:text-gray-100"
+                          className={formInputClassName}
                           placeholder="Username"
                         />
                       </div>
@@ -152,7 +153,7 @@ export default function AuthModal({
                           required
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 pr-10 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:text-gray-100"
+                          className={`${formInputClassName} pr-10`}
                           placeholder="••••••••"
                         />
                         <button
@@ -179,7 +180,7 @@ export default function AuthModal({
                           required
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:text-gray-100"
+                          className={formInputClassName}
                           placeholder="••••••••"
                         />
                       </div>

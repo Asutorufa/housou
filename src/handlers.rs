@@ -43,6 +43,14 @@ pub struct TmdbAttribution {
     pub logo_alt_long: String,
 }
 
+fn normalize_season_query(season: Option<&str>) -> std::result::Result<Option<&str>, &'static str> {
+    match season {
+        Some("all") | None | Some("") => Ok(None),
+        Some("Winter") | Some("Spring") | Some("Summer") | Some("Autumn") => Ok(season),
+        Some(_) => Err("Bad Request: invalid 'season' parameter"),
+    }
+}
+
 async fn fetch_site_meta() -> Result<SiteMeta> {
     let mut sites: SiteMeta = std::collections::HashMap::new();
     let types = [
@@ -116,9 +124,9 @@ pub async fn handle_items(req: Request, _env: Env) -> Result<Response> {
         None => return Response::error("Bad Request: 'year' parameter is required", 400),
     };
 
-    let target_season = match query.season.as_deref() {
-        Some("all") | None | Some("") => None,
-        Some(s) => Some(s),
+    let target_season = match normalize_season_query(query.season.as_deref()) {
+        Ok(s) => s,
+        Err(msg) => return Response::error(msg, 400),
     };
 
     let items = provider::season::fetch_items(target_year, target_season).await?;
@@ -133,16 +141,20 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
 
     let url = req.url()?;
     let query_str = url.query().unwrap_or("");
-    let query: ItemsQuery = serde_urlencoded::from_str(query_str).unwrap_or(ItemsQuery {
-        year: None,
-        season: None,
-    });
+    let query: ItemsQuery = match serde_urlencoded::from_str(query_str) {
+        Ok(q) => q,
+        Err(_) => return Response::error("Bad Request: invalid query", 400),
+    };
+
+    let normalized_season = match normalize_season_query(query.season.as_deref()) {
+        Ok(s) => s,
+        Err(msg) => return Response::error(msg, 400),
+    };
 
     match auth::get_db(&env) {
         Ok(db) => {
             let user_items = if let Some(year) = query.year
-                && let Some(season) = query.season.as_deref()
-                && season != "all"
+                && let Some(season) = normalized_season
             {
                 // Calculate timestamp range for the season
                 let (start_month, end_month) = match season {
@@ -150,7 +162,7 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
                     "Spring" => (4, 6),
                     "Summer" => (7, 9),
                     "Autumn" => (10, 12),
-                    _ => (1, 12),
+                    _ => unreachable!("season is validated"),
                 };
 
                 // Approximate timestamps (milliseconds)
@@ -228,6 +240,9 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
 }
 
 pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
+    let req_url = req.url()?;
+    let cache_origin = req_url.origin().ascii_serialization();
+
     if req.method() == Method::Post {
         let requests: Vec<provider::MetadataRequest> = match req.json().await {
             Ok(r) => r,
@@ -243,17 +258,11 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
             return Response::error("Bad Request: Batch size exceeds limit of 10", 400);
         }
 
-        let host = req
-            .url()?
-            .host_str()
-            .unwrap_or("api.housou.local")
-            .to_string();
-
         let futures = requests.into_iter().map(|r| {
             let env = &env;
-            let host = &host;
+            let cache_origin = cache_origin.clone();
             async move {
-                let metadata = provider::fetch_metadata(&r, env, host).await.ok();
+                let metadata = provider::fetch_metadata(&r, env, &cache_origin).await.ok();
                 provider::MetadataResponse {
                     request_id: r.request_id,
                     metadata,
@@ -265,8 +274,7 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         return Response::from_json(&results);
     }
 
-    let url = req.url()?;
-    let query_str = url.query().unwrap_or("");
+    let query_str = req_url.query().unwrap_or("");
     let query: MetadataQuery = serde_urlencoded::from_str(query_str).unwrap_or(MetadataQuery {
         tmdb_id: None,
         mal_id: None,
@@ -289,7 +297,7 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         year,
     };
 
-    provider::get_metadata(args, &env).await
+    provider::get_metadata(args, &env, &cache_origin).await
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -358,4 +366,26 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
         "Cache-Control",
         &format!("public, max-age={}", config::CACHE_TTL_FAVICON_404),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_season_query;
+
+    #[test]
+    fn test_normalize_season_query() {
+        assert_eq!(normalize_season_query(None).unwrap(), None);
+        assert_eq!(normalize_season_query(Some("all")).unwrap(), None);
+        assert_eq!(normalize_season_query(Some("")).unwrap(), None);
+        assert_eq!(
+            normalize_season_query(Some("Winter")).unwrap(),
+            Some("Winter")
+        );
+        assert_eq!(
+            normalize_season_query(Some("Spring")).unwrap(),
+            Some("Spring")
+        );
+        assert!(normalize_season_query(Some("fall")).is_err());
+        assert!(normalize_season_query(Some("Invalid")).is_err());
+    }
 }

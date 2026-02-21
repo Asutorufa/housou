@@ -135,9 +135,6 @@ export function useAnimeData() {
       });
     }
 
-    console.log(
-      `Filtered items: ${filtered.length}/${items.length} (Status: ${selectedStatus})`,
-    );
     return filtered;
   }, [items, selectedSite, selectedStatus, deferredSearchQuery]);
 

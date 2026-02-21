@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
+import { glassPillClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
@@ -117,7 +118,9 @@ export default function TabbedGrid({
   return (
     <div className="flex flex-col gap-6">
       <div className=" flex justify-center px-6 pb-2">
-        <div className="no-scrollbar flex max-w-full gap-1 overflow-x-auto rounded-full border border-gray-200/40 bg-white/70 p-1 shadow-lg backdrop-blur-xl ring-1 ring-black/5 dark:border-gray-700/40 dark:bg-gray-900/70 dark:ring-white/10">
+        <div
+          className={`${glassPillClassName} no-scrollbar flex max-w-full gap-1 overflow-x-auto p-1`}
+        >
           {WEEKDAY_DATA.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -125,7 +128,7 @@ export default function TabbedGrid({
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  "relative z-10 flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors",
+                  "relative z-10 flex flex-shrink-0 cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors",
                   isActive
                     ? "text-white"
                     : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200",
