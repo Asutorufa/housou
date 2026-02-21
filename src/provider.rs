@@ -71,7 +71,7 @@ fn get_cache_key(req: &MetadataRequest, cache_origin: &str) -> String {
 
 pub async fn fetch_metadata(
     req: &MetadataRequest,
-    env: &Env,
+    ctx: &RouteContext<Context>,
     cache_origin: &str,
 ) -> Result<model::UnifiedMetadata> {
     let cache = Cache::open(format!("housou-cache-{}", crate::config::CACHE_VERSION)).await;
@@ -93,7 +93,7 @@ pub async fn fetch_metadata(
         year: req.year,
     };
 
-    let (unified, ttl) = fetch_metadata_from_providers(args, env).await?;
+    let (unified, ttl) = fetch_metadata_from_providers(args, &ctx.env).await?;
 
     // 3. Cache Result
     let mut resp = Response::from_json(&unified)?;
@@ -104,11 +104,13 @@ pub async fn fetch_metadata(
             ttl.unwrap_or(crate::config::CACHE_TTL_ONGOING)
         ),
     )?;
-    // We must ignore the promise here to not block, but we can await it if needed.
-    // worker::Cache::put returns a Future.
-    if let Err(e) = cache.put(&cache_key, resp).await {
-        console_warn!("Failed to cache metadata: {:?}", e);
-    }
+
+    // Don't block the response for cache write. Use waitUntil.
+    ctx.data.wait_until(async move {
+        if let Err(e) = cache.put(&cache_key, resp).await {
+            console_warn!("Failed to cache metadata: {:?}", e);
+        }
+    });
 
     Ok(unified)
 }
@@ -161,7 +163,7 @@ async fn fetch_metadata_from_providers(
 
 pub async fn get_metadata(
     args: MetadataArgs<'_>,
-    env: &Env,
+    ctx: &RouteContext<Context>,
     cache_origin: &str,
 ) -> Result<Response> {
     // Convert args to owned Request for internal function
@@ -177,8 +179,8 @@ pub async fn get_metadata(
         year: args.year,
     };
 
-    let unified = fetch_metadata(&req, env, cache_origin).await?;
-    create_response(&unified, env, None)
+    let unified = fetch_metadata(&req, ctx, cache_origin).await?;
+    create_response(&unified, &ctx.env, None)
 }
 
 fn create_response(

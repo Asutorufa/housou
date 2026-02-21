@@ -82,7 +82,10 @@ mod tests {
 
         normalize_title_translate(&mut tt);
 
-        assert_eq!(tt.get("CN").unwrap(), &vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(
+            tt.get("CN").unwrap(),
+            &vec!["A".to_string(), "B".to_string()]
+        );
         assert_eq!(tt.get("JP").unwrap(), &vec!["C".to_string()]);
         assert_eq!(tt.get("US").unwrap(), &vec!["D".to_string()]);
         assert_eq!(tt.get("other").unwrap(), &vec!["E".to_string()]);
@@ -91,3 +94,5 @@ mod tests {
         assert!(!tt.contains_key("en"));
     }
 }
+
+pub mod season;
