@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Model, Repository};
+use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Index, Model, Repository, Table};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -223,26 +223,49 @@ impl Database for AppDatabase {
             (
                 1,
                 {
-                    let mut stmts = vec![
-                        User::schema().to_sql(),
-                        Session::schema().to_sql(),
-                        UserItem::schema().to_sql(),
-                        PasskeyRow::schema().to_sql(),
-                        PasskeyStateRow::schema().to_sql(),
-                    ];
-                    // Manual indexes for unique fields not marked with #[d1(index)] but rather #[d1(unique)]
-                    // The macro handles UNIQUE constraint on column creation but NOT separate CREATE UNIQUE INDEX.
-                    // SQLite UNIQUE constraint automatically creates an index.
-                    // So `#[d1(unique)]` creates a unique index implicitly.
+                    // For version 1 (initial snapshot), we MUST NOT use dynamic schema derivation
+                    // (e.g. User::schema()) because the struct definition evolves over time.
+                    // Instead, we manually reconstruct the exact schema state of version 1.
+                    use d1_orm::{Constraint, Column};
 
-                    // However, `#[d1(index)]` explicit indexes need to be added.
-                    stmts.extend(UserItem::indexes().iter().map(|i| i.to_sql()));
-                    stmts.extend(PasskeyRow::indexes().iter().map(|i| i.to_sql()));
+                    let mut stmts = Vec::new();
 
-                    // `username` in User is unique, so implicit index exists.
-                    // `idx_users_username` was explicit before.
-                    // If we want explicit name, we can use `CREATE UNIQUE INDEX`.
-                    // But `username TEXT UNIQUE` is sufficient for constraint.
+                    // Users table (v1 state: no avatar_url, no telegram_id)
+                    let users_table = Table::new("users")
+                        .column(Column::new("id", ColumnType::Integer).primary_key().auto_increment())
+                        .column(Column::new("email", ColumnType::Text).unique())
+                        .column(Column::new("username", ColumnType::Text).unique())
+                        .column(Column::new("password_hash", ColumnType::Text))
+                        .column(Column::new("github_id", ColumnType::Text))
+                        .column(Column::new("created_at", ColumnType::Integer));
+
+                    stmts.push(users_table.to_sql());
+
+                    // Sessions table (v1 state)
+                    let sessions_table = Table::new("sessions")
+                        .column(Column::new("id", ColumnType::Integer).primary_key().auto_increment())
+                        .column(Column::new("user_id", ColumnType::Integer))
+                        .column(Column::new("token", ColumnType::Text).unique())
+                        .column(Column::new("expires_at", ColumnType::Integer));
+
+                    stmts.push(sessions_table.to_sql());
+
+                    // User Items (v1 state: no begin_at)
+                    let mut user_items = Table::new("user_items_v2");
+                    user_items = user_items.column(Column::new("user_id", ColumnType::Integer))
+                        .column(Column::new("title", ColumnType::Text))
+                        .column(Column::new("status", ColumnType::Integer))
+                        .column(Column::new("score", ColumnType::Integer))
+                        .column(Column::new("updated_at", ColumnType::Integer));
+
+                    // Explicit constraints for v1
+                    user_items.constraints.push("PRIMARY KEY (user_id, title)".to_string());
+                    user_items.constraints.push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
+
+                    stmts.push(user_items.to_sql());
+
+                    // Indexes for v1
+                    stmts.push("CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id)".to_string());
 
                     stmts
                 }
@@ -252,6 +275,47 @@ impl Database for AppDatabase {
                     d1_orm::Column::new("avatar_url", ColumnType::Text)
                 ).to_sql_stmts().pop().unwrap()
             ]),
+            (
+                3,
+                {
+                    // Version 3 introduced Passkeys tables
+                    // We can use current schema IF we are sure they haven't changed since v3.
+                    // But to be safe, we should construct them manually too if they might evolve.
+                    // Assuming PasskeyRow and PasskeyStateRow are relatively stable or new,
+                    // but for consistency let's manualize them or accept risk.
+                    // Given the user instruction was about v1 safety, and v3 adds NEW tables,
+                    // using current schema for v3 is safer than v1, but if we add columns to passkeys later,
+                    // v3 migration will create them early.
+
+                    // Best practice: Snapshot v3 state.
+                    use d1_orm::{Column, Constraint};
+                    let mut stmts = Vec::new();
+
+                    // passkeys
+                    let passkeys = Table::new("passkeys")
+                        .column(Column::new("user_id", ColumnType::Integer)) // FK
+                        .column(Column::new("cred_id", ColumnType::Text).primary_key())
+                        .column(Column::new("passkey_json", ColumnType::Text)) // not null implied
+                        .column(Column::new("name", ColumnType::Text))
+                        .column(Column::new("created_at", ColumnType::Integer))
+                        .column(Column::new("last_used_at", ColumnType::Integer))
+                        .column(Column::new("counter", ColumnType::Integer));
+
+                    let mut passkeys_t = passkeys;
+                    passkeys_t.constraints.push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
+                    stmts.push(passkeys_t.to_sql());
+                    stmts.push("CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id)".to_string());
+
+                    // passkey_states
+                    let states = Table::new("passkey_states")
+                        .column(Column::new("id", ColumnType::Text).primary_key())
+                        .column(Column::new("state_json", ColumnType::Text))
+                        .column(Column::new("expires_at", ColumnType::Integer));
+                    stmts.push(states.to_sql());
+
+                    stmts
+                }
+            ),
             (
                 4,
                 vec![

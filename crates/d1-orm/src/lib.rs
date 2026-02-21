@@ -1,6 +1,7 @@
 pub mod error;
 pub mod query;
 pub mod schema;
+mod schema_tests;
 pub mod traits;
 
 pub use d1_orm_derive::Model;
