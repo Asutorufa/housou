@@ -466,10 +466,12 @@ mod tests {
         assert!(!is_safe_hostname("::1"));
         assert!(!is_safe_hostname("[::1]"));
 
-        // Invalid: Numeric hostnames (decimal/hex representations of IPs)
+        // Invalid: Numeric hostnames (decimal/hex/octal representations of IPs)
         assert!(!is_safe_hostname("2130706433")); // 127.0.0.1 in decimal
-        assert!(!is_safe_hostname("127.1"));
-        assert!(!is_safe_hostname("0x7f.0.0.1"));
+        assert!(!is_safe_hostname("0x7f000001")); // 127.0.0.1 in hex (no dots)
+        assert!(!is_safe_hostname("127.1"));      // Shortened IPv4
+        assert!(!is_safe_hostname("0x7f.0.0.1")); // Hex-encoded labels
+        assert!(!is_safe_hostname("0177.0.0.1")); // Octal labels
 
         // Invalid: Reserved/Internal TLDs
         assert!(!is_safe_hostname("localhost"));
