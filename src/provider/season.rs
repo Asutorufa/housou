@@ -120,6 +120,35 @@ mod tests {
     }
 
     #[test]
+    fn test_is_future_season_edge_cases() {
+        // Invalid season string input
+        // season_to_num("Invalid") -> 0
+        // season_to_num("Winter") -> 1
+        // 0 > 1 -> false
+        assert!(!is_future_season(2024, Some("Invalid"), 2024, "Winter"));
+
+        // Invalid current_season string
+        // season_to_num("Winter") -> 1
+        // season_to_num("Invalid") -> 0
+        // 1 > 0 -> true (Safe fallback: if current season is unknown, assume future)
+        assert!(is_future_season(2024, Some("Winter"), 2024, "Invalid"));
+
+        // Both invalid
+        // 0 > 0 -> false
+        assert!(!is_future_season(2024, Some("Invalid"), 2024, "Invalid"));
+
+        // Empty strings
+        assert!(!is_future_season(2024, Some(""), 2024, "Winter"));
+        assert!(is_future_season(2024, Some("Winter"), 2024, ""));
+
+        // Case sensitivity (exact match required by season_to_num)
+        // "winter" -> 0, "Winter" -> 1
+        assert!(!is_future_season(2024, Some("winter"), 2024, "Winter"));
+        // "Winter" -> 1, "winter" -> 0
+        assert!(is_future_season(2024, Some("Winter"), 2024, "winter"));
+    }
+
+    #[test]
     fn test_is_future_season() {
         // Future year
         assert!(is_future_season(2025, Some("Winter"), 2024, "Winter"));
