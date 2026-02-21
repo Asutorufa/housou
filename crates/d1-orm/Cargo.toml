@@ -10,6 +10,7 @@ serde_json = "1.0"
 async-trait = "0.1"
 futures = "0.3"
 thiserror = "1.0"
+d1-orm-derive = { path = "../d1-orm-derive" }
 
 [features]
 default = []

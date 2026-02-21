@@ -378,12 +378,22 @@ name = "d1-orm"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "d1-orm-derive",
  "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "wasm-bindgen-test",
  "worker",
+]
+
+[[package]]
+name = "d1-orm-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

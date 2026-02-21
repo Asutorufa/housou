@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{Bindable, D1Database, Repository, impl_model};
+use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Model, Repository};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -9,10 +9,14 @@ use serde_derive::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "users")]
 pub struct User {
+    #[d1(primary_key, auto_increment)]
     pub id: i32,
+    #[d1(unique)]
     pub email: String,
+    #[d1(unique)]
     pub username: String,
     pub avatar_url: Option<String>,
     #[serde(skip_serializing)]
@@ -26,19 +30,18 @@ pub struct User {
     pub created_at: i64,
 }
 
-impl_model!(User, "users");
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "sessions")]
 pub struct Session {
+    #[d1(primary_key, auto_increment)]
     pub id: i32,
     pub user_id: i32,
     pub token: String,
     pub expires_at: i64,
 }
 
-impl_model!(Session, "sessions");
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "user_items_v2")]
 pub struct UserItem {
     pub user_id: i32,
     pub title: String, // Changed from item_id
@@ -47,8 +50,6 @@ pub struct UserItem {
     pub updated_at: i64,
     pub begin_at: Option<i64>,
 }
-
-impl_model!(UserItem, "user_items_v2");
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -194,7 +195,6 @@ impl AppDatabase {
 impl Database for AppDatabase {
     async fn migrate(&self) -> Result<()> {
         // Create schema_migrations table if not exists
-        // Migration logic kept as raw SQL for simplicity and safety during refactor
         self.db
             .prepare(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -217,72 +217,46 @@ impl Database for AppDatabase {
 
         // Define migrations
         let migrations = vec![
-            // Version 1: Initial schema + Updates
+            // Version 1: Initial schema
             (
                 1,
                 vec![
-                    "CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        email TEXT UNIQUE,
-                        username TEXT,
-                        password_hash TEXT,
-                        github_id TEXT UNIQUE,
-                        created_at INTEGER
-                    );",
-                    "CREATE TABLE IF NOT EXISTS sessions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER,
-                        token TEXT UNIQUE,
-                        expires_at INTEGER,
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
-                    "CREATE TABLE IF NOT EXISTS user_items_v2 (
-                        user_id INTEGER,
-                        title TEXT,
-                        status INTEGER,
-                        score INTEGER,
-                        updated_at INTEGER,
-                        PRIMARY KEY (user_id, title),
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
+                    User::schema().to_sql(),
+                    Session::schema().to_sql(),
+                    UserItem::schema().to_sql(),
+                    // Passkeys tables, defined later manually or via macro
+                    // For now, I'll use raw SQL for tables I haven't macro-ized or just manual string
+                    // Actually, PasskeyRow and PasskeyStateRow are macro-ized below
+                    PasskeyRow::schema().to_sql(),
+                    PasskeyStateRow::schema().to_sql(),
+
+                    // Indexes are not yet supported by my SchemaBuilder/Macro
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);".to_string(),
+                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);".to_string(),
+                    "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);".to_string(),
                 ],
             ),
-            (2, vec!["ALTER TABLE users ADD COLUMN avatar_url TEXT;"]),
-            (
-                3,
-                vec![
-                    "CREATE TABLE IF NOT EXISTS passkeys (
-                        user_id INTEGER NOT NULL,
-                        cred_id TEXT PRIMARY KEY,
-                        passkey_json TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        last_used_at INTEGER NOT NULL,
-                        counter INTEGER NOT NULL,
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);",
-                    "CREATE TABLE IF NOT EXISTS passkey_states (
-                        id TEXT PRIMARY KEY,
-                        state_json TEXT NOT NULL,
-                        expires_at INTEGER NOT NULL
-                    );",
-                ],
-            ),
+            (2, vec![
+                AlterTable::new("users").add_column(
+                    d1_orm::Column::new("avatar_url", ColumnType::Text)
+                ).to_sql_stmts().pop().unwrap()
+            ]),
             (
                 4,
                 vec![
-                    "ALTER TABLE users ADD COLUMN telegram_id TEXT;",
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
+                    AlterTable::new("users").add_column(
+                        d1_orm::Column::new("telegram_id", ColumnType::Text)
+                    ).to_sql_stmts().pop().unwrap(),
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);".to_string(),
                 ],
             ),
             (
                 5,
                 vec![
-                    "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
+                    AlterTable::new("user_items_v2").add_column(
+                        d1_orm::Column::new("begin_at", ColumnType::Integer)
+                    ).to_sql_stmts().pop().unwrap(),
+                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);".to_string(),
                 ],
             ),
         ];
@@ -296,7 +270,7 @@ impl Database for AppDatabase {
                 console_log!("Applying migration version {}", version);
                 let mut statements = Vec::with_capacity(queries.len() + 1);
                 for query in queries {
-                    statements.push(self.db.prepare(query));
+                    statements.push(self.db.prepare(&query));
                 }
 
                 let now = utils::now_utc_ms();
@@ -532,8 +506,8 @@ impl Database for AppDatabase {
         start_ts: i64,
         end_ts: i64,
     ) -> Result<Vec<UserItem>> {
-        let query = "SELECT * FROM user_items_v2 
-                     WHERE user_id = ? AND status != 0 
+        let query = "SELECT * FROM user_items_v2
+                     WHERE user_id = ? AND status != 0
                      AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))";
         let results = self
             .db
@@ -555,18 +529,18 @@ impl Database for AppDatabase {
 
 /// Helper for deserializing DB rows into StoredPasskey.
 /// The DB column is "passkey_json" but our struct field is "public_key".
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Model)]
+#[d1(table_name = "passkeys")]
 pub struct PasskeyRow {
-    user_id: i32,
-    cred_id: String,
-    passkey_json: String,
-    name: String,
-    created_at: i64,
-    last_used_at: i64,
-    counter: i64,
+    pub user_id: i32,
+    #[d1(primary_key)]
+    pub cred_id: String,
+    pub passkey_json: String,
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: i64,
+    pub counter: i64,
 }
-
-impl_model!(PasskeyRow, "passkeys", "cred_id");
 
 impl From<PasskeyRow> for StoredPasskey {
     fn from(r: PasskeyRow) -> Self {
@@ -582,14 +556,14 @@ impl From<PasskeyRow> for StoredPasskey {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "passkey_states")]
 pub struct PasskeyStateRow {
+    #[d1(primary_key)]
     pub id: String,
     pub state_json: String,
     pub expires_at: i64,
 }
-
-impl_model!(PasskeyStateRow, "passkey_states", "id");
 
 impl From<PasskeyStateRow> for PasskeyState {
     fn from(r: PasskeyStateRow) -> Self {

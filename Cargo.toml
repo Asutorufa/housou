@@ -54,4 +54,4 @@ strip = true
 wasm-opt = false
 
 [workspace]
-members = ["crates/passkey", "crates/d1-orm"]
+members = ["crates/passkey", "crates/d1-orm", "crates/d1-orm-derive"]
