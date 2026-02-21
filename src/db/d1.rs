@@ -34,10 +34,10 @@ impl DatabaseExecutor for D1Database {
         Ok(())
     }
 
-    async fn execute_batch(&self, sqls: Vec<String>) -> Result<()> {
+    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
         let mut statements = Vec::with_capacity(sqls.len());
         for sql in sqls {
-            statements.push(self.prepare(&sql));
+            statements.push(self.prepare(sql.sql()).bind(&sql.params())?);
         }
         self.batch(statements).await?;
         Ok(())
@@ -134,21 +134,16 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
                 crate::log!("Applying migration version {}", version);
                 let mut batch_queries = Vec::with_capacity(queries.len() + 1);
                 for query in queries {
-                    batch_queries.push(query.to_string());
+                    batch_queries.push(Sql::Raw { sql: query });
                 }
 
                 let now = utils::now_utc_ms();
-                // Since execute_batch currently only takes String, we have to handle the Sql variant here.
-                // Or we can add a method to convert Sql to a string with params baked in (risky)
-                // or just call execute for the migration entry specifically.
-
-                self.db.execute_batch(batch_queries).await?;
-
-                self.execute(Sql::InsertMigration {
+                batch_queries.push(Sql::InsertMigration {
                     version,
                     applied_at: now,
-                })
-                .await?;
+                });
+
+                self.db.execute_batch(batch_queries).await?;
             }
         }
 

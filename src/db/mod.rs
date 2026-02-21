@@ -74,7 +74,7 @@ pub trait DatabaseExecutor {
 
     async fn execute(&self, sql: Sql<'_>) -> Result<()>;
 
-    async fn execute_batch(&self, sqls: Vec<String>) -> Result<()>;
+    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()>;
 }
 
 pub struct AppDatabase<E: DatabaseExecutor> {

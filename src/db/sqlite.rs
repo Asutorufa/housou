@@ -111,13 +111,22 @@ impl DatabaseExecutor for SqliteExecutor {
         Ok(())
     }
 
-    async fn execute_batch(&self, sqls: Vec<String>) -> Result<()> {
+    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn
             .transaction()
             .map_err(|e| Error::RustError(e.to_string()))?;
         for sql in sqls {
-            tx.execute_batch(&sql)
+            let query = sql.sql();
+            let values = sql.values();
+            let params = values.into_iter().map(|v| match v {
+                DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
+                DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
+                DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
+                DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
+                DatabaseValue::Null => rusqlite::types::Value::Null,
+            });
+            tx.execute(&query, params_from_iter(params))
                 .map_err(|e| Error::RustError(e.to_string()))?;
         }
         tx.commit().map_err(|e| Error::RustError(e.to_string()))?;

@@ -1,6 +1,6 @@
 use worker::wasm_bindgen::JsValue;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum DatabaseValue {
     Text(String),
     Int(i64),
@@ -130,7 +130,9 @@ macro_rules! define_sql {
             $name:ident $( { $($field:ident : $ftype:ty $( [ $mode:ident ] )? ),* $(,)? } )? => $sql:expr
         ),* $(,)?
     ) => {
+        #[derive(Clone, Debug)]
         pub enum Sql<'a> {
+            Raw { sql: &'a str },
             $(
                 $name $( { $($field : $ftype),* } )?,
             )*
@@ -139,6 +141,7 @@ macro_rules! define_sql {
         impl<'a> Sql<'a> {
             pub fn sql(&self) -> String {
                 match self {
+                    Sql::Raw { sql } => sql.to_string(),
                     $(
                         Sql::$name $( { $($field,)* } )? => {
                              $( $(let _ = $field;)* )?
@@ -152,6 +155,7 @@ macro_rules! define_sql {
                 let mut v = Vec::new();
                 let values = &mut v;
                 match self {
+                    Sql::Raw { .. } => {}
                     $(
                         Sql::$name $( { $($field,)* } )? => {
                             $(
