@@ -187,7 +187,7 @@ describe("useSmartMetadata", () => {
 
   it("should not update state if unmounted", async () => {
     // Create a promise that we can control
-    let resolvePromise: (value: UnifiedMetadata) => void;
+    let resolvePromise: (value: UnifiedMetadata) => void = () => {};
     const promise = new Promise<UnifiedMetadata>((resolve) => {
       resolvePromise = resolve;
     });
@@ -201,7 +201,7 @@ describe("useSmartMetadata", () => {
     unmount();
 
     // Resolve the promise after unmount
-    resolvePromise!(mockMetadata);
+    resolvePromise(mockMetadata);
 
     // We can't really assert that state didn't update directly in React hooks testing easily without spying on useState,
     // but we can ensure no errors are thrown (React warning about state update on unmounted component).
