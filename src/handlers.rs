@@ -1,5 +1,4 @@
 use serde_derive::Serialize;
-use time::{Date as TimeDate, Month};
 use worker::*;
 
 use crate::db::Database;
@@ -153,56 +152,10 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
 
     match auth::get_db(&env) {
         Ok(db) => {
-            let user_items = if let Some(year) = query.year
-                && let Some(season) = normalized_season
-            {
-                // Calculate timestamp range for the season
-                let (start_month, end_month) = match season {
-                    "Winter" => (1, 3),
-                    "Spring" => (4, 6),
-                    "Summer" => (7, 9),
-                    "Autumn" => (10, 12),
-                    _ => unreachable!("season is validated"),
-                };
-
-                // Approximate timestamps (milliseconds)
-                let start_month = match Month::try_from(start_month as u8) {
-                    Ok(m) => m,
-                    Err(_) => Month::January,
-                };
-                let start_date =
-                    TimeDate::from_calendar_date(year, start_month, 1).unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
-                    });
-                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                let next_month_year = if end_month == 12 { year + 1 } else { year };
-                let next_month = if end_month == 12 { 1 } else { end_month + 1 };
-                let next_month_m = match Month::try_from(next_month as u8) {
-                    Ok(m) => m,
-                    Err(_) => Month::January,
-                };
-                let end_date = TimeDate::from_calendar_date(next_month_year, next_month_m, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(next_month_year, Month::January, 1).unwrap()
-                    });
-                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                db.get_user_items_by_range(user.id, start_ts, end_ts).await
-            } else if let Some(year) = query.year {
-                // If only year is provided, fetch for the whole year
-                let start_date = TimeDate::from_calendar_date(year, Month::January, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
-                    });
-                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                let next_year = year + 1;
-                let end_date = TimeDate::from_calendar_date(next_year, Month::January, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(next_year, Month::January, 1).unwrap()
-                    });
-                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
+            let user_items = if let Some(year) = query.year {
+                let (start_ts, end_ts) =
+                    utils::season::get_season_timestamp_range(year, normalized_season)
+                        .map_err(Error::RustError)?;
 
                 db.get_user_items_by_range(user.id, start_ts, end_ts).await
             } else {
