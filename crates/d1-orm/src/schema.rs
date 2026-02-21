@@ -80,6 +80,44 @@ impl Column {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Index {
+    pub name: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+}
+
+impl Index {
+    pub fn new(name: &str, table: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            table: table.to_string(),
+            columns: Vec::new(),
+            unique: false,
+        }
+    }
+
+    pub fn column(mut self, col: &str) -> Self {
+        self.columns.push(col.to_string());
+        self
+    }
+
+    pub fn unique(mut self) -> Self {
+        self.unique = true;
+        self
+    }
+
+    pub fn to_sql(&self) -> String {
+        let unique = if self.unique { "UNIQUE " } else { "" };
+        let cols = self.columns.join(", ");
+        format!(
+            "CREATE {}INDEX IF NOT EXISTS {} ON {} ({})",
+            unique, self.name, self.table, cols
+        )
+    }
+}
+
 pub struct Table {
     pub name: String,
     pub columns: Vec<Column>,

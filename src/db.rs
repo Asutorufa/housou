@@ -43,11 +43,13 @@ pub struct Session {
 #[derive(Debug, Serialize, Deserialize, Clone, Model)]
 #[d1(table_name = "user_items_v2")]
 pub struct UserItem {
+    #[d1(index)]
     pub user_id: i32,
     pub title: String, // Changed from item_id
     pub status: UserStatus,
     pub score: Option<i32>,
     pub updated_at: i64,
+    #[d1(index)]
     pub begin_at: Option<i64>,
 }
 
@@ -220,21 +222,30 @@ impl Database for AppDatabase {
             // Version 1: Initial schema
             (
                 1,
-                vec![
-                    User::schema().to_sql(),
-                    Session::schema().to_sql(),
-                    UserItem::schema().to_sql(),
-                    // Passkeys tables, defined later manually or via macro
-                    // For now, I'll use raw SQL for tables I haven't macro-ized or just manual string
-                    // Actually, PasskeyRow and PasskeyStateRow are macro-ized below
-                    PasskeyRow::schema().to_sql(),
-                    PasskeyStateRow::schema().to_sql(),
+                {
+                    let mut stmts = vec![
+                        User::schema().to_sql(),
+                        Session::schema().to_sql(),
+                        UserItem::schema().to_sql(),
+                        PasskeyRow::schema().to_sql(),
+                        PasskeyStateRow::schema().to_sql(),
+                    ];
+                    // Manual indexes for unique fields not marked with #[d1(index)] but rather #[d1(unique)]
+                    // The macro handles UNIQUE constraint on column creation but NOT separate CREATE UNIQUE INDEX.
+                    // SQLite UNIQUE constraint automatically creates an index.
+                    // So `#[d1(unique)]` creates a unique index implicitly.
 
-                    // Indexes are not yet supported by my SchemaBuilder/Macro
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);".to_string(),
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);".to_string(),
-                    "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);".to_string(),
-                ],
+                    // However, `#[d1(index)]` explicit indexes need to be added.
+                    stmts.extend(UserItem::indexes().iter().map(|i| i.to_sql()));
+                    stmts.extend(PasskeyRow::indexes().iter().map(|i| i.to_sql()));
+
+                    // `username` in User is unique, so implicit index exists.
+                    // `idx_users_username` was explicit before.
+                    // If we want explicit name, we can use `CREATE UNIQUE INDEX`.
+                    // But `username TEXT UNIQUE` is sufficient for constraint.
+
+                    stmts
+                }
             ),
             (2, vec![
                 AlterTable::new("users").add_column(
@@ -532,6 +543,7 @@ impl Database for AppDatabase {
 #[derive(Debug, Serialize, Deserialize, Model)]
 #[d1(table_name = "passkeys")]
 pub struct PasskeyRow {
+    #[d1(index)]
     pub user_id: i32,
     #[d1(primary_key)]
     pub cred_id: String,

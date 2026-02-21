@@ -6,7 +6,7 @@ pub mod traits;
 pub use d1_orm_derive::Model;
 pub use error::{Error, Result};
 pub use query::{Bindable, Delete, Insert, Order, Select, Update};
-pub use schema::{AlterTable, Column, ColumnType, Constraint, Table};
+pub use schema::{AlterTable, Column, ColumnType, Constraint, Index, Table};
 pub use traits::{Model, Repository};
 
 // Re-export useful worker types

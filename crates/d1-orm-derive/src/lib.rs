@@ -29,6 +29,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     }
 
     let mut columns_setup = Vec::new();
+    let mut indexes_setup = Vec::new();
 
     if let Data::Struct(data) = input.data {
         if let Fields::Named(fields) = data.fields {
@@ -69,6 +70,11 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                                 constraints.push(quote! { d1_orm::Constraint::NotNull });
                             } else if meta.path.is_ident("unique") {
                                 constraints.push(quote! { d1_orm::Constraint::Unique });
+                            } else if meta.path.is_ident("index") {
+                                let idx_name = format!("idx_{}_{}", table_name, field_name);
+                                indexes_setup.push(quote! {
+                                    d1_orm::Index::new(#idx_name, #table_name).column(#field_name)
+                                });
                             }
                             Ok(())
                         });
@@ -103,6 +109,12 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     ],
                     constraints: vec![],
                 }
+            }
+
+            pub fn indexes() -> Vec<d1_orm::Index> {
+                vec![
+                    #(#indexes_setup),*
+                ]
             }
         }
     };
