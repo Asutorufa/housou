@@ -1,6 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
+use d1_orm::{impl_model, Bindable, D1Database, Repository};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -25,6 +26,8 @@ pub struct User {
     pub created_at: i64,
 }
 
+impl_model!(User, "users");
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Session {
     pub id: i32,
@@ -32,6 +35,8 @@ pub struct Session {
     pub token: String,
     pub expires_at: i64,
 }
+
+impl_model!(Session, "sessions");
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserItem {
@@ -42,6 +47,8 @@ pub struct UserItem {
     pub updated_at: i64,
     pub begin_at: Option<i64>,
 }
+
+impl_model!(UserItem, "user_items_v2");
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -129,6 +136,18 @@ impl AppDatabase {
         Self { db }
     }
 
+    fn users(&self) -> Repository<'_, User> {
+        Repository::new(&self.db)
+    }
+
+    fn sessions(&self) -> Repository<'_, Session> {
+        Repository::new(&self.db)
+    }
+
+    fn user_items(&self) -> Repository<'_, UserItem> {
+        Repository::new(&self.db)
+    }
+
     fn validate_select_field(field: &str) -> Result<()> {
         match field {
             "id" | "email" | "username" | "github_id" | "telegram_id" => Ok(()),
@@ -151,19 +170,21 @@ impl AppDatabase {
 
     async fn get_user_by_field(&self, field: &str, value: JsValue) -> Result<Option<User>> {
         Self::validate_select_field(field)?;
-        let query = format!("SELECT * FROM users WHERE {} = ?", field);
-        self.db.prepare(&query).bind(&[value])?.first(None).await
+        // Use ORM
+        self.users()
+            .find_one(self.users().select().where_eq(field, value))
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn update_user_field(&self, id: i32, field: &str, value: JsValue) -> Result<()> {
         Self::validate_update_field(field)?;
-        let query = format!("UPDATE users SET {} = ? WHERE id = ?", field);
-        self.db
-            .prepare(&query)
-            .bind(&[value, JsValue::from_f64(id as f64)])?
-            .run()
-            .await?;
-        Ok(())
+        // Use ORM
+        let update = self.users().update()
+            .set(field, value)
+            .where_eq("id", id);
+
+        self.users().execute(update).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
     }
 }
 
@@ -171,6 +192,7 @@ impl AppDatabase {
 impl Database for AppDatabase {
     async fn migrate(&self) -> Result<()> {
         // Create schema_migrations table if not exists
+        // Migration logic kept as raw SQL for simplicity and safety during refactor
         self.db
             .prepare(
                 "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -298,19 +320,19 @@ impl Database for AppDatabase {
         avatar_url: Option<&str>,
     ) -> Result<User> {
         let created_at = utils::now_utc_ms();
-        let query = "INSERT INTO users (email, username, password_hash, github_id, telegram_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *";
 
-        let stmt = self.db.prepare(query).bind(&[
-            JsValue::from_str(email),
-            JsValue::from_str(username),
-            password_hash.to_js(),
-            github_id.to_js(),
-            telegram_id.to_js(),
-            avatar_url.to_js(),
-            JsValue::from_f64(created_at as f64),
-        ])?;
+        let insert = self.users().insert()
+            .set("email", email)
+            .set("username", username)
+            .set("password_hash", password_hash.to_js())
+            .set("github_id", github_id.to_js())
+            .set("telegram_id", telegram_id.to_js())
+            .set("avatar_url", avatar_url.to_js())
+            .set("created_at", created_at as f64)
+            .returning("*");
 
-        let result: Option<User> = stmt.first(None).await?;
+        let result = self.users().insert_one(insert).await
+            .map_err(|e| Error::RustError(e.to_string()))?;
         result.ok_or_else(|| Error::RustError("Failed to create user".to_string()))
     }
 
@@ -320,8 +342,7 @@ impl Database for AppDatabase {
     }
 
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>> {
-        self.get_user_by_field("id", JsValue::from_f64(id as f64))
-            .await
+        self.users().find_by_id(id).await.map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_by_github_id(&self, github_id: &str) -> Result<Option<User>> {
@@ -346,26 +367,16 @@ impl Database for AppDatabase {
         new_email: Option<&str>,
         new_avatar_url: Option<&str>,
     ) -> Result<()> {
-        let mut updates = Vec::new();
-        let mut bindings = Vec::new();
-
-        updates.push("username = ?");
-        bindings.push(JsValue::from_str(new_username));
+        let mut update = self.users().update()
+            .where_eq("id", id)
+            .set("username", new_username)
+            .set("avatar_url", new_avatar_url.to_js());
 
         if let Some(email) = new_email {
-            updates.push("email = ?");
-            bindings.push(JsValue::from_str(email));
+            update = update.set("email", email);
         }
 
-        // Always update avatar_url, setting to NULL if None (explicit clear)
-        updates.push("avatar_url = ?");
-        bindings.push(new_avatar_url.to_js());
-
-        let query = format!("UPDATE users SET {} WHERE id = ?", updates.join(", "));
-        bindings.push(JsValue::from_f64(id as f64));
-
-        self.db.prepare(&query).bind(&bindings)?.run().await?;
-        Ok(())
+        self.users().execute(update).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()> {
@@ -384,47 +395,41 @@ impl Database for AppDatabase {
     }
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()> {
-        let query = "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_f64(user_id as f64),
-                JsValue::from_str(token),
-                JsValue::from_f64(expires_at as f64),
-            ])?
-            .run()
-            .await?;
-        Ok(())
+        let insert = self.sessions().insert()
+            .set("user_id", user_id)
+            .set("token", token)
+            .set("expires_at", expires_at as f64);
+
+        self.sessions().execute(insert).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_session(&self, token: &str) -> Result<Option<Session>> {
-        let query = "SELECT * FROM sessions WHERE token = ? AND expires_at > ?";
         let now = utils::now_utc_ms();
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
-            .first(None)
-            .await
+        let query = self.sessions().select()
+            .where_eq("token", token)
+            .where_gt("expires_at", now as f64)
+            .limit(1);
+        self.sessions().find_one(query).await.map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>> {
-        let query = "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?";
+        // Complex join: SELECT users.* FROM users INNER JOIN sessions ON ...
+        // My simple builder handles basic joins if I implemented `join` in `Select`.
+        // I implemented `join` in `Select`.
         let now = utils::now_utc_ms();
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(token), JsValue::from_f64(now as f64)])?
-            .first(None)
-            .await
+        let query = self.users().select()
+            .join("INNER JOIN sessions ON users.id = sessions.user_id")
+            .where_eq("sessions.token", token)
+            .where_gt("sessions.expires_at", now as f64)
+            .limit(1);
+
+        self.users().find_one(query).await.map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn delete_session(&self, token: &str) -> Result<()> {
-        let query = "DELETE FROM sessions WHERE token = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(token)])?
-            .run()
-            .await?;
-        Ok(())
+        let delete = self.sessions().delete()
+            .where_eq("token", token);
+        self.sessions().execute(delete).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn update_user_item(
@@ -436,15 +441,6 @@ impl Database for AppDatabase {
         begin_at: Option<i64>,
     ) -> Result<()> {
         let updated_at = utils::now_utc_ms();
-        // SQLite upsert
-        let query =
-            "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at, begin_at)
-                     VALUES (?, ?, ?, ?, ?, ?)
-                     ON CONFLICT(user_id, title) DO UPDATE SET 
-                        status = excluded.status, 
-                        score = excluded.score, 
-                        updated_at = excluded.updated_at,
-                        begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)";
 
         let score_val = if let Some(s) = score {
             JsValue::from_f64(s as f64)
@@ -458,32 +454,28 @@ impl Database for AppDatabase {
             JsValue::NULL
         };
 
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_f64(user_id as f64),
-                JsValue::from_str(title),
-                JsValue::from_f64(status as i32 as f64),
-                score_val,
-                JsValue::from_f64(updated_at as f64),
-                begin_val,
-            ])?
-            .run()
-            .await?;
-        Ok(())
+        let insert = self.user_items().insert()
+            .set("user_id", user_id)
+            .set("title", title)
+            .set("status", status as i32)
+            .set("score", score_val)
+            .set("updated_at", updated_at as f64)
+            .set("begin_at", begin_val)
+            .on_conflict("(user_id, title) DO UPDATE SET
+                        status = excluded.status,
+                        score = excluded.score,
+                        updated_at = excluded.updated_at,
+                        begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)");
+
+        self.user_items().execute(insert).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>> {
-        let query = "SELECT * FROM user_items_v2 WHERE user_id = ? AND status != 0";
-        let results = self
-            .db
-            .prepare(query)
-            .bind(&[JsValue::from_f64(user_id as f64)])?
-            .all()
-            .await?;
+        let query = self.user_items().select()
+            .where_eq("user_id", user_id)
+            .where_raw("status != ?", JsValue::from_f64(0.0));
 
-        let rows: Vec<UserItem> = results.results()?;
-        Ok(rows)
+        self.user_items().find_all(query).await.map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_items_by_range(
@@ -492,12 +484,10 @@ impl Database for AppDatabase {
         start_ts: i64,
         end_ts: i64,
     ) -> Result<Vec<UserItem>> {
-        // Fetch items within the time range OR items that don't have begin_at yet (to avoid missing data during transition)
         let query = "SELECT * FROM user_items_v2 
                      WHERE user_id = ? AND status != 0 
                      AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))";
-        let results = self
-            .db
+        let results = self.db
             .prepare(query)
             .bind(&[
                 JsValue::from_f64(user_id as f64),
@@ -516,8 +506,8 @@ impl Database for AppDatabase {
 
 /// Helper for deserializing DB rows into StoredPasskey.
 /// The DB column is "passkey_json" but our struct field is "public_key".
-#[derive(Debug, Deserialize)]
-struct PasskeyRow {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasskeyRow {
     user_id: i32,
     cred_id: String,
     passkey_json: String,
@@ -526,6 +516,8 @@ struct PasskeyRow {
     last_used_at: i64,
     counter: i64,
 }
+
+impl_model!(PasskeyRow, "passkeys", "cred_id");
 
 impl From<PasskeyRow> for StoredPasskey {
     fn from(r: PasskeyRow) -> Self {
@@ -537,6 +529,25 @@ impl From<PasskeyRow> for StoredPasskey {
             created_at: r.created_at,
             last_used_at: r.last_used_at,
             counter: r.counter,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PasskeyStateRow {
+    pub id: String,
+    pub state_json: String,
+    pub expires_at: i64,
+}
+
+impl_model!(PasskeyStateRow, "passkey_states", "id");
+
+impl From<PasskeyStateRow> for PasskeyState {
+    fn from(r: PasskeyStateRow) -> Self {
+        Self {
+            id: r.id,
+            state_json: r.state_json,
+            expires_at: r.expires_at,
         }
     }
 }
@@ -560,38 +571,24 @@ impl PasskeyStore for AppDatabase {
         let user_id_int = user_id
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
-        let query = "INSERT INTO passkeys (user_id, cred_id, passkey_json, name, created_at, last_used_at, counter) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_f64(user_id_int as f64),
-                JsValue::from_str(cred_id),
-                JsValue::from_str(public_key),
-                JsValue::from_str(name),
-                JsValue::from_f64(created_at as f64),
-                JsValue::from_f64(created_at as f64),
-                JsValue::from_f64(counter as f64),
-            ])
-            .map_err(db_err)?
-            .run()
-            .await
-            .map_err(db_err)?;
-        Ok(())
+
+        let insert = self.passkeys().insert()
+            .set("user_id", user_id_int)
+            .set("cred_id", cred_id)
+            .set("passkey_json", public_key)
+            .set("name", name)
+            .set("created_at", created_at as f64)
+            .set("last_used_at", created_at as f64)
+            .set("counter", counter as f64);
+
+        self.passkeys().execute(insert).await.map(|_| ()).map_err(db_err)
     }
 
     async fn get_passkey(
         &self,
         cred_id: &str,
     ) -> passkey_server::error::Result<Option<StoredPasskey>> {
-        let query = "SELECT * FROM passkeys WHERE cred_id = ?";
-        let row: Option<PasskeyRow> = self
-            .db
-            .prepare(query)
-            .bind(&[JsValue::from_str(cred_id)])
-            .map_err(db_err)?
-            .first(None)
-            .await
-            .map_err(db_err)?;
+        let row = self.passkeys().find_by_id(cred_id).await.map_err(db_err)?;
         Ok(row.map(Into::into))
     }
 
@@ -602,16 +599,9 @@ impl PasskeyStore for AppDatabase {
         let user_id_int = user_id
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
-        let query = "SELECT * FROM passkeys WHERE user_id = ?";
-        let results = self
-            .db
-            .prepare(query)
-            .bind(&[JsValue::from_f64(user_id_int as f64)])
-            .map_err(db_err)?
-            .all()
-            .await
-            .map_err(db_err)?;
-        let rows: Vec<PasskeyRow> = results.results().map_err(db_err)?;
+
+        let query = self.passkeys().select().where_eq("user_id", user_id_int);
+        let rows = self.passkeys().find_all(query).await.map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
@@ -623,18 +613,12 @@ impl PasskeyStore for AppDatabase {
         let user_id_int = user_id
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
-        let query = "DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_f64(user_id_int as f64),
-                JsValue::from_str(cred_id),
-            ])
-            .map_err(db_err)?
-            .run()
-            .await
-            .map_err(db_err)?;
-        Ok(())
+
+        let delete = self.passkeys().delete()
+            .where_eq("user_id", user_id_int)
+            .where_eq("cred_id", cred_id);
+
+        self.passkeys().execute(delete).await.map(|_| ()).map_err(db_err)
     }
 
     async fn update_passkey_counter(
@@ -643,19 +627,12 @@ impl PasskeyStore for AppDatabase {
         new_counter: i64,
         last_used_at: i64,
     ) -> passkey_server::error::Result<()> {
-        let query = "UPDATE passkeys SET counter = ?, last_used_at = ? WHERE cred_id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[
-                JsValue::from_f64(new_counter as f64),
-                JsValue::from_f64(last_used_at as f64),
-                JsValue::from_str(cred_id),
-            ])
-            .map_err(db_err)?
-            .run()
-            .await
-            .map_err(db_err)?;
-        Ok(())
+        let update = self.passkeys().update()
+            .set("counter", new_counter as f64)
+            .set("last_used_at", last_used_at as f64)
+            .where_eq("cred_id", cred_id);
+
+        self.passkeys().execute(update).await.map(|_| ()).map_err(db_err)
     }
 
     async fn update_passkey_name(
@@ -663,15 +640,11 @@ impl PasskeyStore for AppDatabase {
         cred_id: &str,
         new_name: &str,
     ) -> passkey_server::error::Result<()> {
-        let query = "UPDATE passkeys SET name = ? WHERE cred_id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(new_name), JsValue::from_str(cred_id)])
-            .map_err(db_err)?
-            .run()
-            .await
-            .map_err(db_err)?;
-        Ok(())
+        let update = self.passkeys().update()
+            .set("name", new_name)
+            .where_eq("cred_id", cred_id);
+
+        self.passkeys().execute(update).await.map(|_| ()).map_err(db_err)
     }
 
     async fn save_state(
@@ -682,51 +655,49 @@ impl PasskeyStore for AppDatabase {
     ) -> passkey_server::error::Result<()> {
         let now = utils::now_utc_ms();
 
-        let cleanup_stmt = self
-            .db
-            .prepare("DELETE FROM passkey_states WHERE expires_at < ?")
-            .bind(&[JsValue::from_f64(now as f64)])
-            .map_err(db_err)?;
+        // Transaction/Batch manual
+        // cleanup
+        let delete = self.passkey_states().delete().where_lt("expires_at", now as f64);
+        let (del_sql, del_bind) = delete.to_sql();
 
-        let insert_stmt = self
-            .db
-            .prepare("INSERT OR REPLACE INTO passkey_states (id, state_json, expires_at) VALUES (?, ?, ?)")
-            .bind(&[
-                JsValue::from_str(id),
-                JsValue::from_str(state_json),
-                JsValue::from_f64(expires_at as f64),
-            ])
-            .map_err(db_err)?;
+        // insert
+        let insert = self.passkey_states().insert()
+            .set("id", id)
+            .set("state_json", state_json)
+            .set("expires_at", expires_at as f64)
+            .on_conflict("(id) DO UPDATE SET state_json=excluded.state_json, expires_at=excluded.expires_at");
+        let (ins_sql, ins_bind) = insert.to_sql();
 
-        self.db
-            .batch(vec![cleanup_stmt, insert_stmt])
-            .await
-            .map_err(db_err)?;
+        let s1 = self.db.prepare(&del_sql).bind(&del_bind).map_err(db_err)?;
+        let s2 = self.db.prepare(&ins_sql).bind(&ins_bind).map_err(db_err)?;
+
+        self.db.batch(vec![s1, s2]).await.map_err(db_err)?;
         Ok(())
     }
 
     async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
-        let query = "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?";
         let now = utils::now_utc_ms();
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(id), JsValue::from_f64(now as f64)])
-            .map_err(db_err)?
-            .first(None)
-            .await
-            .map_err(db_err)
+        let query = self.passkey_states().select()
+            .where_eq("id", id)
+            .where_gt("expires_at", now as f64);
+
+        let row: Option<PasskeyStateRow> = self.passkey_states().find_one(query).await.map_err(db_err)?;
+        Ok(row.map(Into::into))
     }
 
     async fn delete_state(&self, id: &str) -> passkey_server::error::Result<()> {
-        let query = "DELETE FROM passkey_states WHERE id = ?";
-        self.db
-            .prepare(query)
-            .bind(&[JsValue::from_str(id)])
-            .map_err(db_err)?
-            .run()
-            .await
-            .map_err(db_err)?;
-        Ok(())
+        self.passkey_states().delete_by_id(id).await.map_err(db_err)
+    }
+}
+
+// Add helpers for repositories
+impl AppDatabase {
+    fn passkeys(&self) -> Repository<'_, PasskeyRow> {
+        Repository::new(&self.db)
+    }
+
+    fn passkey_states(&self) -> Repository<'_, PasskeyStateRow> {
+        Repository::new(&self.db)
     }
 }
 
