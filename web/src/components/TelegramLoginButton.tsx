@@ -44,13 +44,18 @@ export default function TelegramLoginButton({
     script.setAttribute("data-request-access", requestAccess);
     script.setAttribute("data-userpic", usePic.toString());
 
+    // Ensure callback namespace exists
+    if (!window.TelegramAuthCallbacks) {
+      window.TelegramAuthCallbacks = {};
+    }
+
     // Generate unique callback name
-    const callbackName = `onTelegramAuth_${Math.random().toString(36).substring(2, 9)}`;
+    const callbackId = `cb_${Math.random().toString(36).substring(2, 9)}`;
+    const callbackName = `window.TelegramAuthCallbacks.${callbackId}`;
     script.setAttribute("data-onauth", `${callbackName}(user)`);
 
     // Attach global callback
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any)[callbackName] = (user: TelegramAuthData) => {
+    window.TelegramAuthCallbacks[callbackId] = (user: TelegramAuthData) => {
       onAuthRef.current(user);
     };
 
@@ -58,10 +63,8 @@ export default function TelegramLoginButton({
 
     return () => {
       // Cleanup unique global function
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any)[callbackName]) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (window as any)[callbackName];
+      if (window.TelegramAuthCallbacks?.[callbackId]) {
+        delete window.TelegramAuthCallbacks[callbackId];
       }
     };
   }, [botName, buttonSize, cornerRadius, requestAccess, usePic]);
