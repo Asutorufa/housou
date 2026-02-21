@@ -1,13 +1,19 @@
 use std::collections::HashSet;
 use std::fmt;
 
+/// SQLite column types supported by the schema builder.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnType {
+    /// `INTEGER`
     Integer,
+    /// `REAL`
     Real,
+    /// `TEXT`
     Text,
+    /// `BLOB`
     Blob,
-    Boolean, // Mapped to Integer
+    /// Boolean mapped to SQLite `INTEGER`.
+    Boolean,
 }
 
 impl fmt::Display for ColumnType {
@@ -21,23 +27,34 @@ impl fmt::Display for ColumnType {
     }
 }
 
+/// Column-level constraints.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Constraint {
+    /// `PRIMARY KEY`
     PrimaryKey,
+    /// `AUTOINCREMENT`
     AutoIncrement,
+    /// `NOT NULL`
     NotNull,
+    /// `UNIQUE`
     Unique,
+    /// `DEFAULT <expr>`
     Default(String),
 }
 
+/// Table column definition.
 #[derive(Debug, Clone)]
 pub struct Column {
+    /// Column name.
     pub name: String,
+    /// Column data type.
     pub col_type: ColumnType,
+    /// Column constraints.
     pub constraints: Vec<Constraint>,
 }
 
 impl Column {
+    /// Create a new column.
     pub fn new(name: &str, col_type: ColumnType) -> Self {
         Self {
             name: name.to_string(),
@@ -46,26 +63,31 @@ impl Column {
         }
     }
 
+    /// Add `PRIMARY KEY`.
     pub fn primary_key(mut self) -> Self {
         self.constraints.push(Constraint::PrimaryKey);
         self
     }
 
+    /// Add `AUTOINCREMENT`.
     pub fn auto_increment(mut self) -> Self {
         self.constraints.push(Constraint::AutoIncrement);
         self
     }
 
+    /// Add `NOT NULL`.
     pub fn not_null(mut self) -> Self {
         self.constraints.push(Constraint::NotNull);
         self
     }
 
+    /// Add `UNIQUE`.
     pub fn unique(mut self) -> Self {
         self.constraints.push(Constraint::Unique);
         self
     }
 
+    /// Render this column definition into SQL.
     pub fn to_sql(&self) -> String {
         let mut sql = format!("{} {}", self.name, self.col_type);
         for constraint in &self.constraints {
@@ -81,15 +103,21 @@ impl Column {
     }
 }
 
+/// Index definition.
 #[derive(Debug, Clone)]
 pub struct Index {
+    /// Index name.
     pub name: String,
+    /// Target table.
     pub table: String,
+    /// Indexed columns.
     pub columns: Vec<String>,
+    /// Whether index is unique.
     pub unique: bool,
 }
 
 impl Index {
+    /// Create a new index for a table.
     pub fn new(name: &str, table: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -99,16 +127,19 @@ impl Index {
         }
     }
 
+    /// Add a column to the index.
     pub fn column(mut self, col: &str) -> Self {
         self.columns.push(col.to_string());
         self
     }
 
+    /// Mark index as unique.
     pub fn unique(mut self) -> Self {
         self.unique = true;
         self
     }
 
+    /// Render `CREATE INDEX IF NOT EXISTS ...`.
     pub fn to_sql(&self) -> String {
         let unique = if self.unique { "UNIQUE " } else { "" };
         let cols = self.columns.join(", ");
@@ -119,13 +150,18 @@ impl Index {
     }
 }
 
+/// Table definition used to build `CREATE TABLE` SQL.
 pub struct Table {
+    /// Table name.
     pub name: String,
+    /// Column definitions.
     pub columns: Vec<Column>,
-    pub constraints: Vec<String>, // Table-level constraints
+    /// Raw table-level constraints (for example, composite unique keys).
+    pub constraints: Vec<String>,
 }
 
 impl Table {
+    /// Create a new table definition.
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -134,11 +170,13 @@ impl Table {
         }
     }
 
+    /// Add one column to the table.
     pub fn column(mut self, col: Column) -> Self {
         self.columns.push(col);
         self
     }
 
+    /// Render `CREATE TABLE IF NOT EXISTS ...`.
     pub fn to_sql(&self) -> String {
         let mut defs: Vec<String> = self.columns.iter().map(|c| c.to_sql()).collect();
         defs.extend(self.constraints.clone());
@@ -150,13 +188,14 @@ impl Table {
     }
 }
 
-// Alter Table Helpers for Migrations
+/// Helper for generating additive `ALTER TABLE` SQL.
 pub struct AlterTable {
     table: String,
     actions: Vec<String>,
 }
 
 impl AlterTable {
+    /// Create an alter-table builder.
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
@@ -164,11 +203,15 @@ impl AlterTable {
         }
     }
 
+    /// Add an `ADD COLUMN` action.
     pub fn add_column(mut self, col: Column) -> Self {
         self.actions.push(format!("ADD COLUMN {}", col.to_sql()));
         self
     }
 
+    /// Render SQL if exactly one action exists.
+    ///
+    /// SQLite only supports one `ADD COLUMN` per `ALTER TABLE` statement.
     pub fn to_single_sql(&self) -> Option<String> {
         if self.actions.len() == 1 {
             Some(format!("ALTER TABLE {} {}", self.table, self.actions[0]))
@@ -178,6 +221,11 @@ impl AlterTable {
     }
 }
 
+/// Generate additive migration SQL by comparing previous and next schema states.
+///
+/// This function only emits safe additive operations:
+/// - missing columns become `ALTER TABLE ... ADD COLUMN ...`
+/// - missing indexes become `CREATE INDEX IF NOT EXISTS ...`
 pub fn additive_migration_sql(
     from_table: &Table,
     to_table: &Table,

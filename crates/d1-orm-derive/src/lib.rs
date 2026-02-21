@@ -1,11 +1,51 @@
+//! Procedural macros for `d1-orm`.
+//!
+//! This crate provides `#[derive(Model)]`, re-exported by `d1-orm`.
+//! Most users should depend on `d1-orm` directly.
+
 use proc_macro::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{parse_macro_input, Data, DeriveInput, Fields, Ident, Lit};
 
+fn to_snake_case(input: &str) -> String {
+    let mut out = String::with_capacity(input.len() + 8);
+    for (idx, ch) in input.chars().enumerate() {
+        if ch.is_ascii_uppercase() {
+            if idx != 0 {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Derive `d1_orm::Model` and generate helper methods for schema and CRUD operations.
+///
+/// Supported container attributes:
+/// - `#[d1(table_name = "...")]`
+/// - `#[d1(constraint = "...")]` (repeatable)
+/// - `#[d1(since = N)]`
+/// - `#[d1(until = N)]`
+///
+/// Supported field attributes:
+/// - `#[d1(primary_key)]`
+/// - `#[d1(auto_increment)]`
+/// - `#[d1(not_null)]`
+/// - `#[d1(unique)]`
+/// - `#[d1(index)]`
+/// - `#[d1(unique_index)]`
+/// - `#[d1(select_by)]` (generate `get_*_by_*`, `list_*_by_*`, `update_*_by_*`, `delete_*_by_*`)
+/// - `#[d1(integer)]` (force SQLite integer mapping)
+/// - `#[d1(since = N)]`
+/// - `#[d1(until = N)]`
 #[proc_macro_derive(Model, attributes(d1))]
 pub fn derive_model(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
+    let model_snake = to_snake_case(&name.to_string());
 
     let mut table_name = name.to_string().to_lowercase();
     let mut primary_key = "id".to_string();
@@ -13,6 +53,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let mut table_constraints = Vec::<String>::new();
     let mut table_since: i32 = 1;
     let mut table_until: Option<i32> = None;
+    let mut latest_version: i32 = 1;
 
     // Parse struct attributes for table name
     for attr in &input.attrs {
@@ -38,6 +79,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     if let Lit::Int(lit) = s {
                         if let Ok(v) = lit.base10_parse::<i32>() {
                             table_since = v;
+                            latest_version = latest_version.max(v);
                         }
                     }
                     Ok(())
@@ -47,6 +89,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     if let Lit::Int(lit) = s {
                         if let Ok(v) = lit.base10_parse::<i32>() {
                             table_until = Some(v);
+                            latest_version = latest_version.max(v);
                         }
                     }
                     Ok(())
@@ -61,6 +104,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let mut indexes_at_setup = Vec::new();
     let mut insert_setters = Vec::new();
     let mut update_setters = Vec::new();
+    let mut select_by_helpers = Vec::new();
 
     if let Data::Struct(data) = input.data {
         if let Fields::Named(fields) = data.fields {
@@ -78,6 +122,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 let mut field_since: i32 = 1;
                 let mut field_until: Option<i32> = None;
                 let mut force_integer = false;
+                let mut select_by = false;
 
                 // Heuristic type mapping
                 let type_str = quote!(#ty).to_string();
@@ -115,6 +160,8 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                                 has_index = true;
                             } else if meta.path.is_ident("unique_index") {
                                 has_unique_index = true;
+                            } else if meta.path.is_ident("select_by") {
+                                select_by = true;
                             } else if meta.path.is_ident("integer") {
                                 force_integer = true;
                             } else if meta.path.is_ident("since") {
@@ -123,6 +170,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                                 if let Lit::Int(lit) = s {
                                     if let Ok(v) = lit.base10_parse::<i32>() {
                                         field_since = v;
+                                        latest_version = latest_version.max(v);
                                     }
                                 }
                             } else if meta.path.is_ident("until") {
@@ -131,6 +179,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                                 if let Lit::Int(lit) = s {
                                     if let Ok(v) = lit.base10_parse::<i32>() {
                                         field_until = Some(v);
+                                        latest_version = latest_version.max(v);
                                     }
                                 }
                             }
@@ -203,6 +252,88 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                         }
                     });
                 }
+
+                if select_by {
+                    let get_fn = format_ident!("get_{}_by_{}", model_snake, field_name);
+                    let list_fn = format_ident!("list_{}_by_{}", model_snake, field_name);
+                    let update_fn = format_ident!("update_{}_by_{}", model_snake, field_name);
+                    let delete_fn = format_ident!("delete_{}_by_{}", model_snake, field_name);
+                    let get_by_fn = format_ident!("get_by_{}", field_name);
+                    let list_by_fn = format_ident!("list_by_{}", field_name);
+                    let update_by_fn = format_ident!("update_by_{}", field_name);
+                    let delete_by_fn = format_ident!("delete_by_{}", field_name);
+                    select_by_helpers.push(quote! {
+                        pub async fn #get_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<Option<Self>> {
+                            d1_orm::Repository::<Self>::new(db)
+                                .find_one(d1_orm::Select::new(#table_name).where_eq(#field_name, value))
+                                .await
+                        }
+
+                        pub async fn #list_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<Vec<Self>> {
+                            d1_orm::Repository::<Self>::new(db)
+                                .find_all(d1_orm::Select::new(#table_name).where_eq(#field_name, value))
+                                .await
+                        }
+
+                        pub async fn #update_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                            set: &[(&str, d1_orm::JsValue)],
+                        ) -> d1_orm::Result<d1_orm::D1Result> {
+                            let mut update = d1_orm::Update::new(#table_name);
+                            for (column, bind_value) in set {
+                                update = update.set(column, bind_value.clone());
+                            }
+                            update = update.where_eq(#field_name, value);
+                            d1_orm::Repository::<Self>::new(db).execute(update).await
+                        }
+
+                        pub async fn #delete_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<()> {
+                            d1_orm::Repository::<Self>::new(db)
+                                .execute(d1_orm::Delete::new(#table_name).where_eq(#field_name, value))
+                                .await
+                                .map(|_| ())
+                        }
+
+                        pub async fn #get_by_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<Option<Self>> {
+                            Self::#get_fn(db, value).await
+                        }
+
+                        pub async fn #list_by_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<Vec<Self>> {
+                            Self::#list_fn(db, value).await
+                        }
+
+                        pub async fn #update_by_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                            set: &[(&str, d1_orm::JsValue)],
+                        ) -> d1_orm::Result<d1_orm::D1Result> {
+                            Self::#update_fn(db, value, set).await
+                        }
+
+                        pub async fn #delete_by_fn(
+                            db: &d1_orm::D1Database,
+                            value: impl Into<d1_orm::JsValue> + Send,
+                        ) -> d1_orm::Result<()> {
+                            Self::#delete_fn(db, value).await
+                        }
+                    });
+                }
             }
         }
     }
@@ -237,10 +368,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
             fn primary_key() -> &'static str {
                 #primary_key
             }
-        }
-
-        impl #name {
-            pub fn schema_at(version: i32) -> Option<d1_orm::Table> {
+            fn schema_at(version: i32) -> Option<d1_orm::Table> {
                 if version < #table_since || !(#table_until_check) {
                     return None;
                 }
@@ -255,13 +383,27 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 })
             }
 
-            pub fn indexes_at(version: i32) -> Vec<d1_orm::Index> {
+            fn indexes_at(version: i32) -> Vec<d1_orm::Index> {
                 if version < #table_since || !(#table_until_check) {
                     return Vec::new();
                 }
                 let mut indexes = Vec::new();
                 #(#indexes_at_setup)*
                 indexes
+            }
+
+            fn latest_version() -> i32 {
+                #latest_version
+            }
+        }
+
+        impl #name {
+            pub fn schema_at(version: i32) -> Option<d1_orm::Table> {
+                <Self as d1_orm::Model>::schema_at(version)
+            }
+
+            pub fn indexes_at(version: i32) -> Vec<d1_orm::Index> {
+                <Self as d1_orm::Model>::indexes_at(version)
             }
 
             pub async fn find_by_pk(
@@ -287,9 +429,17 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     .await
             }
 
+            pub async fn create(&self, db: &d1_orm::D1Database) -> d1_orm::Result<d1_orm::D1Result> {
+                self.insert(db).await
+            }
+
             pub async fn insert_returning(&self, db: &d1_orm::D1Database) -> d1_orm::Result<Option<Self>> {
                 let insert = self.insert_query()?.returning("*");
                 d1_orm::Repository::<Self>::new(db).insert_one(insert).await
+            }
+
+            pub async fn create_returning(&self, db: &d1_orm::D1Database) -> d1_orm::Result<Option<Self>> {
+                self.insert_returning(db).await
             }
 
             pub async fn update(&self, db: &d1_orm::D1Database) -> d1_orm::Result<d1_orm::D1Result> {
@@ -297,6 +447,8 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                     .execute(self.update_query()?)
                     .await
             }
+
+            #(#select_by_helpers)*
         }
     };
 

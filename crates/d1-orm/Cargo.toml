@@ -2,6 +2,12 @@
 name = "d1-orm"
 version = "0.1.0"
 edition = "2021"
+description = "A lightweight ORM and migration toolkit for Cloudflare D1."
+repository = "https://github.com/Asutorufa/housou/tree/master/crates/d1-orm"
+license = "MIT"
+readme = "README.md"
+keywords = ["cloudflare", "d1", "orm", "sqlite", "wasm"]
+categories = ["database", "web-programming", "wasm"]
 
 [dependencies]
 worker = { version = "0.7.4", features = ["d1"] }
