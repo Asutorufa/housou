@@ -1,11 +1,8 @@
 use worker::wasm_bindgen::JsValue;
 
-/// Sort direction for `ORDER BY`.
 #[derive(Clone, Debug)]
 pub enum Order {
-    /// Ascending order.
     Asc,
-    /// Descending order.
     Desc,
 }
 
@@ -18,13 +15,10 @@ impl std::fmt::Display for Order {
     }
 }
 
-/// SQL builder that can be converted into `(sql, bindings)`.
 pub trait Bindable {
-    /// Build SQL text and bound values.
     fn to_sql(&self) -> (String, Vec<JsValue>);
 }
 
-/// Builder for `SELECT` statements.
 pub struct Select {
     table: String,
     columns: Vec<String>,
@@ -37,7 +31,6 @@ pub struct Select {
 }
 
 impl Select {
-    /// Create a `SELECT * FROM <table>` builder.
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
@@ -51,75 +44,62 @@ impl Select {
         }
     }
 
-    /// Select specific columns instead of `*`.
     pub fn columns(mut self, cols: &[&str]) -> Self {
         self.columns = cols.iter().map(|s| s.to_string()).collect();
         self
     }
 
-    /// Add a raw `WHERE` predicate and one binding.
     pub fn where_raw(mut self, condition: &str, bind: JsValue) -> Self {
         self.wheres.push(condition.to_string());
         self.bindings.push(bind);
         self
     }
 
-    /// Add `WHERE <column> = ?`.
     pub fn where_eq(self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_raw(&format!("{} = ?", column), value.into())
     }
 
-    /// Add `WHERE <column> > ?`.
     pub fn where_gt(self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_raw(&format!("{} > ?", column), value.into())
     }
 
-    /// Add `WHERE <column> >= ?`.
     pub fn where_gte(self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_raw(&format!("{} >= ?", column), value.into())
     }
 
-    /// Add `WHERE <column> < ?`.
     pub fn where_lt(self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_raw(&format!("{} < ?", column), value.into())
     }
 
-    /// Add `WHERE <column> <= ?`.
     pub fn where_lte(self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_raw(&format!("{} <= ?", column), value.into())
     }
 
-    /// Add `WHERE <column> IS NULL`.
     pub fn where_null(mut self, column: &str) -> Self {
         self.wheres.push(format!("{} IS NULL", column));
         self
     }
 
-    /// Add `WHERE <column> IS NOT NULL`.
     pub fn where_not_null(mut self, column: &str) -> Self {
         self.wheres.push(format!("{} IS NOT NULL", column));
         self
     }
 
-    /// Add `LIMIT`.
     pub fn limit(mut self, limit: u64) -> Self {
         self.limit = Some(limit);
         self
     }
 
-    /// Add `OFFSET`.
     pub fn offset(mut self, offset: u64) -> Self {
         self.offset = Some(offset);
         self
     }
 
-    /// Add `ORDER BY`.
     pub fn order_by(mut self, column: &str, order: Order) -> Self {
         self.order_by = Some((column.to_string(), order));
         self
     }
 
-    /// Append raw join SQL, such as `"LEFT JOIN profiles ON ..."` .
     pub fn join(mut self, join: &str) -> Self {
         self.joins.push(join.to_string());
         self
@@ -157,7 +137,6 @@ impl Bindable for Select {
     }
 }
 
-/// Builder for `INSERT` statements.
 pub struct Insert {
     table: String,
     columns: Vec<String>,
@@ -167,7 +146,6 @@ pub struct Insert {
 }
 
 impl Insert {
-    /// Create an insert builder for a table.
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
@@ -178,22 +156,17 @@ impl Insert {
         }
     }
 
-    /// Add one column/value pair.
     pub fn set(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.columns.push(column.to_string());
         self.values.push(value.into());
         self
     }
 
-    /// Add a `RETURNING` clause, for example `"*"` or `"id"`.
     pub fn returning(mut self, columns: &str) -> Self {
         self.returning = Some(columns.to_string());
         self
     }
 
-    /// Add a raw `ON CONFLICT` clause body.
-    ///
-    /// Example: `"(id) DO UPDATE SET name = excluded.name"`.
     pub fn on_conflict(mut self, clause: &str) -> Self {
         self.on_conflict = Some(clause.to_string());
         self
@@ -225,7 +198,6 @@ impl Bindable for Insert {
     }
 }
 
-/// Builder for `UPDATE` statements.
 pub struct Update {
     table: String,
     set_clauses: Vec<String>,
@@ -235,7 +207,6 @@ pub struct Update {
 }
 
 impl Update {
-    /// Create an update builder for a table.
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
@@ -246,21 +217,18 @@ impl Update {
         }
     }
 
-    /// Add one `SET <column> = ?` assignment.
     pub fn set(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.set_clauses.push(format!("{} = ?", column));
         self.set_bindings.push(value.into());
         self
     }
 
-    /// Add `WHERE <column> = ?`.
     pub fn where_eq(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.where_clauses.push(format!("{} = ?", column));
         self.where_bindings.push(value.into());
         self
     }
 
-    /// Add `WHERE <column> IS NULL`.
     pub fn where_null(mut self, column: &str) -> Self {
         self.where_clauses.push(format!("{} IS NULL", column));
         self
@@ -284,7 +252,6 @@ impl Bindable for Update {
     }
 }
 
-/// Builder for `DELETE` statements.
 pub struct Delete {
     table: String,
     wheres: Vec<String>,
@@ -292,7 +259,6 @@ pub struct Delete {
 }
 
 impl Delete {
-    /// Create a delete builder for a table.
     pub fn new(table: &str) -> Self {
         Self {
             table: table.to_string(),
@@ -301,21 +267,18 @@ impl Delete {
         }
     }
 
-    /// Add `WHERE <column> = ?`.
     pub fn where_eq(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.wheres.push(format!("{} = ?", column));
         self.bindings.push(value.into());
         self
     }
 
-    /// Add `WHERE <column> < ?`.
     pub fn where_lt(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.wheres.push(format!("{} < ?", column));
         self.bindings.push(value.into());
         self
     }
 
-    /// Add `WHERE <column> > ?`.
     pub fn where_gt(mut self, column: &str, value: impl Into<JsValue>) -> Self {
         self.wheres.push(format!("{} > ?", column));
         self.bindings.push(value.into());

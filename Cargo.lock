@@ -381,7 +381,6 @@ dependencies = [
  "d1-orm-derive",
  "futures",
  "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "thiserror 1.0.69",
  "wasm-bindgen-test",

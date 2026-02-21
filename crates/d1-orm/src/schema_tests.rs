@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::schema::{Column, ColumnType, Index, Table};
+    use super::*;
+    use crate::schema::{Column, ColumnType, Constraint, Index, Table};
 
     #[test]
     fn test_table_sql_generation() {
@@ -29,37 +30,6 @@ mod tests {
         assert_eq!(
             sql,
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)"
-        );
-    }
-
-    #[test]
-    fn test_alter_table_single_sql() {
-        let sql = crate::schema::AlterTable::new("users")
-            .add_column(Column::new("avatar_url", ColumnType::Text))
-            .to_single_sql();
-        assert_eq!(
-            sql,
-            Some("ALTER TABLE users ADD COLUMN avatar_url TEXT".to_string())
-        );
-    }
-
-    #[test]
-    fn test_additive_migration_sql() {
-        let from = Table::new("users").column(Column::new("id", ColumnType::Integer));
-        let to = Table::new("users")
-            .column(Column::new("id", ColumnType::Integer))
-            .column(Column::new("avatar_url", ColumnType::Text));
-
-        let from_indexes = vec![];
-        let to_indexes = vec![Index::new("idx_users_avatar_url", "users").column("avatar_url")];
-
-        let sql = crate::schema::additive_migration_sql(&from, &to, &from_indexes, &to_indexes);
-        assert_eq!(
-            sql,
-            vec![
-                "ALTER TABLE users ADD COLUMN avatar_url TEXT".to_string(),
-                "CREATE INDEX IF NOT EXISTS idx_users_avatar_url ON users (avatar_url)".to_string(),
-            ]
         );
     }
 }

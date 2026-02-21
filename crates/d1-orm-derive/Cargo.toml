@@ -2,12 +2,6 @@
 name = "d1-orm-derive"
 version = "0.1.0"
 edition = "2021"
-description = "Derive macros for d1-orm."
-repository = "https://github.com/Asutorufa/housou/tree/master/crates/d1-orm-derive"
-license = "MIT"
-readme = "README.md"
-keywords = ["cloudflare", "d1", "orm", "proc-macro", "sqlite"]
-categories = ["database", "development-tools::procedural-macro-helpers", "wasm"]
 
 [lib]
 proc-macro = true
