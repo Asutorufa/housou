@@ -1,5 +1,5 @@
 import { Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { formInputClassName } from "../../styles/uiClasses";
 
@@ -13,6 +13,13 @@ export default function SecurityTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +47,6 @@ export default function SecurityTab() {
       setOldPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "パスワードの更新に失敗しました",

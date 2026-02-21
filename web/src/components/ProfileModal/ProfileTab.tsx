@@ -20,6 +20,13 @@ export default function ProfileTab({
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
     if (user) {
       setUsername(user.username);
       setEmail(user.email);
@@ -36,7 +43,6 @@ export default function ProfileTab({
     try {
       await updateProfile({ username, email, avatar_url: avatarUrl });
       setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -56,6 +62,7 @@ export default function ProfileTab({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className={formInputClassName}
+          aria-label="メールアドレス"
         />
       </div>
 
@@ -69,6 +76,7 @@ export default function ProfileTab({
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           className={formInputClassName}
+          aria-label="ユーザー名"
         />
       </div>
 
@@ -82,6 +90,7 @@ export default function ProfileTab({
           onChange={(e) => setAvatarUrl(e.target.value)}
           placeholder="https://example.com/avatar.png"
           className={formInputClassName}
+          aria-label="アバター URL"
         />
       </div>
 

@@ -81,27 +81,21 @@ def test_profile_modal():
             # Switch Tabs
             print("Switching tabs")
             profile_dialog.get_by_role("tab", name="セキュリティ").click()
-            time.sleep(0.5)
-            if not profile_dialog.get_by_text("現在のパスワード").is_visible():
-                raise Exception("Security tab content not found")
+            # Replaced time.sleep with wait_for on the expected element
+            profile_dialog.get_by_text("現在のパスワード").wait_for()
 
             profile_dialog.get_by_role("tab", name="連携").click()
-            time.sleep(0.5)
-            if not profile_dialog.get_by_text("GitHub").is_visible():
-                raise Exception("Connected tab content not found")
+            profile_dialog.get_by_text("GitHub").wait_for()
 
             profile_dialog.get_by_role("tab", name="パスキー").click()
-            time.sleep(0.5)
-            if not profile_dialog.get_by_text("パスキーを使用して").is_visible():
-                raise Exception("Passkey tab content not found")
+            profile_dialog.get_by_text("パスキーを使用して").wait_for()
 
             profile_dialog.get_by_role("tab", name="プロフィール").click()
-            time.sleep(0.5)
-            if not profile_dialog.get_by_label("ユーザー名").is_visible():
-                # Try finding by value or other way if label fails
-                if not profile_dialog.locator("input[value='Test User']").is_visible():
-                     # Fallback
-                     pass
+            profile_dialog.get_by_label("ユーザー名").wait_for()
+
+            # Verify username field content
+            if not profile_dialog.locator("input[value='Test User']").is_visible():
+                 raise Exception("Username field not found or value incorrect")
 
             print("Taking screenshot")
             page.screenshot(path="verification/profile_modal.png")
