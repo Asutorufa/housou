@@ -21,6 +21,18 @@ import StaffSection from "./StaffSection";
 import StudioSection from "./StudioSection";
 import VideoSection from "./VideoSection";
 
+// Configure DOMPurify hook globally to prevent reverse tabnabbing
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (
+    node instanceof Element &&
+    node.tagName === "A" &&
+    node.getAttribute("target") === "_blank"
+  ) {
+    const currentRel = node.getAttribute("rel") || "";
+    node.setAttribute("rel", `${currentRel} noopener noreferrer`.trim());
+  }
+});
+
 interface DetailsModalProps {
   isOpen: boolean;
   onClose: () => void;

@@ -160,4 +160,35 @@ describe("DetailsModal XSS Prevention", () => {
     // So innerHTML should be "Line 1\nLine 2\nLine 3" (approximately)
     expect(descriptionContainer?.innerHTML).toContain("Line 1\nLine 2\nLine 3");
   });
+
+  it("adds rel='noopener noreferrer' to links with target='_blank'", () => {
+    const mockAnimeWithLink = {
+      ...mockAnime,
+      info: {
+        ...mockAnime.info,
+        description:
+          '<a href="http://example.com" target="_blank">External Link</a>',
+      } as UnifiedMetadata,
+    };
+
+    render(
+      <DetailsModal
+        isOpen={true}
+        onClose={() => {}}
+        anime={mockAnimeWithLink}
+        items={mockItems}
+        siteMeta={mockSiteMeta}
+      />,
+    );
+
+    const descriptionContainer =
+      screen.getByText("あらすじ").nextElementSibling;
+    expect(descriptionContainer).toBeTruthy();
+
+    const link = descriptionContainer?.querySelector("a");
+    expect(link).toBeTruthy();
+    expect(link?.getAttribute("href")).toBe("http://example.com");
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+  });
 });
