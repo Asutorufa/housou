@@ -5,13 +5,13 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (
     node instanceof Element &&
     node.tagName === "A" &&
-    node.getAttribute("target") === "_blank"
+    node.getAttribute("target")?.toLowerCase() === "_blank"
   ) {
     const currentRel = node.getAttribute("rel") || "";
-    let newRel = currentRel;
-    if (!newRel.includes("noopener")) newRel += " noopener";
-    if (!newRel.includes("noreferrer")) newRel += " noreferrer";
-    node.setAttribute("rel", newRel.trim());
+    const rels = new Set(currentRel.split(/\s+/).filter(Boolean));
+    rels.add("noopener");
+    rels.add("noreferrer");
+    node.setAttribute("rel", Array.from(rels).join(" "));
   }
 });
 
