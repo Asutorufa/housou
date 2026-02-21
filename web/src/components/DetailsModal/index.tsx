@@ -291,14 +291,25 @@ function DetailsModalContent({
                         };
 
                         const rawDescription = info.description || "";
-                        const sanitized = DOMPurify.sanitize(
-                          rawDescription,
-                          cleanConfig,
-                        );
 
-                        // Collapse multiple newlines/brs into max 2
+                        // Sanitize and get a DOM fragment to avoid global hooks
+                        const fragment = DOMPurify.sanitize(rawDescription, {
+                          ...cleanConfig,
+                          RETURN_DOM_FRAGMENT: true,
+                        });
+
+                        // Replace <br> with newlines in the fragment
+                        fragment.querySelectorAll("br").forEach((br) => {
+                          br.replaceWith("\n");
+                        });
+
+                        // Serialize back to string
+                        const container = document.createElement("div");
+                        container.appendChild(fragment);
+                        const sanitized = container.innerHTML;
+
+                        // Collapse multiple newlines into max 2
                         const collapsed = sanitized
-                          .replace(/<br\s*\/?>/gi, "\n") // Convert br to newline
                           .replace(/\n{2,}/g, "\n") // Max 2 newlines
                           .trim();
 
