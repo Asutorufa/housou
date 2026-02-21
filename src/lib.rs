@@ -272,7 +272,10 @@ mod tests {
     fn test_add_header() {
         let mut setter = MockHeaderSetter::new();
         add_header_impl(&mut setter, "Content-Type", "application/json").unwrap();
-        assert_eq!(setter.headers.get("Content-Type"), Some(&"application/json".to_string()));
+        assert_eq!(
+            setter.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
     }
 
     #[test]
