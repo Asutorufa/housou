@@ -14,9 +14,10 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
 
     if is_future {
         if let Some(s) = season {
-            let jikan_season = match s {
-                "Autumn" => "fall",
-                _ => s,
+            let jikan_season = if s.eq_ignore_ascii_case("Autumn") {
+                "fall"
+            } else {
+                s
             };
             return provider::jikan::fetch_season(year, &jikan_season.to_lowercase()).await;
         } else {
@@ -33,12 +34,20 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
     }
 
     // Bangumi Data logic
-    let months = match season {
-        Some("Winter") => vec![1, 2, 3],
-        Some("Spring") => vec![4, 5, 6],
-        Some("Summer") => vec![7, 8, 9],
-        Some("Autumn") => vec![10, 11, 12],
-        _ => (1..=12).collect(),
+    let months = if let Some(s) = season {
+        if s.eq_ignore_ascii_case("Winter") {
+            vec![1, 2, 3]
+        } else if s.eq_ignore_ascii_case("Spring") {
+            vec![4, 5, 6]
+        } else if s.eq_ignore_ascii_case("Summer") {
+            vec![7, 8, 9]
+        } else if s.eq_ignore_ascii_case("Autumn") {
+            vec![10, 11, 12]
+        } else {
+            (1..=12).collect()
+        }
+    } else {
+        (1..=12).collect()
     };
 
     let mut futures = Vec::new();
@@ -86,12 +95,16 @@ fn get_current_season_from_now(now: time::OffsetDateTime) -> &'static str {
 }
 
 fn season_to_num(season: &str) -> i32 {
-    match season {
-        "Winter" => 1,
-        "Spring" => 2,
-        "Summer" => 3,
-        "Autumn" => 4,
-        _ => 0,
+    if season.eq_ignore_ascii_case("Winter") {
+        1
+    } else if season.eq_ignore_ascii_case("Spring") {
+        2
+    } else if season.eq_ignore_ascii_case("Summer") {
+        3
+    } else if season.eq_ignore_ascii_case("Autumn") {
+        4
+    } else {
+        0
     }
 }
 
@@ -116,6 +129,10 @@ mod tests {
         assert_eq!(season_to_num("Spring"), 2);
         assert_eq!(season_to_num("Summer"), 3);
         assert_eq!(season_to_num("Autumn"), 4);
+        assert_eq!(season_to_num("winter"), 1);
+        assert_eq!(season_to_num("spring"), 2);
+        assert_eq!(season_to_num("summer"), 3);
+        assert_eq!(season_to_num("autumn"), 4);
         assert_eq!(season_to_num("Invalid"), 0);
     }
 
@@ -141,11 +158,13 @@ mod tests {
         assert!(!is_future_season(2024, Some(""), 2024, "Winter"));
         assert!(is_future_season(2024, Some("Winter"), 2024, ""));
 
-        // Case sensitivity (exact match required by season_to_num)
-        // "winter" -> 0, "Winter" -> 1
+        // Case sensitivity (now handled correctly)
+        // "winter" (1) == "Winter" (1) -> false (same season)
         assert!(!is_future_season(2024, Some("winter"), 2024, "Winter"));
-        // "Winter" -> 1, "winter" -> 0
-        assert!(is_future_season(2024, Some("Winter"), 2024, "winter"));
+        // "spring" (2) > "Winter" (1) -> true
+        assert!(is_future_season(2024, Some("spring"), 2024, "Winter"));
+        // "Winter" (1) == "winter" (1) -> false
+        assert!(!is_future_season(2024, Some("Winter"), 2024, "winter"));
     }
 
     #[test]
