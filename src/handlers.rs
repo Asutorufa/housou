@@ -485,19 +485,51 @@ mod tests {
 
     #[test]
     fn test_normalize_season_query() {
+        // Valid cases
         assert_eq!(normalize_season_query(None).unwrap(), None);
         assert_eq!(normalize_season_query(Some("all")).unwrap(), None);
         assert_eq!(normalize_season_query(Some("")).unwrap(), None);
-        assert_eq!(
-            normalize_season_query(Some("Winter")).unwrap(),
-            Some("Winter")
-        );
-        assert_eq!(
-            normalize_season_query(Some("Spring")).unwrap(),
-            Some("Spring")
-        );
-        assert!(normalize_season_query(Some("fall")).is_err());
-        assert!(normalize_season_query(Some("Invalid")).is_err());
+
+        for season in ["Winter", "Spring", "Summer", "Autumn"] {
+            assert_eq!(normalize_season_query(Some(season)).unwrap(), Some(season));
+        }
+
+        // Invalid cases
+        let invalid_cases = [
+            // Lowercase
+            "winter",
+            "spring",
+            "summer",
+            "autumn",
+            // Uppercase
+            "WINTER",
+            "SPRING",
+            "SUMMER",
+            "AUTUMN",
+            // Mixed case
+            "WiNtEr",
+            "sPrInG",
+            // Whitespace
+            " Winter",
+            "Spring ",
+            "\nSummer\t",
+            // Other "all" variants
+            "ALL",
+            "All",
+            // Miscellaneous
+            "fall",
+            "Invalid",
+            "1",
+            "2024",
+        ];
+
+        for case in invalid_cases {
+            assert!(
+                normalize_season_query(Some(case)).is_err(),
+                "Expected error for input: {}",
+                case
+            );
+        }
     }
 
     struct DelayedResult<T> {
