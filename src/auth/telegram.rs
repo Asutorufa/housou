@@ -188,9 +188,9 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hex;
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
-    use hex;
 
     // Helper to compute hash manually for testing
     fn compute_hash(data: &TelegramAuthData, bot_token: &str) -> String {
