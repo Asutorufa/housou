@@ -33,28 +33,28 @@ pub async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Resul
     }
 }
 
-pub fn normalize_title_translate(
-    tt: &crate::model::TitleTranslate,
-) -> crate::model::TitleTranslate {
-    let mut normalized = crate::model::TitleTranslate::new();
-    for (lang, titles) in tt {
-        let iso_lang = match lang.as_str() {
-            "zh-Hans" => "CN",
-            "zh-Hant" => "TW",
-            "ja" => "JP",
-            "en" => "US",
-            _ => lang.as_str(),
-        };
-        normalized
-            .entry(iso_lang.to_string())
-            .or_default()
-            .extend(titles.clone());
+pub fn normalize_title_translate(tt: &mut crate::model::TitleTranslate) {
+    let targets = [
+        ("zh-Hans", "CN"),
+        ("zh-Hant", "TW"),
+        ("ja", "JP"),
+        ("en", "US"),
+    ];
+
+    for (old_lang, new_lang) in targets {
+        if let Some(titles) = tt.remove(old_lang) {
+            if let Some(existing) = tt.get_mut(new_lang) {
+                existing.extend(titles);
+            } else {
+                tt.insert(new_lang.to_string(), titles);
+            }
+        }
     }
-    for titles in normalized.values_mut() {
+
+    for titles in tt.values_mut() {
         titles.sort();
         titles.dedup();
     }
-    normalized
 }
 
 pub fn now_utc() -> time::OffsetDateTime {
@@ -64,4 +64,30 @@ pub fn now_utc() -> time::OffsetDateTime {
 
 pub fn now_utc_ms() -> i64 {
     Date::now().as_millis() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_normalize_title_translate() {
+        let mut tt = HashMap::new();
+        tt.insert("zh-Hans".to_string(), vec!["A".to_string()]);
+        tt.insert("CN".to_string(), vec!["B".to_string()]);
+        tt.insert("ja".to_string(), vec!["C".to_string()]);
+        tt.insert("en".to_string(), vec!["D".to_string()]);
+        tt.insert("other".to_string(), vec!["E".to_string()]);
+
+        normalize_title_translate(&mut tt);
+
+        assert_eq!(tt.get("CN").unwrap(), &vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(tt.get("JP").unwrap(), &vec!["C".to_string()]);
+        assert_eq!(tt.get("US").unwrap(), &vec!["D".to_string()]);
+        assert_eq!(tt.get("other").unwrap(), &vec!["E".to_string()]);
+        assert!(!tt.contains_key("zh-Hans"));
+        assert!(!tt.contains_key("ja"));
+        assert!(!tt.contains_key("en"));
+    }
 }
