@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import DOMPurify from "dompurify";
+import DOMPurify from "../../utils/domPurifyConfig";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useAuth } from "../../contexts/AuthContext";
@@ -20,18 +20,6 @@ import MultilingualTitles from "./MultilingualTitles";
 import StaffSection from "./StaffSection";
 import StudioSection from "./StudioSection";
 import VideoSection from "./VideoSection";
-
-// Configure DOMPurify hook globally to prevent reverse tabnabbing
-DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-  if (
-    node instanceof Element &&
-    node.tagName === "A" &&
-    node.getAttribute("target") === "_blank"
-  ) {
-    const currentRel = node.getAttribute("rel") || "";
-    node.setAttribute("rel", `${currentRel} noopener noreferrer`.trim());
-  }
-});
 
 interface DetailsModalProps {
   isOpen: boolean;
