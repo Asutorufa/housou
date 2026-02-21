@@ -403,7 +403,7 @@ mod tests {
             metadata.cover_image.extra_large,
             Some("jpg_url".to_string())
         );
-        assert_eq!(metadata.average_score, Some(87)); // 8.75 * 10 = 87.5 -> 87 as i32? Or rounding? 8.75 * 10.0 = 87.5. Cast to i32 truncates.
+        assert_eq!(metadata.average_score, Some(87)); // 8.75 * 10 = 87.5, truncated to 87
         assert_eq!(metadata.episodes, Some(26));
         assert_eq!(metadata.genres, vec!["Action", "Sci-Fi"]);
         assert_eq!(metadata.description, Some("Space western...".to_string()));
