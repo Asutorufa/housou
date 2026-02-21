@@ -378,52 +378,46 @@ mod tests {
         assert_eq!(normalize_season_query(None).unwrap(), None);
         assert_eq!(normalize_season_query(Some("all")).unwrap(), None);
         assert_eq!(normalize_season_query(Some("")).unwrap(), None);
-        assert_eq!(
-            normalize_season_query(Some("Winter")).unwrap(),
-            Some("Winter")
-        );
-        assert_eq!(
-            normalize_season_query(Some("Spring")).unwrap(),
-            Some("Spring")
-        );
-        assert_eq!(
-            normalize_season_query(Some("Summer")).unwrap(),
-            Some("Summer")
-        );
-        assert_eq!(
-            normalize_season_query(Some("Autumn")).unwrap(),
-            Some("Autumn")
-        );
 
-        // Invalid cases - lowercase
-        assert!(normalize_season_query(Some("winter")).is_err());
-        assert!(normalize_season_query(Some("spring")).is_err());
-        assert!(normalize_season_query(Some("summer")).is_err());
-        assert!(normalize_season_query(Some("autumn")).is_err());
+        for season in ["Winter", "Spring", "Summer", "Autumn"] {
+            assert_eq!(normalize_season_query(Some(season)).unwrap(), Some(season));
+        }
 
-        // Invalid cases - uppercase
-        assert!(normalize_season_query(Some("WINTER")).is_err());
-        assert!(normalize_season_query(Some("SPRING")).is_err());
-        assert!(normalize_season_query(Some("SUMMER")).is_err());
-        assert!(normalize_season_query(Some("AUTUMN")).is_err());
+        // Invalid cases
+        let invalid_cases = [
+            // Lowercase
+            "winter",
+            "spring",
+            "summer",
+            "autumn",
+            // Uppercase
+            "WINTER",
+            "SPRING",
+            "SUMMER",
+            "AUTUMN",
+            // Mixed case
+            "WiNtEr",
+            "sPrInG",
+            // Whitespace
+            " Winter",
+            "Spring ",
+            "\nSummer\t",
+            // Other "all" variants
+            "ALL",
+            "All",
+            // Miscellaneous
+            "fall",
+            "Invalid",
+            "1",
+            "2024",
+        ];
 
-        // Invalid cases - mixed case
-        assert!(normalize_season_query(Some("WiNtEr")).is_err());
-        assert!(normalize_season_query(Some("sPrInG")).is_err());
-
-        // Invalid cases - whitespace
-        assert!(normalize_season_query(Some(" Winter")).is_err());
-        assert!(normalize_season_query(Some("Spring ")).is_err());
-        assert!(normalize_season_query(Some("\nSummer\t")).is_err());
-
-        // Invalid cases - other "all" variants
-        assert!(normalize_season_query(Some("ALL")).is_err());
-        assert!(normalize_season_query(Some("All")).is_err());
-
-        // Invalid cases - miscellaneous
-        assert!(normalize_season_query(Some("fall")).is_err());
-        assert!(normalize_season_query(Some("Invalid")).is_err());
-        assert!(normalize_season_query(Some("1")).is_err());
-        assert!(normalize_season_query(Some("2024")).is_err());
+        for case in invalid_cases {
+            assert!(
+                normalize_season_query(Some(case)).is_err(),
+                "Expected error for input: {}",
+                case
+            );
+        }
     }
 }
