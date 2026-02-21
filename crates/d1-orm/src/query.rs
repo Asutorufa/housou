@@ -112,7 +112,7 @@ impl Bindable for Select {
         let mut sql = format!("SELECT {} FROM {}", cols, self.table);
 
         for join in &self.joins {
-            sql.push_str(" ");
+            sql.push(' ');
             sql.push_str(join);
         }
 
