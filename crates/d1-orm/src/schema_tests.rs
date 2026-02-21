@@ -44,24 +44,6 @@ mod tests {
     }
 
     #[test]
-    fn test_table_macro_generation() {
-        let table = crate::d1_table!(
-            "users",
-            columns = [
-                crate::d1_column!("id", ColumnType::Integer, [primary_key, auto_increment]),
-                crate::d1_column!("email", ColumnType::Text, [unique, not_null])
-            ],
-            constraints = ["FOREIGN KEY(id) REFERENCES accounts(id)"]
-        );
-
-        let sql = table.to_sql();
-        assert_eq!(
-            sql,
-            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, FOREIGN KEY(id) REFERENCES accounts(id))"
-        );
-    }
-
-    #[test]
     fn test_additive_migration_sql() {
         let from = Table::new("users").column(Column::new("id", ColumnType::Integer));
         let to = Table::new("users")

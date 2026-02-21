@@ -3,7 +3,6 @@ extern crate self as d1_orm;
 pub mod error;
 pub mod migrate;
 mod migrate_tests;
-mod model_tests;
 pub mod query;
 pub mod schema;
 mod schema_tests;

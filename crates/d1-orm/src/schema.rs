@@ -139,11 +139,6 @@ impl Table {
         self
     }
 
-    pub fn constraint(mut self, constraint: impl Into<String>) -> Self {
-        self.constraints.push(constraint.into());
-        self
-    }
-
     pub fn to_sql(&self) -> String {
         let mut defs: Vec<String> = self.columns.iter().map(|c| c.to_sql()).collect();
         defs.extend(self.constraints.clone());
@@ -153,54 +148,6 @@ impl Table {
             defs.join(", ")
         )
     }
-}
-
-#[macro_export]
-macro_rules! d1_column {
-    ($name:expr, $col_type:expr) => {
-        $crate::Column::new($name, $col_type)
-    };
-    ($name:expr, $col_type:expr, [$($constraint:ident),+ $(,)?]) => {
-        $crate::d1_column!(@apply $crate::Column::new($name, $col_type), $($constraint),+)
-    };
-    (@apply $col:expr, $constraint:ident) => {
-        ($col).$constraint()
-    };
-    (@apply $col:expr, $head:ident, $($tail:ident),+) => {
-        $crate::d1_column!(@apply ($col).$head(), $($tail),+)
-    };
-}
-
-#[macro_export]
-macro_rules! d1_table {
-    (
-        $name:expr,
-        columns = [$($column:expr),+ $(,)?]
-        $(, constraints = [$($constraint:expr),* $(,)?])?
-        $(,)?
-    ) => {{
-        let table = $crate::Table::new($name);
-        let table = $crate::d1_table!(@with_columns table, $($column),+);
-        $(
-            let table = $crate::d1_table!(@with_constraints table, $($constraint),*);
-        )?
-        table
-    }};
-    (@with_columns $table:expr, $column:expr) => {
-        ($table).column($column)
-    };
-    (@with_columns $table:expr, $column:expr, $($rest:expr),+) => {
-        $crate::d1_table!(@with_columns ($table).column($column), $($rest),+)
-    };
-    (@with_constraints $table:expr) => {
-        $table
-    };
-    (@with_constraints $table:expr, $constraint:expr) => {
-        ($table).constraint($constraint)
-    };
-    (@with_constraints $table:expr, $head:expr, $($tail:expr),+) => {
-        $crate::d1_table!(@with_constraints ($table).constraint($head), $($tail),+)
-    };
 }
 
 // Alter Table Helpers for Migrations
@@ -220,13 +167,6 @@ impl AlterTable {
     pub fn add_column(mut self, col: Column) -> Self {
         self.actions.push(format!("ADD COLUMN {}", col.to_sql()));
         self
-    }
-
-    pub fn to_sql_stmts(&self) -> Vec<String> {
-        self.actions
-            .iter()
-            .map(|action| format!("ALTER TABLE {} {}", self.table, action))
-            .collect()
     }
 
     pub fn to_single_sql(&self) -> Option<String> {
