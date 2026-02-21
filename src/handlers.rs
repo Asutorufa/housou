@@ -405,13 +405,13 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_season_query, FaviconFetcher, fetch_favicon_core};
-    use worker::{Result, Error};
+    use super::{FaviconFetcher, fetch_favicon_core, normalize_season_query};
     use std::collections::HashMap;
     use std::future::Future;
     use std::pin::Pin;
-    use std::task::{Context, Poll};
     use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
+    use worker::{Error, Result};
 
     #[test]
     fn test_normalize_season_query() {
@@ -466,7 +466,12 @@ mod tests {
             }
         }
 
-        fn add_response(&mut self, url: &str, result: Result<Option<(Vec<u8>, String)>>, delay: usize) {
+        fn add_response(
+            &mut self,
+            url: &str,
+            result: Result<Option<(Vec<u8>, String)>>,
+            delay: usize,
+        ) {
             let (data, err) = match result {
                 Ok(d) => (d, None),
                 Err(e) => (None, Some(e.to_string())),
@@ -503,10 +508,17 @@ mod tests {
         let hostname = "example.com";
         // Order in fetch_favicon_core: duckduckgo, google, direct
         let url_slow = format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname);
-        let url_fast = format!("https://www.google.com/s2/favicons?domain={}&sz=32", hostname);
+        let url_fast = format!(
+            "https://www.google.com/s2/favicons?domain={}&sz=32",
+            hostname
+        );
 
         // SLOW returns "A" after 10 polls
-        fetcher.add_response(&url_slow, Ok(Some((b"A".to_vec(), "image/x-icon".into()))), 10);
+        fetcher.add_response(
+            &url_slow,
+            Ok(Some((b"A".to_vec(), "image/x-icon".into()))),
+            10,
+        );
         // FAST returns "B" after 1 poll
         fetcher.add_response(&url_fast, Ok(Some((b"B".to_vec(), "image/png".into()))), 1);
 
@@ -518,7 +530,10 @@ mod tests {
         // We expect "B" because it finishes first.
 
         let (bytes, _) = result.unwrap().unwrap();
-        assert_eq!(bytes, b"B", "Concurrent implementation should return the faster provider's result");
+        assert_eq!(
+            bytes, b"B",
+            "Concurrent implementation should return the faster provider's result"
+        );
     }
 
     #[test]
