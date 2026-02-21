@@ -339,8 +339,14 @@ fn is_safe_hostname(hostname: &str) -> bool {
         return false;
     }
 
-    // 6. Reject known non-public/reserved TLDs
+    // 6. Reject known non-public/reserved TLDs and ensure TLD is not purely numeric
+    // Public TLDs must contain at least one letter (or be punycode xn--).
+    // This helps prevent bypasses like '127.1' or hex/octal labels.
     if let Some(tld) = parts.last() {
+        if !tld.chars().any(|c| c.is_ascii_alphabetic()) {
+            return false;
+        }
+
         let tld_lower = tld.to_lowercase();
         let reserved_tlds = [
             "local",
@@ -462,6 +468,8 @@ mod tests {
 
         // Invalid: Numeric hostnames (decimal/hex representations of IPs)
         assert!(!is_safe_hostname("2130706433")); // 127.0.0.1 in decimal
+        assert!(!is_safe_hostname("127.1"));
+        assert!(!is_safe_hostname("0x7f.0.0.1"));
 
         // Invalid: Reserved/Internal TLDs
         assert!(!is_safe_hostname("localhost"));
