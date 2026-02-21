@@ -1,15 +1,17 @@
+use crate::error::{Error, Result};
+use crate::query::{Bindable, Delete, Insert, Select, Update};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use crate::error::{Error, Result};
-use worker::D1Database;
 use worker::wasm_bindgen::JsValue;
-use crate::query::{Select, Insert, Update, Delete, Bindable};
+use worker::D1Database;
 
 #[async_trait]
 pub trait Model: Sized + Serialize + DeserializeOwned + Send + Sync {
     const TABLE: &'static str;
-    fn primary_key() -> &'static str { "id" }
+    fn primary_key() -> &'static str {
+        "id"
+    }
 }
 
 pub struct Repository<'a, T> {
@@ -19,7 +21,10 @@ pub struct Repository<'a, T> {
 
 impl<'a, T: Model> Repository<'a, T> {
     pub fn new(db: &'a D1Database) -> Self {
-        Self { db, _marker: std::marker::PhantomData }
+        Self {
+            db,
+            _marker: std::marker::PhantomData,
+        }
     }
 
     pub fn select(&self) -> Select {
@@ -40,9 +45,7 @@ impl<'a, T: Model> Repository<'a, T> {
 
     pub async fn delete_by_id(&self, id: impl Into<JsValue> + Send) -> Result<()> {
         let pk = T::primary_key();
-        let (sql, bindings) = Delete::new(T::TABLE)
-            .where_eq(pk, id)
-            .to_sql();
+        let (sql, bindings) = Delete::new(T::TABLE).where_eq(pk, id).to_sql();
 
         let stmt = self.db.prepare(&sql).bind(&bindings)?;
         stmt.run().await.map_err(Error::from).map(|_| ())
@@ -50,10 +53,7 @@ impl<'a, T: Model> Repository<'a, T> {
 
     pub async fn find_by_id(&self, id: impl Into<JsValue> + Send) -> Result<Option<T>> {
         let pk = T::primary_key();
-        let (sql, bindings) = Select::new(T::TABLE)
-            .where_eq(pk, id)
-            .limit(1)
-            .to_sql();
+        let (sql, bindings) = Select::new(T::TABLE).where_eq(pk, id).limit(1).to_sql();
 
         let stmt = self.db.prepare(&sql).bind(&bindings)?;
         stmt.first(None).await.map_err(Into::into)

@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{impl_model, Bindable, D1Database, Repository};
+use d1_orm::{Bindable, D1Database, Repository, impl_model};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -180,11 +180,13 @@ impl AppDatabase {
     async fn update_user_field(&self, id: i32, field: &str, value: JsValue) -> Result<()> {
         Self::validate_update_field(field)?;
         // Use ORM
-        let update = self.users().update()
-            .set(field, value)
-            .where_eq("id", id);
+        let update = self.users().update().set(field, value).where_eq("id", id);
 
-        self.users().execute(update).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
+        self.users()
+            .execute(update)
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 }
 
@@ -321,7 +323,9 @@ impl Database for AppDatabase {
     ) -> Result<User> {
         let created_at = utils::now_utc_ms();
 
-        let insert = self.users().insert()
+        let insert = self
+            .users()
+            .insert()
             .set("email", email)
             .set("username", username)
             .set("password_hash", password_hash.to_js())
@@ -331,7 +335,10 @@ impl Database for AppDatabase {
             .set("created_at", created_at as f64)
             .returning("*");
 
-        let result = self.users().insert_one(insert).await
+        let result = self
+            .users()
+            .insert_one(insert)
+            .await
             .map_err(|e| Error::RustError(e.to_string()))?;
         result.ok_or_else(|| Error::RustError("Failed to create user".to_string()))
     }
@@ -342,7 +349,10 @@ impl Database for AppDatabase {
     }
 
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>> {
-        self.users().find_by_id(id).await.map_err(|e| Error::RustError(e.to_string()))
+        self.users()
+            .find_by_id(id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_by_github_id(&self, github_id: &str) -> Result<Option<User>> {
@@ -367,7 +377,9 @@ impl Database for AppDatabase {
         new_email: Option<&str>,
         new_avatar_url: Option<&str>,
     ) -> Result<()> {
-        let mut update = self.users().update()
+        let mut update = self
+            .users()
+            .update()
             .where_eq("id", id)
             .set("username", new_username)
             .set("avatar_url", new_avatar_url.to_js());
@@ -376,7 +388,11 @@ impl Database for AppDatabase {
             update = update.set("email", email);
         }
 
-        self.users().execute(update).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
+        self.users()
+            .execute(update)
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()> {
@@ -395,21 +411,32 @@ impl Database for AppDatabase {
     }
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()> {
-        let insert = self.sessions().insert()
+        let insert = self
+            .sessions()
+            .insert()
             .set("user_id", user_id)
             .set("token", token)
             .set("expires_at", expires_at as f64);
 
-        self.sessions().execute(insert).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
+        self.sessions()
+            .execute(insert)
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_session(&self, token: &str) -> Result<Option<Session>> {
         let now = utils::now_utc_ms();
-        let query = self.sessions().select()
+        let query = self
+            .sessions()
+            .select()
             .where_eq("token", token)
             .where_gt("expires_at", now as f64)
             .limit(1);
-        self.sessions().find_one(query).await.map_err(|e| Error::RustError(e.to_string()))
+        self.sessions()
+            .find_one(query)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_by_session_token(&self, token: &str) -> Result<Option<User>> {
@@ -417,19 +444,27 @@ impl Database for AppDatabase {
         // My simple builder handles basic joins if I implemented `join` in `Select`.
         // I implemented `join` in `Select`.
         let now = utils::now_utc_ms();
-        let query = self.users().select()
+        let query = self
+            .users()
+            .select()
             .join("INNER JOIN sessions ON users.id = sessions.user_id")
             .where_eq("sessions.token", token)
             .where_gt("sessions.expires_at", now as f64)
             .limit(1);
 
-        self.users().find_one(query).await.map_err(|e| Error::RustError(e.to_string()))
+        self.users()
+            .find_one(query)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn delete_session(&self, token: &str) -> Result<()> {
-        let delete = self.sessions().delete()
-            .where_eq("token", token);
-        self.sessions().execute(delete).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
+        let delete = self.sessions().delete().where_eq("token", token);
+        self.sessions()
+            .execute(delete)
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn update_user_item(
@@ -454,28 +489,41 @@ impl Database for AppDatabase {
             JsValue::NULL
         };
 
-        let insert = self.user_items().insert()
+        let insert = self
+            .user_items()
+            .insert()
             .set("user_id", user_id)
             .set("title", title)
             .set("status", status as i32)
             .set("score", score_val)
             .set("updated_at", updated_at as f64)
             .set("begin_at", begin_val)
-            .on_conflict("(user_id, title) DO UPDATE SET
+            .on_conflict(
+                "(user_id, title) DO UPDATE SET
                         status = excluded.status,
                         score = excluded.score,
                         updated_at = excluded.updated_at,
-                        begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)");
+                        begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)",
+            );
 
-        self.user_items().execute(insert).await.map(|_| ()).map_err(|e| Error::RustError(e.to_string()))
+        self.user_items()
+            .execute(insert)
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>> {
-        let query = self.user_items().select()
+        let query = self
+            .user_items()
+            .select()
             .where_eq("user_id", user_id)
             .where_raw("status != ?", JsValue::from_f64(0.0));
 
-        self.user_items().find_all(query).await.map_err(|e| Error::RustError(e.to_string()))
+        self.user_items()
+            .find_all(query)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn get_user_items_by_range(
@@ -487,7 +535,8 @@ impl Database for AppDatabase {
         let query = "SELECT * FROM user_items_v2 
                      WHERE user_id = ? AND status != 0 
                      AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))";
-        let results = self.db
+        let results = self
+            .db
             .prepare(query)
             .bind(&[
                 JsValue::from_f64(user_id as f64),
@@ -572,7 +621,9 @@ impl PasskeyStore for AppDatabase {
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
 
-        let insert = self.passkeys().insert()
+        let insert = self
+            .passkeys()
+            .insert()
             .set("user_id", user_id_int)
             .set("cred_id", cred_id)
             .set("passkey_json", public_key)
@@ -581,7 +632,11 @@ impl PasskeyStore for AppDatabase {
             .set("last_used_at", created_at as f64)
             .set("counter", counter as f64);
 
-        self.passkeys().execute(insert).await.map(|_| ()).map_err(db_err)
+        self.passkeys()
+            .execute(insert)
+            .await
+            .map(|_| ())
+            .map_err(db_err)
     }
 
     async fn get_passkey(
@@ -614,11 +669,17 @@ impl PasskeyStore for AppDatabase {
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
 
-        let delete = self.passkeys().delete()
+        let delete = self
+            .passkeys()
+            .delete()
             .where_eq("user_id", user_id_int)
             .where_eq("cred_id", cred_id);
 
-        self.passkeys().execute(delete).await.map(|_| ()).map_err(db_err)
+        self.passkeys()
+            .execute(delete)
+            .await
+            .map(|_| ())
+            .map_err(db_err)
     }
 
     async fn update_passkey_counter(
@@ -627,12 +688,18 @@ impl PasskeyStore for AppDatabase {
         new_counter: i64,
         last_used_at: i64,
     ) -> passkey_server::error::Result<()> {
-        let update = self.passkeys().update()
+        let update = self
+            .passkeys()
+            .update()
             .set("counter", new_counter as f64)
             .set("last_used_at", last_used_at as f64)
             .where_eq("cred_id", cred_id);
 
-        self.passkeys().execute(update).await.map(|_| ()).map_err(db_err)
+        self.passkeys()
+            .execute(update)
+            .await
+            .map(|_| ())
+            .map_err(db_err)
     }
 
     async fn update_passkey_name(
@@ -640,11 +707,17 @@ impl PasskeyStore for AppDatabase {
         cred_id: &str,
         new_name: &str,
     ) -> passkey_server::error::Result<()> {
-        let update = self.passkeys().update()
+        let update = self
+            .passkeys()
+            .update()
             .set("name", new_name)
             .where_eq("cred_id", cred_id);
 
-        self.passkeys().execute(update).await.map(|_| ()).map_err(db_err)
+        self.passkeys()
+            .execute(update)
+            .await
+            .map(|_| ())
+            .map_err(db_err)
     }
 
     async fn save_state(
@@ -657,15 +730,22 @@ impl PasskeyStore for AppDatabase {
 
         // Transaction/Batch manual
         // cleanup
-        let delete = self.passkey_states().delete().where_lt("expires_at", now as f64);
+        let delete = self
+            .passkey_states()
+            .delete()
+            .where_lt("expires_at", now as f64);
         let (del_sql, del_bind) = delete.to_sql();
 
         // insert
-        let insert = self.passkey_states().insert()
+        let insert = self
+            .passkey_states()
+            .insert()
             .set("id", id)
             .set("state_json", state_json)
             .set("expires_at", expires_at as f64)
-            .on_conflict("(id) DO UPDATE SET state_json=excluded.state_json, expires_at=excluded.expires_at");
+            .on_conflict(
+                "(id) DO UPDATE SET state_json=excluded.state_json, expires_at=excluded.expires_at",
+            );
         let (ins_sql, ins_bind) = insert.to_sql();
 
         let s1 = self.db.prepare(&del_sql).bind(&del_bind).map_err(db_err)?;
@@ -677,11 +757,17 @@ impl PasskeyStore for AppDatabase {
 
     async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
         let now = utils::now_utc_ms();
-        let query = self.passkey_states().select()
+        let query = self
+            .passkey_states()
+            .select()
             .where_eq("id", id)
             .where_gt("expires_at", now as f64);
 
-        let row: Option<PasskeyStateRow> = self.passkey_states().find_one(query).await.map_err(db_err)?;
+        let row: Option<PasskeyStateRow> = self
+            .passkey_states()
+            .find_one(query)
+            .await
+            .map_err(db_err)?;
         Ok(row.map(Into::into))
     }
 
