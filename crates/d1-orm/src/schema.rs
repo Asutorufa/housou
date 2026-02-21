@@ -174,4 +174,12 @@ impl AlterTable {
             .map(|action| format!("ALTER TABLE {} {}", self.table, action))
             .collect()
     }
+
+    pub fn to_single_sql(&self) -> Option<String> {
+        if self.actions.len() == 1 {
+            Some(format!("ALTER TABLE {} {}", self.table, self.actions[0]))
+        } else {
+            None
+        }
+    }
 }

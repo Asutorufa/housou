@@ -1,4 +1,6 @@
 pub mod error;
+pub mod migrate;
+mod migrate_tests;
 pub mod query;
 pub mod schema;
 mod schema_tests;
@@ -6,6 +8,7 @@ pub mod traits;
 
 pub use d1_orm_derive::Model;
 pub use error::{Error, Result};
+pub use migrate::{Migration, Migrator, SchemaProbe};
 pub use query::{Bindable, Delete, Insert, Order, Select, Update};
 pub use schema::{AlterTable, Column, ColumnType, Constraint, Index, Table};
 pub use traits::{Model, Repository};

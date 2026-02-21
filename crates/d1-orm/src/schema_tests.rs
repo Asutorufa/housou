@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::schema::{Column, ColumnType, Constraint, Index, Table};
+    use crate::schema::{Column, ColumnType, Index, Table};
 
     #[test]
     fn test_table_sql_generation() {
@@ -30,6 +29,17 @@ mod tests {
         assert_eq!(
             sql,
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email)"
+        );
+    }
+
+    #[test]
+    fn test_alter_table_single_sql() {
+        let sql = crate::schema::AlterTable::new("users")
+            .add_column(Column::new("avatar_url", ColumnType::Text))
+            .to_single_sql();
+        assert_eq!(
+            sql,
+            Some("ALTER TABLE users ADD COLUMN avatar_url TEXT".to_string())
         );
     }
 }

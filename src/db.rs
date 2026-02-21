@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Index, Model, Repository, Table};
+use d1_orm::{Bindable, ColumnType, D1Database, Index, Migrator, Model, Repository, Table};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -58,11 +58,6 @@ pub struct UserItem {
 pub struct UserItemSummary {
     pub status: UserStatus,
     pub score: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SchemaVersion {
-    version: Option<i32>,
 }
 
 #[async_trait(?Send)]
@@ -191,182 +186,146 @@ impl AppDatabase {
             .map(|_| ())
             .map_err(|e| Error::RustError(e.to_string()))
     }
+
+    fn migration_v1_sql() -> Vec<String> {
+        use d1_orm::Column;
+
+        let mut stmts = Vec::new();
+
+        let users_table = Table::new("users")
+            .column(
+                Column::new("id", ColumnType::Integer)
+                    .primary_key()
+                    .auto_increment(),
+            )
+            .column(Column::new("email", ColumnType::Text).unique())
+            .column(Column::new("username", ColumnType::Text).unique())
+            .column(Column::new("password_hash", ColumnType::Text))
+            .column(Column::new("github_id", ColumnType::Text))
+            .column(Column::new("created_at", ColumnType::Integer));
+        stmts.push(users_table.to_sql());
+
+        let sessions_table = Table::new("sessions")
+            .column(
+                Column::new("id", ColumnType::Integer)
+                    .primary_key()
+                    .auto_increment(),
+            )
+            .column(Column::new("user_id", ColumnType::Integer))
+            .column(Column::new("token", ColumnType::Text).unique())
+            .column(Column::new("expires_at", ColumnType::Integer));
+        stmts.push(sessions_table.to_sql());
+
+        let mut user_items = Table::new("user_items_v2")
+            .column(Column::new("user_id", ColumnType::Integer))
+            .column(Column::new("title", ColumnType::Text))
+            .column(Column::new("status", ColumnType::Integer))
+            .column(Column::new("score", ColumnType::Integer))
+            .column(Column::new("updated_at", ColumnType::Integer));
+        user_items
+            .constraints
+            .push("PRIMARY KEY (user_id, title)".to_string());
+        user_items
+            .constraints
+            .push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
+        stmts.push(user_items.to_sql());
+
+        stmts.push(
+            Index::new("idx_user_items_v2_user_id", "user_items_v2")
+                .column("user_id")
+                .to_sql(),
+        );
+
+        stmts
+    }
+
+    fn migration_v3_sql() -> Vec<String> {
+        use d1_orm::Column;
+
+        let mut stmts = Vec::new();
+
+        let mut passkeys = Table::new("passkeys")
+            .column(Column::new("user_id", ColumnType::Integer))
+            .column(Column::new("cred_id", ColumnType::Text).primary_key())
+            .column(Column::new("passkey_json", ColumnType::Text))
+            .column(Column::new("name", ColumnType::Text))
+            .column(Column::new("created_at", ColumnType::Integer))
+            .column(Column::new("last_used_at", ColumnType::Integer))
+            .column(Column::new("counter", ColumnType::Integer));
+        passkeys
+            .constraints
+            .push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
+        stmts.push(passkeys.to_sql());
+        stmts.push(
+            Index::new("idx_passkeys_user_id", "passkeys")
+                .column("user_id")
+                .to_sql(),
+        );
+
+        let states = Table::new("passkey_states")
+            .column(Column::new("id", ColumnType::Text).primary_key())
+            .column(Column::new("state_json", ColumnType::Text))
+            .column(Column::new("expires_at", ColumnType::Integer));
+        stmts.push(states.to_sql());
+
+        stmts
+    }
 }
 
 #[async_trait(?Send)]
 impl Database for AppDatabase {
     async fn migrate(&self) -> Result<()> {
-        // Create schema_migrations table if not exists
-        self.db
-            .prepare(
-                "CREATE TABLE IF NOT EXISTS schema_migrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                version INTEGER NOT NULL UNIQUE,
-                applied_at INTEGER NOT NULL
-            );",
-            )
-            .run()
-            .await?;
-
-        // Get current version
-        let current_version: i32 = self
-            .db
-            .prepare("SELECT MAX(version) as version FROM schema_migrations")
-            .first::<SchemaVersion>(None)
-            .await?
-            .and_then(|v| v.version)
-            .unwrap_or(0);
-
-        // Define migrations
-        let migrations = vec![
-            // Version 1: Initial schema
-            (
+        let migrations = d1_orm::d1_migrations![
+            d1_orm::d1_migration!(
                 1,
-                {
-                    // For version 1 (initial snapshot), we MUST NOT use dynamic schema derivation
-                    // (e.g. User::schema()) because the struct definition evolves over time.
-                    // Instead, we manually reconstruct the exact schema state of version 1.
-                    use d1_orm::Column;
-
-                    let mut stmts = Vec::new();
-
-                    // Users table (v1 state: no avatar_url, no telegram_id)
-                    let users_table = Table::new("users")
-                        .column(Column::new("id", ColumnType::Integer).primary_key().auto_increment())
-                        .column(Column::new("email", ColumnType::Text).unique())
-                        .column(Column::new("username", ColumnType::Text).unique())
-                        .column(Column::new("password_hash", ColumnType::Text))
-                        .column(Column::new("github_id", ColumnType::Text))
-                        .column(Column::new("created_at", ColumnType::Integer));
-
-                    stmts.push(users_table.to_sql());
-
-                    // Sessions table (v1 state)
-                    let sessions_table = Table::new("sessions")
-                        .column(Column::new("id", ColumnType::Integer).primary_key().auto_increment())
-                        .column(Column::new("user_id", ColumnType::Integer))
-                        .column(Column::new("token", ColumnType::Text).unique())
-                        .column(Column::new("expires_at", ColumnType::Integer));
-
-                    stmts.push(sessions_table.to_sql());
-
-                    // User Items (v1 state: no begin_at)
-                    let mut user_items = Table::new("user_items_v2");
-                    user_items = user_items.column(Column::new("user_id", ColumnType::Integer))
-                        .column(Column::new("title", ColumnType::Text))
-                        .column(Column::new("status", ColumnType::Integer))
-                        .column(Column::new("score", ColumnType::Integer))
-                        .column(Column::new("updated_at", ColumnType::Integer));
-
-                    // Explicit constraints for v1
-                    user_items.constraints.push("PRIMARY KEY (user_id, title)".to_string());
-                    user_items.constraints.push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
-
-                    stmts.push(user_items.to_sql());
-
-                    // Indexes for v1
-                    stmts.push(
-                        Index::new("idx_user_items_v2_user_id", "user_items_v2")
-                            .column("user_id")
-                            .to_sql(),
-                    );
-
-                    stmts
-                }
+                sqls = Self::migration_v1_sql(),
+                infer = [
+                    d1_orm::d1_probe!(table "users"),
+                    d1_orm::d1_probe!(table "sessions"),
+                    d1_orm::d1_probe!(table "user_items_v2")
+                ]
             ),
-            (2, vec![
-                AlterTable::new("users").add_column(
-                    d1_orm::Column::new("avatar_url", ColumnType::Text)
-                ).to_sql_stmts().pop().unwrap()
-            ]),
-            (
+            d1_orm::d1_migration!(
+                2,
+                sql = "ALTER TABLE users ADD COLUMN avatar_url TEXT",
+                infer = [d1_orm::d1_probe!(column "users", "avatar_url")]
+            ),
+            d1_orm::d1_migration!(
                 3,
-                {
-                    // Version 3 introduced Passkeys tables
-                    // We can use current schema IF we are sure they haven't changed since v3.
-                    // But to be safe, we should construct them manually too if they might evolve.
-                    // Assuming PasskeyRow and PasskeyStateRow are relatively stable or new,
-                    // but for consistency let's manualize them or accept risk.
-                    // Given the user instruction was about v1 safety, and v3 adds NEW tables,
-                    // using current schema for v3 is safer than v1, but if we add columns to passkeys later,
-                    // v3 migration will create them early.
-
-                    // Best practice: Snapshot v3 state.
-                    use d1_orm::Column;
-                    let mut stmts = Vec::new();
-
-                    // passkeys
-                    let passkeys = Table::new("passkeys")
-                        .column(Column::new("user_id", ColumnType::Integer)) // FK
-                        .column(Column::new("cred_id", ColumnType::Text).primary_key())
-                        .column(Column::new("passkey_json", ColumnType::Text)) // not null implied
-                        .column(Column::new("name", ColumnType::Text))
-                        .column(Column::new("created_at", ColumnType::Integer))
-                        .column(Column::new("last_used_at", ColumnType::Integer))
-                        .column(Column::new("counter", ColumnType::Integer));
-
-                    let mut passkeys_t = passkeys;
-                    passkeys_t.constraints.push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
-                    stmts.push(passkeys_t.to_sql());
-                    stmts.push(
-                        Index::new("idx_passkeys_user_id", "passkeys")
-                            .column("user_id")
-                            .to_sql(),
-                    );
-
-                    // passkey_states
-                    let states = Table::new("passkey_states")
-                        .column(Column::new("id", ColumnType::Text).primary_key())
-                        .column(Column::new("state_json", ColumnType::Text))
-                        .column(Column::new("expires_at", ColumnType::Integer));
-                    stmts.push(states.to_sql());
-
-                    stmts
-                }
+                sqls = Self::migration_v3_sql(),
+                infer = [
+                    d1_orm::d1_probe!(table "passkeys"),
+                    d1_orm::d1_probe!(table "passkey_states")
+                ]
             ),
-            (
+            d1_orm::d1_migration!(
                 4,
-                vec![
-                    AlterTable::new("users").add_column(
-                        d1_orm::Column::new("telegram_id", ColumnType::Text)
-                    ).to_sql_stmts().pop().unwrap(),
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);".to_string(),
+                sql = [
+                    "ALTER TABLE users ADD COLUMN telegram_id TEXT",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)"
                 ],
+                infer = [
+                    d1_orm::d1_probe!(column "users", "telegram_id"),
+                    d1_orm::d1_probe!(index "idx_users_telegram_id")
+                ]
             ),
-            (
+            d1_orm::d1_migration!(
                 5,
-                vec![
-                    AlterTable::new("user_items_v2").add_column(
-                        d1_orm::Column::new("begin_at", ColumnType::Integer)
-                    ).to_sql_stmts().pop().unwrap(),
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);".to_string(),
+                sql = [
+                    "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER",
+                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at)"
                 ],
+                infer = [
+                    d1_orm::d1_probe!(column "user_items_v2", "begin_at"),
+                    d1_orm::d1_probe!(index "idx_user_items_v2_begin_at")
+                ]
             ),
         ];
 
-        // Apply pending migrations
-        const INSERT_MIGRATION_QUERY: &str =
-            "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)";
-
-        for (version, queries) in migrations {
-            if version > current_version {
-                console_log!("Applying migration version {}", version);
-                let mut statements = Vec::with_capacity(queries.len() + 1);
-                for query in queries {
-                    statements.push(self.db.prepare(&query));
-                }
-
-                let now = utils::now_utc_ms();
-                statements.push(self.db.prepare(INSERT_MIGRATION_QUERY).bind(&[
-                    JsValue::from_f64(version as f64),
-                    JsValue::from_f64(now as f64),
-                ])?);
-
-                self.db.batch(statements).await?;
-            }
-        }
-
-        Ok(())
+        Migrator::new(&self.db)
+            .run(&migrations, utils::now_utc_ms())
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn create_user(
