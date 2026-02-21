@@ -58,8 +58,7 @@ pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
             match utils::fetch_json::<Vec<Item>>(&url).await {
                 Ok(Some(mut items)) => {
                     for item in &mut items {
-                        item.title_translate =
-                            utils::normalize_title_translate(&item.title_translate);
+                        utils::normalize_title_translate(&mut item.title_translate);
                     }
                     Ok(items)
                 }
