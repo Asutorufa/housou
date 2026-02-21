@@ -321,17 +321,16 @@ impl FaviconFetcher for WorkerFaviconFetcher {
         let request = Request::new_with_init(url, &init)?;
         let response = Fetch::Request(request).send().await;
 
-        if let Ok(mut resp) = response
-            && resp.status_code() == 200
-        {
-            let bytes = resp.bytes().await?;
-            let content_type = resp
-                .headers()
-                .get("Content-Type")?
-                .unwrap_or_else(|| "image/x-icon".to_string());
-            Ok(Some((bytes, content_type)))
-        } else {
-            Ok(None)
+        match response {
+            Ok(mut resp) if resp.status_code() == 200 => {
+                let bytes = resp.bytes().await?;
+                let content_type = resp
+                    .headers()
+                    .get("Content-Type")?
+                    .unwrap_or_else(|| "image/x-icon".to_string());
+                Ok(Some((bytes, content_type)))
+            }
+            _ => Ok(None),
         }
     }
 }
