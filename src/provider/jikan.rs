@@ -357,4 +357,123 @@ mod tests {
         assert_eq!(item.title, "Title");
         assert_eq!(item.type_field, ItemType::Tv); // Default
     }
+
+    #[test]
+    fn test_convert_to_metadata_full() {
+        let json = r#"{
+            "mal_id": 1,
+            "url": "https://myanimelist.net/anime/1/Cowboy_Bebop",
+            "images": { "jpg": { "image_url": "jpg_url", "large_image_url": "large_jpg_url" } },
+            "title": "Cowboy Bebop",
+            "title_english": "Cowboy Bebop",
+            "title_japanese": "カウボーイビバップ",
+            "type": "TV",
+            "episodes": 26,
+            "status": "Finished Airing",
+            "aired": { "from": "1998-04-03T00:00:00+00:00", "to": "1999-04-24T00:00:00+00:00" },
+            "score": 8.75,
+            "synopsis": "Space western...",
+            "studios": [{ "name": "Sunrise" }],
+            "genres": [{ "name": "Action" }, { "name": "Sci-Fi" }]
+        }"#;
+
+        let anime = create_anime(json);
+        let metadata = convert_to_metadata(anime);
+
+        assert_eq!(metadata.source, MetadataSource::Mal("1".to_string()));
+        assert_eq!(metadata.title.romaji, Some("Cowboy Bebop".to_string()));
+        assert_eq!(metadata.title.english, Some("Cowboy Bebop".to_string()));
+        assert_eq!(
+            metadata.title.native,
+            Some("カウボーイビバップ".to_string())
+        );
+
+        let translate = metadata.title_translate.unwrap();
+        assert_eq!(translate.get("US"), Some(&vec!["Cowboy Bebop".to_string()]));
+        assert_eq!(
+            translate.get("JP"),
+            Some(&vec!["カウボーイビバップ".to_string()])
+        );
+
+        assert_eq!(
+            metadata.cover_image.large,
+            Some("large_jpg_url".to_string())
+        );
+        assert_eq!(
+            metadata.cover_image.extra_large,
+            Some("jpg_url".to_string())
+        );
+        assert_eq!(metadata.average_score, Some(87)); // 8.75 * 10 = 87.5, truncated to 87
+        assert_eq!(metadata.episodes, Some(26));
+        assert_eq!(metadata.genres, vec!["Action", "Sci-Fi"]);
+        assert_eq!(metadata.description, Some("Space western...".to_string()));
+        assert_eq!(metadata.studios.len(), 1);
+        assert_eq!(metadata.studios[0].name, "Sunrise");
+        assert!(metadata.is_finished);
+    }
+
+    #[test]
+    fn test_convert_to_metadata_minimal() {
+        let json = r#"{
+            "mal_id": 999,
+            "url": "url",
+            "images": {},
+            "title": "Minimal Anime",
+            "aired": {},
+            "studios": [],
+            "genres": []
+        }"#;
+
+        let anime = create_anime(json);
+        let metadata = convert_to_metadata(anime);
+
+        assert_eq!(metadata.source, MetadataSource::Mal("999".to_string()));
+        assert_eq!(metadata.title.romaji, Some("Minimal Anime".to_string()));
+        assert_eq!(metadata.title.english, None);
+        assert_eq!(metadata.title.native, None);
+        assert!(metadata.title_translate.is_none());
+        assert_eq!(metadata.cover_image.large, None);
+        assert_eq!(metadata.cover_image.extra_large, None);
+        assert_eq!(metadata.average_score, None);
+        assert_eq!(metadata.episodes, None);
+        assert!(metadata.genres.is_empty());
+        assert_eq!(metadata.description, None);
+        assert!(metadata.studios.is_empty());
+        assert!(!metadata.is_finished); // Not "Finished Airing"
+    }
+
+    #[test]
+    fn test_convert_to_metadata_images() {
+        // Case 1: Prefer JPG
+        let json_jpg = r#"{
+            "mal_id": 1, "url": "u", "title": "t", "aired": {}, "studios": [], "genres": [],
+            "images": {
+                "jpg": { "image_url": "jpg_s", "large_image_url": "jpg_l" },
+                "webp": { "image_url": "webp_s", "large_image_url": "webp_l" }
+            }
+        }"#;
+        let m1 = convert_to_metadata(create_anime(json_jpg));
+        assert_eq!(m1.cover_image.large, Some("jpg_l".to_string()));
+        assert_eq!(m1.cover_image.extra_large, Some("jpg_s".to_string()));
+
+        // Case 2: Fallback to WebP
+        let json_webp = r#"{
+            "mal_id": 1, "url": "u", "title": "t", "aired": {}, "studios": [], "genres": [],
+            "images": {
+                "webp": { "image_url": "webp_s", "large_image_url": "webp_l" }
+            }
+        }"#;
+        let m2 = convert_to_metadata(create_anime(json_webp));
+        assert_eq!(m2.cover_image.large, Some("webp_l".to_string()));
+        assert_eq!(m2.cover_image.extra_large, Some("webp_s".to_string()));
+
+        // Case 3: No images
+        let json_none = r#"{
+            "mal_id": 1, "url": "u", "title": "t", "aired": {}, "studios": [], "genres": [],
+            "images": {}
+        }"#;
+        let m3 = convert_to_metadata(create_anime(json_none));
+        assert_eq!(m3.cover_image.large, None);
+        assert_eq!(m3.cover_image.extra_large, None);
+    }
 }
