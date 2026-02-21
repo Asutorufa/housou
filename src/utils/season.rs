@@ -55,31 +55,111 @@ mod tests {
         // 2024
         // Winter: Jan 1 2024 - Apr 1 2024
         let (start, end) = get_season_timestamp_range(2024, Some("Winter")).unwrap();
-        assert_eq!(start, Date::from_calendar_date(2024, Month::January, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
-        assert_eq!(end, Date::from_calendar_date(2024, Month::April, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
+        assert_eq!(
+            start,
+            Date::from_calendar_date(2024, Month::January, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
+        assert_eq!(
+            end,
+            Date::from_calendar_date(2024, Month::April, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
 
         // Spring: Apr 1 2024 - Jul 1 2024
         let (start, end) = get_season_timestamp_range(2024, Some("Spring")).unwrap();
-        assert_eq!(start, Date::from_calendar_date(2024, Month::April, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
-        assert_eq!(end, Date::from_calendar_date(2024, Month::July, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
+        assert_eq!(
+            start,
+            Date::from_calendar_date(2024, Month::April, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
+        assert_eq!(
+            end,
+            Date::from_calendar_date(2024, Month::July, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
 
         // Summer: Jul 1 2024 - Oct 1 2024
         let (start, end) = get_season_timestamp_range(2024, Some("Summer")).unwrap();
-        assert_eq!(start, Date::from_calendar_date(2024, Month::July, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
-        assert_eq!(end, Date::from_calendar_date(2024, Month::October, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
+        assert_eq!(
+            start,
+            Date::from_calendar_date(2024, Month::July, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
+        assert_eq!(
+            end,
+            Date::from_calendar_date(2024, Month::October, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
 
         // Autumn: Oct 1 2024 - Jan 1 2025
         let (start, end) = get_season_timestamp_range(2024, Some("Autumn")).unwrap();
-        assert_eq!(start, Date::from_calendar_date(2024, Month::October, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
-        assert_eq!(end, Date::from_calendar_date(2025, Month::January, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
+        assert_eq!(
+            start,
+            Date::from_calendar_date(2024, Month::October, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
+        assert_eq!(
+            end,
+            Date::from_calendar_date(2025, Month::January, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
     }
 
     #[test]
     fn test_full_year_range() {
         // 2024: Jan 1 2024 - Jan 1 2025
         let (start, end) = get_season_timestamp_range(2024, None).unwrap();
-        assert_eq!(start, Date::from_calendar_date(2024, Month::January, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
-        assert_eq!(end, Date::from_calendar_date(2025, Month::January, 1).unwrap().midnight().assume_utc().unix_timestamp() * 1000);
+        assert_eq!(
+            start,
+            Date::from_calendar_date(2024, Month::January, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
+        assert_eq!(
+            end,
+            Date::from_calendar_date(2025, Month::January, 1)
+                .unwrap()
+                .midnight()
+                .assume_utc()
+                .unix_timestamp()
+                * 1000
+        );
     }
 
     #[test]
