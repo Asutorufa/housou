@@ -3,6 +3,21 @@ use std::sync::OnceLock;
 
 static DOMAIN_REGEX: OnceLock<Regex> = OnceLock::new();
 
+static RESERVED_TLDS: &[&str] = &[
+    "local",
+    "internal",
+    "lan",
+    "home",
+    "host",
+    "corp",
+    "test",
+    "invalid",
+    "localhost",
+    "onion",
+    "example",
+    "arpa",
+];
+
 pub fn is_safe_hostname(hostname: &str) -> bool {
     // 1. Basic length validation
     if hostname.is_empty() || hostname.len() > 255 {
@@ -44,21 +59,7 @@ pub fn is_safe_hostname(hostname: &str) -> bool {
         }
 
         let tld_lower = tld.to_lowercase();
-        let reserved_tlds = [
-            "local",
-            "internal",
-            "lan",
-            "home",
-            "host",
-            "corp",
-            "test",
-            "invalid",
-            "localhost",
-            "onion",
-            "example",
-            "arpa",
-        ];
-        if reserved_tlds.contains(&tld_lower.as_str()) {
+        if RESERVED_TLDS.contains(&tld_lower.as_str()) {
             return false;
         }
     }
