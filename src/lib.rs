@@ -17,6 +17,36 @@ pub trait ResponseExt {
     fn add_security_headers(self) -> Result<Response>;
 }
 
+// Abstraction for setting headers to allow testing without worker::Response
+pub(crate) trait HeaderSetter {
+    fn set_header(&mut self, key: &str, value: &str) -> Result<()>;
+}
+
+impl HeaderSetter for Response {
+    fn set_header(&mut self, key: &str, value: &str) -> Result<()> {
+        self.headers_mut().set(key, value)
+    }
+}
+
+// Pure logic implementations
+fn add_cors_header_impl(setter: &mut impl HeaderSetter, origin: &str) -> Result<()> {
+    setter.set_header("Access-Control-Allow-Origin", origin)
+}
+
+fn add_header_impl(setter: &mut impl HeaderSetter, key: &str, value: &str) -> Result<()> {
+    setter.set_header(key, value)
+}
+
+fn add_security_headers_impl(setter: &mut impl HeaderSetter) -> Result<()> {
+    setter.set_header(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none';",
+    )?;
+    setter.set_header("X-Content-Type-Options", "nosniff")?;
+    setter.set_header("X-Frame-Options", "DENY")?;
+    Ok(())
+}
+
 static CORS_ALLOWED_ORIGIN: OnceLock<String> = OnceLock::new();
 static MIGRATION_DONE: AtomicBool = AtomicBool::new(false);
 
@@ -27,28 +57,23 @@ impl ResponseExt for Response {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|_| "*".to_string())
         });
-        self.headers_mut()
-            .set("Access-Control-Allow-Origin", allowed_origin)?;
+        add_cors_header_impl(&mut self, allowed_origin)?;
         Ok(self)
     }
 
     fn add_header(mut self, key: &str, value: &str) -> Result<Response> {
-        self.headers_mut().set(key, value)?;
+        add_header_impl(&mut self, key, value)?;
         Ok(self)
     }
 
-    fn add_security_headers(self) -> Result<Response> {
-        self.add_header(
-            "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none';",
-        )?
-        .add_header("X-Content-Type-Options", "nosniff")?
-        .add_header("X-Frame-Options", "DENY")
+    fn add_security_headers(mut self) -> Result<Response> {
+        add_security_headers_impl(&mut self)?;
+        Ok(self)
     }
 }
 
 #[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
     // Migration Logic (Lazy)
     if let Ok(d1) = env.d1("DB")
         && MIGRATION_DONE
@@ -65,7 +90,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
 
     // Handle request logic (caching and routing)
-    let resp_result = handle_request_logic(req, env.clone()).await;
+    let resp_result = handle_request_logic(req, env.clone(), ctx).await;
 
     let resp = match resp_result {
         Ok(r) => r,
@@ -79,7 +104,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     resp.add_security_headers()?.add_cors(&env)
 }
 
-async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
+async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Response> {
     let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
@@ -94,13 +119,13 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
             url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
 
         if is_auth_route {
-            router(req, env.clone()).await
+            router(req, env.clone(), ctx).await
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
             cached_resp.cloned()
         } else {
             // Generate new response
-            let mut fresh_resp = router(req, env.clone()).await?;
+            let mut fresh_resp = router(req, env.clone(), ctx).await?;
 
             // Cache successful GET responses (except auth)
             if url.path().starts_with("/api") && !is_auth_route && fresh_resp.status_code() == 200 {
@@ -115,99 +140,99 @@ async fn handle_request_logic(req: Request, env: Env) -> Result<Response> {
             Ok(fresh_resp)
         }
     } else {
-        router(req, env.clone()).await
+        router(req, env.clone(), ctx).await
     }
 }
 
-async fn router(req: Request, env: Env) -> Result<Response> {
+async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
     let auth_enabled = env.d1("DB").is_ok();
 
-    let mut router = Router::with_data(env.clone());
+    let mut router = Router::with_data(ctx);
 
     router = router
         .get_async("/api/config", |req, ctx| async move {
-            handlers::handle_config(req, ctx.data).await
+            handlers::handle_config(req, ctx.env).await
         })
         .get_async("/api/items", |req, ctx| async move {
-            handlers::handle_items(req, ctx.data).await
+            handlers::handle_items(req, ctx.env).await
         })
         .get_async("/api/metadata", |req, ctx| async move {
-            handlers::handle_metadata(req, ctx.data).await
+            handlers::handle_metadata(req, ctx).await
         })
         .post_async("/api/metadata", |req, ctx| async move {
-            handlers::handle_metadata(req, ctx.data).await
+            handlers::handle_metadata(req, ctx).await
         })
         .get_async("/api/favicon", |req, ctx| async move {
-            handlers::handle_favicon(req, ctx.data).await
+            handlers::handle_favicon(req, ctx.env).await
         });
 
     if auth_enabled {
         router = router
             .get_async("/api/user/status", |req, ctx| async move {
-                handlers::handle_user_status(req, ctx.data).await
+                handlers::handle_user_status(req, ctx.env).await
             })
             .post_async("/api/auth/register", |req, ctx| async move {
-                auth::handle_register(req, ctx.data).await
+                auth::handle_register(req, ctx.env).await
             })
             .post_async("/api/auth/login", |req, ctx| async move {
-                auth::handle_login(req, ctx.data).await
+                auth::handle_login(req, ctx.env).await
             })
             .post_async("/api/auth/logout", |req, ctx| async move {
-                auth::handle_logout(req, ctx.data).await
+                auth::handle_logout(req, ctx.env).await
             })
             .get_async("/api/auth/me", |req, ctx| async move {
-                auth::handle_me(req, ctx.data).await
+                auth::handle_me(req, ctx.env).await
             })
             .put_async("/api/auth/profile", |req, ctx| async move {
-                auth::handle_update_profile(req, ctx.data).await
+                auth::handle_update_profile(req, ctx.env).await
             })
             .put_async("/api/auth/password", |req, ctx| async move {
-                auth::handle_change_password(req, ctx.data).await
+                auth::handle_change_password(req, ctx.env).await
             })
             .get_async("/api/auth/github/authorize", |req, ctx| async move {
-                auth::handle_github_authorize(req, ctx.data).await
+                auth::handle_github_authorize(req, ctx.env).await
             })
             .get_async("/api/auth/github/callback", |req, ctx| async move {
-                auth::handle_github_callback(req, ctx.data).await
+                auth::handle_github_callback(req, ctx.env).await
             })
             .get_async("/api/auth/github/bind", |req, ctx| async move {
-                auth::handle_github_bind_authorize(req, ctx.data).await
+                auth::handle_github_bind_authorize(req, ctx.env).await
             })
             .delete_async("/api/auth/github", |req, ctx| async move {
-                auth::handle_github_unbind(req, ctx.data).await
+                auth::handle_github_unbind(req, ctx.env).await
             })
             .post_async("/api/auth/telegram/login", |req, ctx| async move {
-                auth::handle_telegram_login(req, ctx.data).await
+                auth::handle_telegram_login(req, ctx.env).await
             })
             .post_async("/api/auth/telegram/bind", |req, ctx| async move {
-                auth::handle_telegram_bind(req, ctx.data).await
+                auth::handle_telegram_bind(req, ctx.env).await
             })
             .delete_async("/api/auth/telegram", |req, ctx| async move {
-                auth::handle_telegram_unbind(req, ctx.data).await
+                auth::handle_telegram_unbind(req, ctx.env).await
             })
             .post_async("/api/user/item", |req, ctx| async move {
-                auth::handle_update_item(req, ctx.data).await
+                auth::handle_update_item(req, ctx.env).await
             })
             .post_async("/api/auth/passkey/register/start", |req, ctx| async move {
-                auth::passkey::handle_register_start(req, ctx.data).await
+                auth::passkey::handle_register_start(req, ctx.env).await
             })
             .post_async("/api/auth/passkey/register/finish", |req, ctx| async move {
-                auth::passkey::handle_register_finish(req, ctx.data).await
+                auth::passkey::handle_register_finish(req, ctx.env).await
             })
             .post_async("/api/auth/passkey/login/start", |req, ctx| async move {
-                auth::passkey::handle_login_start(req, ctx.data).await
+                auth::passkey::handle_login_start(req, ctx.env).await
             })
             .post_async("/api/auth/passkey/login/finish", |req, ctx| async move {
-                auth::passkey::handle_login_finish(req, ctx.data).await
+                auth::passkey::handle_login_finish(req, ctx.env).await
             })
             .get_async("/api/auth/passkey", |req, ctx| async move {
-                auth::passkey::handle_list(req, ctx.data).await
+                auth::passkey::handle_list(req, ctx.env).await
             })
             .delete_async("/api/auth/passkey", |req, ctx| async move {
-                auth::passkey::handle_delete(req, ctx.data).await
+                auth::passkey::handle_delete(req, ctx.env).await
             })
             .patch_async("/api/auth/passkey", |req, ctx| async move {
-                auth::passkey::handle_rename(req, ctx.data).await
+                auth::passkey::handle_rename(req, ctx.env).await
             });
     }
 
@@ -218,4 +243,68 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         .options("/api/auth/*path", |_, _| Response::empty());
 
     router.run(req, env).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct MockHeaderSetter {
+        headers: HashMap<String, String>,
+    }
+
+    impl MockHeaderSetter {
+        fn new() -> Self {
+            Self {
+                headers: HashMap::new(),
+            }
+        }
+    }
+
+    impl HeaderSetter for MockHeaderSetter {
+        fn set_header(&mut self, key: &str, value: &str) -> Result<()> {
+            self.headers.insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_add_header() {
+        let mut setter = MockHeaderSetter::new();
+        add_header_impl(&mut setter, "Content-Type", "application/json").unwrap();
+        assert_eq!(
+            setter.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
+    }
+
+    #[test]
+    fn test_add_security_headers() {
+        let mut setter = MockHeaderSetter::new();
+        add_security_headers_impl(&mut setter).unwrap();
+        assert_eq!(
+            setter.headers.get("Content-Security-Policy"),
+            Some(&"default-src 'none'; frame-ancestors 'none';".to_string())
+        );
+        assert_eq!(
+            setter.headers.get("X-Content-Type-Options"),
+            Some(&"nosniff".to_string())
+        );
+        assert_eq!(
+            setter.headers.get("X-Frame-Options"),
+            Some(&"DENY".to_string())
+        );
+    }
+
+    #[test]
+    fn test_add_cors_header() {
+        let mut setter = MockHeaderSetter::new();
+        let origin = "https://example.com";
+        add_cors_header_impl(&mut setter, origin).unwrap();
+        assert_eq!(
+            setter.headers.get("Access-Control-Allow-Origin"),
+            Some(&origin.to_string())
+        );
+    }
 }

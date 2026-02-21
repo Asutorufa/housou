@@ -155,56 +155,10 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
 
     match auth::get_db(&env) {
         Ok(db) => {
-            let user_items = if let Some(year) = query.year
-                && let Some(season) = normalized_season
-            {
-                // Calculate timestamp range for the season
-                let (start_month, end_month) = match season {
-                    "Winter" => (1, 3),
-                    "Spring" => (4, 6),
-                    "Summer" => (7, 9),
-                    "Autumn" => (10, 12),
-                    _ => unreachable!("season is validated"),
-                };
-
-                // Approximate timestamps (milliseconds)
-                let start_month = match Month::try_from(start_month as u8) {
-                    Ok(m) => m,
-                    Err(_) => Month::January,
-                };
-                let start_date =
-                    TimeDate::from_calendar_date(year, start_month, 1).unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
-                    });
-                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                let next_month_year = if end_month == 12 { year + 1 } else { year };
-                let next_month = if end_month == 12 { 1 } else { end_month + 1 };
-                let next_month_m = match Month::try_from(next_month as u8) {
-                    Ok(m) => m,
-                    Err(_) => Month::January,
-                };
-                let end_date = TimeDate::from_calendar_date(next_month_year, next_month_m, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(next_month_year, Month::January, 1).unwrap()
-                    });
-                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                db.get_user_items_by_range(user.id, start_ts, end_ts).await
-            } else if let Some(year) = query.year {
-                // If only year is provided, fetch for the whole year
-                let start_date = TimeDate::from_calendar_date(year, Month::January, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(year, Month::January, 1).unwrap()
-                    });
-                let start_ts = start_date.midnight().assume_utc().unix_timestamp() * 1000;
-
-                let next_year = year + 1;
-                let end_date = TimeDate::from_calendar_date(next_year, Month::January, 1)
-                    .unwrap_or_else(|_| {
-                        TimeDate::from_calendar_date(next_year, Month::January, 1).unwrap()
-                    });
-                let end_ts = end_date.midnight().assume_utc().unix_timestamp() * 1000;
+            let user_items = if let Some(year) = query.year {
+                let (start_ts, end_ts) =
+                    utils::season::get_season_timestamp_range(year, normalized_season)
+                        .map_err(Error::RustError)?;
 
                 db.get_user_items_by_range(user.id, start_ts, end_ts).await
             } else {
@@ -241,7 +195,7 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
     }
 }
 
-pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
+pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Result<Response> {
     let req_url = req.url()?;
     let cache_origin = req_url.origin().ascii_serialization();
 
@@ -261,10 +215,10 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         }
 
         let futures = requests.into_iter().map(|r| {
-            let env = &env;
+            let ctx = &ctx;
             let cache_origin = cache_origin.clone();
             async move {
-                let metadata = provider::fetch_metadata(&r, env, &cache_origin).await.ok();
+                let metadata = provider::fetch_metadata(&r, ctx, &cache_origin).await.ok();
                 provider::MetadataResponse {
                     request_id: r.request_id,
                     metadata,
@@ -299,7 +253,7 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         year,
     };
 
-    provider::get_metadata(args, &env, &cache_origin).await
+    provider::get_metadata(args, &ctx, &cache_origin).await
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -376,6 +330,65 @@ fn is_safe_hostname(hostname: &str) -> bool {
     re.is_match(hostname)
 }
 
+#[async_trait::async_trait(?Send)]
+pub trait FaviconFetcher {
+    async fn fetch(&self, url: &str) -> Result<Option<(Vec<u8>, String)>>;
+}
+
+struct WorkerFaviconFetcher;
+
+#[async_trait::async_trait(?Send)]
+impl FaviconFetcher for WorkerFaviconFetcher {
+    async fn fetch(&self, url: &str) -> Result<Option<(Vec<u8>, String)>> {
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get);
+
+        let request = Request::new_with_init(url, &init)?;
+        let response = Fetch::Request(request).send().await;
+
+        match response {
+            Ok(mut resp) if resp.status_code() == 200 => {
+                let bytes = resp.bytes().await?;
+                let content_type = resp
+                    .headers()
+                    .get("Content-Type")?
+                    .unwrap_or_else(|| "image/x-icon".to_string());
+                Ok(Some((bytes, content_type)))
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+async fn fetch_favicon_core(
+    hostname: &str,
+    fetcher: &impl FaviconFetcher,
+) -> Result<Option<(Vec<u8>, String)>> {
+    let providers = [
+        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
+        format!(
+            "https://www.google.com/s2/favicons?domain={}&sz=32",
+            hostname
+        ),
+        format!("https://{}/favicon.ico", hostname),
+    ];
+
+    let futures = providers.iter().map(|url| {
+        Box::pin(async move {
+            match fetcher.fetch(url).await {
+                Ok(Some(res)) => Ok(res),
+                Ok(None) => Err(Error::RustError("Not Found".to_string())),
+                Err(e) => Err(e),
+            }
+        })
+    });
+
+    match futures::future::select_ok(futures).await {
+        Ok((res, _)) => Ok(Some(res)),
+        Err(_) => Ok(None),
+    }
+}
+
 pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
     let url = req.url()?;
     let query_str = url.query().unwrap_or("");
@@ -389,41 +402,16 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
         return Response::error("Bad Request: invalid domain", 400);
     }
 
-    let providers = [
-        format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname),
-        format!(
-            "https://www.google.com/s2/favicons?domain={}&sz=32",
-            hostname
-        ),
-        format!("https://{}/favicon.ico", hostname),
-    ];
+    let fetcher = WorkerFaviconFetcher;
+    if let Some((bytes, content_type)) = fetch_favicon_core(hostname, &fetcher).await? {
+        let headers = Headers::new();
+        headers.set("Content-Type", &content_type)?;
+        headers.set(
+            "Cache-Control",
+            &format!("public, max-age={}", config::CACHE_TTL_FAVICON),
+        )?;
 
-    for provider_url in &providers {
-        let mut init = RequestInit::new();
-        init.with_method(Method::Get);
-
-        let request = Request::new_with_init(provider_url, &init)?;
-        let response = Fetch::Request(request).send().await;
-
-        if let Ok(mut resp) = response
-            && resp.status_code() == 200
-        {
-            // Read the favicon bytes from upstream
-            let bytes = resp.bytes().await?;
-
-            let headers = Headers::new();
-            if let Some(ct) = resp.headers().get("Content-Type")? {
-                headers.set("Content-Type", &ct)?;
-            } else {
-                headers.set("Content-Type", "image/x-icon")?;
-            }
-            headers.set(
-                "Cache-Control",
-                &format!("public, max-age={}", config::CACHE_TTL_FAVICON),
-            )?;
-
-            return Ok(Response::from_bytes(bytes)?.with_headers(headers));
-        }
+        return Ok(Response::from_bytes(bytes)?.with_headers(headers));
     }
 
     // No favicon found from any provider
@@ -435,7 +423,13 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_season_query;
+    use super::{FaviconFetcher, fetch_favicon_core, normalize_season_query};
+    use std::collections::HashMap;
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll};
+    use worker::{Error, Result};
 
     #[test]
     fn test_is_safe_hostname() {
@@ -501,5 +495,127 @@ mod tests {
         );
         assert!(normalize_season_query(Some("fall")).is_err());
         assert!(normalize_season_query(Some("Invalid")).is_err());
+    }
+
+    struct DelayedResult<T> {
+        value: Option<T>,
+        delay_polls: usize,
+    }
+
+    struct DelayedFuture<T> {
+        state: Arc<Mutex<DelayedResult<T>>>,
+    }
+
+    impl<T: Unpin> Future for DelayedFuture<T> {
+        type Output = T;
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+            let mut state = self.state.lock().unwrap();
+            if state.delay_polls > 0 {
+                state.delay_polls -= 1;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            } else {
+                Poll::Ready(state.value.take().unwrap())
+            }
+        }
+    }
+
+    struct MockFaviconFetcher {
+        // url -> (success_data, error_msg, delay)
+        responses: HashMap<String, (Option<(Vec<u8>, String)>, Option<String>, usize)>,
+    }
+
+    impl MockFaviconFetcher {
+        fn new() -> Self {
+            Self {
+                responses: HashMap::new(),
+            }
+        }
+
+        fn add_response(
+            &mut self,
+            url: &str,
+            result: Result<Option<(Vec<u8>, String)>>,
+            delay: usize,
+        ) {
+            let (data, err) = match result {
+                Ok(d) => (d, None),
+                Err(e) => (None, Some(e.to_string())),
+            };
+            self.responses.insert(url.to_string(), (data, err, delay));
+        }
+    }
+
+    #[async_trait::async_trait(?Send)]
+    impl FaviconFetcher for MockFaviconFetcher {
+        async fn fetch(&self, url: &str) -> Result<Option<(Vec<u8>, String)>> {
+            if let Some((data, err, delay)) = self.responses.get(url) {
+                let result = if let Some(e) = err {
+                    Err(Error::RustError(e.clone()))
+                } else {
+                    Ok(data.clone())
+                };
+
+                let state = Arc::new(Mutex::new(DelayedResult {
+                    value: Some(result),
+                    delay_polls: *delay,
+                }));
+
+                DelayedFuture { state }.await
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[test]
+    fn test_favicon_race_condition() {
+        let mut fetcher = MockFaviconFetcher::new();
+        let hostname = "example.com";
+        // Order in fetch_favicon_core: duckduckgo, google, direct
+        let url_slow = format!("https://icons.duckduckgo.com/ip3/{}.ico", hostname);
+        let url_fast = format!(
+            "https://www.google.com/s2/favicons?domain={}&sz=32",
+            hostname
+        );
+
+        // SLOW returns "A" after 10 polls
+        fetcher.add_response(
+            &url_slow,
+            Ok(Some((b"A".to_vec(), "image/x-icon".into()))),
+            10,
+        );
+        // FAST returns "B" after 1 poll
+        fetcher.add_response(&url_fast, Ok(Some((b"B".to_vec(), "image/png".into()))), 1);
+
+        let result = futures::executor::block_on(fetch_favicon_core(hostname, &fetcher));
+
+        // CONCURRENT IMPLEMENTATION (Optimization):
+        // duckduckgo is first but SLOW (10 polls).
+        // Google is second but FAST (1 poll).
+        // We expect "B" because it finishes first.
+
+        let (bytes, _) = result.unwrap().unwrap();
+        assert_eq!(
+            bytes, b"B",
+            "Concurrent implementation should return the faster provider's result"
+        );
+    }
+
+    #[test]
+    fn test_favicon_all_fail() {
+        let fetcher = MockFaviconFetcher::new();
+        let hostname = "example.com";
+        // All fail
+
+        // No responses added = all return Ok(None) or Err.
+        // MockFaviconFetcher returns Ok(None) if not found.
+        // fetch_favicon_core maps Ok(None) to Err.
+        // select_ok should fail if all fail.
+        // fetch_favicon_core catches Err from select_ok and returns Ok(None).
+
+        let result = futures::executor::block_on(fetch_favicon_core(hostname, &fetcher));
+        assert!(result.unwrap().is_none());
     }
 }
