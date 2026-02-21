@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -138,6 +139,11 @@ impl Table {
         self
     }
 
+    pub fn constraint(mut self, constraint: impl Into<String>) -> Self {
+        self.constraints.push(constraint.into());
+        self
+    }
+
     pub fn to_sql(&self) -> String {
         let mut defs: Vec<String> = self.columns.iter().map(|c| c.to_sql()).collect();
         defs.extend(self.constraints.clone());
@@ -147,6 +153,54 @@ impl Table {
             defs.join(", ")
         )
     }
+}
+
+#[macro_export]
+macro_rules! d1_column {
+    ($name:expr, $col_type:expr) => {
+        $crate::Column::new($name, $col_type)
+    };
+    ($name:expr, $col_type:expr, [$($constraint:ident),+ $(,)?]) => {
+        $crate::d1_column!(@apply $crate::Column::new($name, $col_type), $($constraint),+)
+    };
+    (@apply $col:expr, $constraint:ident) => {
+        ($col).$constraint()
+    };
+    (@apply $col:expr, $head:ident, $($tail:ident),+) => {
+        $crate::d1_column!(@apply ($col).$head(), $($tail),+)
+    };
+}
+
+#[macro_export]
+macro_rules! d1_table {
+    (
+        $name:expr,
+        columns = [$($column:expr),+ $(,)?]
+        $(, constraints = [$($constraint:expr),* $(,)?])?
+        $(,)?
+    ) => {{
+        let table = $crate::Table::new($name);
+        let table = $crate::d1_table!(@with_columns table, $($column),+);
+        $(
+            let table = $crate::d1_table!(@with_constraints table, $($constraint),*);
+        )?
+        table
+    }};
+    (@with_columns $table:expr, $column:expr) => {
+        ($table).column($column)
+    };
+    (@with_columns $table:expr, $column:expr, $($rest:expr),+) => {
+        $crate::d1_table!(@with_columns ($table).column($column), $($rest),+)
+    };
+    (@with_constraints $table:expr) => {
+        $table
+    };
+    (@with_constraints $table:expr, $constraint:expr) => {
+        ($table).constraint($constraint)
+    };
+    (@with_constraints $table:expr, $head:expr, $($tail:expr),+) => {
+        $crate::d1_table!(@with_constraints ($table).constraint($head), $($tail),+)
+    };
 }
 
 // Alter Table Helpers for Migrations
@@ -182,4 +236,34 @@ impl AlterTable {
             None
         }
     }
+}
+
+pub fn additive_migration_sql(
+    from_table: &Table,
+    to_table: &Table,
+    from_indexes: &[Index],
+    to_indexes: &[Index],
+) -> Vec<String> {
+    let mut sql = Vec::new();
+
+    let from_columns: HashSet<&str> = from_table.columns.iter().map(|c| c.name.as_str()).collect();
+    for column in &to_table.columns {
+        if !from_columns.contains(column.name.as_str()) {
+            if let Some(stmt) = AlterTable::new(&to_table.name)
+                .add_column(column.clone())
+                .to_single_sql()
+            {
+                sql.push(stmt);
+            }
+        }
+    }
+
+    let from_index_names: HashSet<&str> = from_indexes.iter().map(|i| i.name.as_str()).collect();
+    for index in to_indexes {
+        if !from_index_names.contains(index.name.as_str()) {
+            sql.push(index.to_sql());
+        }
+    }
+
+    sql
 }

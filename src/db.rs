@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{Bindable, ColumnType, D1Database, Index, Migrator, Model, Repository, Table};
+use d1_orm::{Bindable, D1Database, Migrator, Model, Repository};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -60,6 +60,120 @@ pub struct UserItemSummary {
     pub score: Option<i32>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "users")]
+struct UserV1 {
+    #[d1(primary_key, auto_increment)]
+    pub id: i32,
+    #[d1(unique)]
+    pub email: String,
+    #[d1(unique)]
+    pub username: String,
+    pub password_hash: Option<String>,
+    pub github_id: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "users")]
+struct UserV2 {
+    #[d1(primary_key, auto_increment)]
+    pub id: i32,
+    #[d1(unique)]
+    pub email: String,
+    #[d1(unique)]
+    pub username: String,
+    pub password_hash: Option<String>,
+    pub github_id: Option<String>,
+    pub created_at: i64,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "users")]
+struct UserV4 {
+    #[d1(primary_key, auto_increment)]
+    pub id: i32,
+    #[d1(unique)]
+    pub email: String,
+    #[d1(unique)]
+    pub username: String,
+    pub password_hash: Option<String>,
+    pub github_id: Option<String>,
+    pub created_at: i64,
+    pub avatar_url: Option<String>,
+    pub telegram_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "sessions")]
+struct SessionV1 {
+    #[d1(primary_key, auto_increment)]
+    pub id: i32,
+    pub user_id: i32,
+    #[d1(unique)]
+    pub token: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(
+    table_name = "user_items_v2",
+    constraint = "PRIMARY KEY (user_id, title)",
+    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
+)]
+struct UserItemV1 {
+    #[d1(index)]
+    pub user_id: i32,
+    pub title: String,
+    pub status: i32,
+    pub score: Option<i32>,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(
+    table_name = "user_items_v2",
+    constraint = "PRIMARY KEY (user_id, title)",
+    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
+)]
+struct UserItemV5 {
+    #[d1(index)]
+    pub user_id: i32,
+    pub title: String,
+    pub status: i32,
+    pub score: Option<i32>,
+    pub updated_at: i64,
+    #[d1(index)]
+    pub begin_at: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(
+    table_name = "passkeys",
+    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
+)]
+struct PasskeyV3 {
+    #[d1(index)]
+    pub user_id: i32,
+    #[d1(primary_key)]
+    pub cred_id: String,
+    pub passkey_json: String,
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: i64,
+    pub counter: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Model)]
+#[d1(table_name = "passkey_states")]
+struct PasskeyStateV3 {
+    #[d1(primary_key)]
+    pub id: String,
+    pub state_json: String,
+    pub expires_at: i64,
+}
+
 #[async_trait(?Send)]
 pub trait Database {
     async fn migrate(&self) -> Result<()>;
@@ -112,19 +226,6 @@ pub trait Database {
     ) -> Result<Vec<UserItem>>;
 }
 
-trait IntoJsValue {
-    fn to_js(&self) -> JsValue;
-}
-
-impl<T: AsRef<str>> IntoJsValue for Option<T> {
-    fn to_js(&self) -> JsValue {
-        match self {
-            Some(s) => JsValue::from_str(s.as_ref()),
-            None => JsValue::NULL,
-        }
-    }
-}
-
 pub struct AppDatabase {
     db: D1Database,
 }
@@ -156,16 +257,6 @@ impl AppDatabase {
         }
     }
 
-    fn validate_update_field(field: &str) -> Result<()> {
-        match field {
-            "password_hash" | "telegram_id" | "github_id" => Ok(()),
-            _ => Err(Error::RustError(format!(
-                "Invalid field for update: {}",
-                field
-            ))),
-        }
-    }
-
     async fn get_user_by_field(&self, field: &str, value: JsValue) -> Result<Option<User>> {
         Self::validate_select_field(field)?;
         // Use ORM
@@ -175,100 +266,55 @@ impl AppDatabase {
             .map_err(|e| Error::RustError(e.to_string()))
     }
 
-    async fn update_user_field(&self, id: i32, field: &str, value: JsValue) -> Result<()> {
-        Self::validate_update_field(field)?;
-        // Use ORM
-        let update = self.users().update().set(field, value).where_eq("id", id);
-
-        self.users()
-            .execute(update)
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::RustError(e.to_string()))
-    }
-
     fn migration_v1_sql() -> Vec<String> {
-        use d1_orm::Column;
-
-        let mut stmts = Vec::new();
-
-        let users_table = Table::new("users")
-            .column(
-                Column::new("id", ColumnType::Integer)
-                    .primary_key()
-                    .auto_increment(),
-            )
-            .column(Column::new("email", ColumnType::Text).unique())
-            .column(Column::new("username", ColumnType::Text).unique())
-            .column(Column::new("password_hash", ColumnType::Text))
-            .column(Column::new("github_id", ColumnType::Text))
-            .column(Column::new("created_at", ColumnType::Integer));
-        stmts.push(users_table.to_sql());
-
-        let sessions_table = Table::new("sessions")
-            .column(
-                Column::new("id", ColumnType::Integer)
-                    .primary_key()
-                    .auto_increment(),
-            )
-            .column(Column::new("user_id", ColumnType::Integer))
-            .column(Column::new("token", ColumnType::Text).unique())
-            .column(Column::new("expires_at", ColumnType::Integer));
-        stmts.push(sessions_table.to_sql());
-
-        let mut user_items = Table::new("user_items_v2")
-            .column(Column::new("user_id", ColumnType::Integer))
-            .column(Column::new("title", ColumnType::Text))
-            .column(Column::new("status", ColumnType::Integer))
-            .column(Column::new("score", ColumnType::Integer))
-            .column(Column::new("updated_at", ColumnType::Integer));
-        user_items
-            .constraints
-            .push("PRIMARY KEY (user_id, title)".to_string());
-        user_items
-            .constraints
-            .push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
-        stmts.push(user_items.to_sql());
-
-        stmts.push(
-            Index::new("idx_user_items_v2_user_id", "user_items_v2")
-                .column("user_id")
-                .to_sql(),
-        );
-
+        let mut stmts = vec![
+            UserV1::schema().to_sql(),
+            SessionV1::schema().to_sql(),
+            UserItemV1::schema().to_sql(),
+        ];
+        stmts.extend(UserItemV1::indexes().into_iter().map(|idx| idx.to_sql()));
         stmts
     }
 
     fn migration_v3_sql() -> Vec<String> {
-        use d1_orm::Column;
-
-        let mut stmts = Vec::new();
-
-        let mut passkeys = Table::new("passkeys")
-            .column(Column::new("user_id", ColumnType::Integer))
-            .column(Column::new("cred_id", ColumnType::Text).primary_key())
-            .column(Column::new("passkey_json", ColumnType::Text))
-            .column(Column::new("name", ColumnType::Text))
-            .column(Column::new("created_at", ColumnType::Integer))
-            .column(Column::new("last_used_at", ColumnType::Integer))
-            .column(Column::new("counter", ColumnType::Integer));
-        passkeys
-            .constraints
-            .push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
-        stmts.push(passkeys.to_sql());
-        stmts.push(
-            Index::new("idx_passkeys_user_id", "passkeys")
-                .column("user_id")
-                .to_sql(),
-        );
-
-        let states = Table::new("passkey_states")
-            .column(Column::new("id", ColumnType::Text).primary_key())
-            .column(Column::new("state_json", ColumnType::Text))
-            .column(Column::new("expires_at", ColumnType::Integer));
-        stmts.push(states.to_sql());
-
+        let mut stmts = vec![
+            PasskeyV3::schema().to_sql(),
+            PasskeyStateV3::schema().to_sql(),
+        ];
+        stmts.extend(PasskeyV3::indexes().into_iter().map(|idx| idx.to_sql()));
         stmts
+    }
+
+    fn migration_v2_sql() -> Vec<String> {
+        d1_orm::additive_migration_sql(
+            &UserV1::schema(),
+            &UserV2::schema(),
+            &UserV1::indexes(),
+            &UserV2::indexes(),
+        )
+    }
+
+    fn migration_v4_sql() -> Vec<String> {
+        let mut sql = d1_orm::additive_migration_sql(
+            &UserV2::schema(),
+            &UserV4::schema(),
+            &UserV2::indexes(),
+            &UserV4::indexes(),
+        );
+        sql.push(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)"
+                .to_string(),
+        );
+        sql
+    }
+
+    fn migration_v5_sql() -> Vec<String> {
+        d1_orm::additive_migration_sql(
+            &UserItemV1::schema(),
+            &UserItemV5::schema(),
+            &UserItemV1::indexes(),
+            &UserItemV5::indexes(),
+        )
     }
 }
 
@@ -287,7 +333,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 2,
-                sql = "ALTER TABLE users ADD COLUMN avatar_url TEXT",
+                sqls = Self::migration_v2_sql(),
                 infer = [d1_orm::d1_probe!(column "users", "avatar_url")]
             ),
             d1_orm::d1_migration!(
@@ -300,10 +346,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 4,
-                sql = [
-                    "ALTER TABLE users ADD COLUMN telegram_id TEXT",
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)"
-                ],
+                sqls = Self::migration_v4_sql(),
                 infer = [
                     d1_orm::d1_probe!(column "users", "telegram_id"),
                     d1_orm::d1_probe!(index "idx_users_telegram_id")
@@ -311,10 +354,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 5,
-                sql = [
-                    "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER",
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at)"
-                ],
+                sqls = Self::migration_v5_sql(),
                 infer = [
                     d1_orm::d1_probe!(column "user_items_v2", "begin_at"),
                     d1_orm::d1_probe!(index "idx_user_items_v2_begin_at")
@@ -338,22 +378,19 @@ impl Database for AppDatabase {
         avatar_url: Option<&str>,
     ) -> Result<User> {
         let created_at = utils::now_utc_ms();
+        let user = User {
+            id: 0,
+            email: email.to_string(),
+            username: username.to_string(),
+            avatar_url: avatar_url.map(str::to_string),
+            password_hash: password_hash.map(str::to_string),
+            github_id: github_id.map(str::to_string),
+            telegram_id: telegram_id.map(str::to_string),
+            created_at,
+        };
 
-        let insert = self
-            .users()
-            .insert()
-            .set("email", email)
-            .set("username", username)
-            .set("password_hash", password_hash.to_js())
-            .set("github_id", github_id.to_js())
-            .set("telegram_id", telegram_id.to_js())
-            .set("avatar_url", avatar_url.to_js())
-            .set("created_at", created_at as f64)
-            .returning("*");
-
-        let result = self
-            .users()
-            .insert_one(insert)
+        let result = user
+            .insert_returning(&self.db)
             .await
             .map_err(|e| Error::RustError(e.to_string()))?;
         result.ok_or_else(|| Error::RustError("Failed to create user".to_string()))
@@ -365,8 +402,7 @@ impl Database for AppDatabase {
     }
 
     async fn get_user_by_id(&self, id: i32) -> Result<Option<User>> {
-        self.users()
-            .find_by_id(id)
+        User::find_by_pk(&self.db, id)
             .await
             .map_err(|e| Error::RustError(e.to_string()))
     }
@@ -393,49 +429,65 @@ impl Database for AppDatabase {
         new_email: Option<&str>,
         new_avatar_url: Option<&str>,
     ) -> Result<()> {
-        let mut update = self
-            .users()
-            .update()
-            .where_eq("id", id)
-            .set("username", new_username)
-            .set("avatar_url", new_avatar_url.to_js());
+        if let Some(mut user) = self.get_user_by_id(id).await? {
+            user.username = new_username.to_string();
+            user.avatar_url = new_avatar_url.map(str::to_string);
+            if let Some(email) = new_email {
+                user.email = email.to_string();
+            }
 
-        if let Some(email) = new_email {
-            update = update.set("email", email);
+            user.update(&self.db)
+                .await
+                .map(|_| ())
+                .map_err(|e| Error::RustError(e.to_string()))?;
         }
 
-        self.users()
-            .execute(update)
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::RustError(e.to_string()))
+        Ok(())
     }
 
     async fn update_user_password(&self, id: i32, password_hash: &str) -> Result<()> {
-        self.update_user_field(id, "password_hash", JsValue::from_str(password_hash))
-            .await
+        if let Some(mut user) = self.get_user_by_id(id).await? {
+            user.password_hash = Some(password_hash.to_string());
+            user.update(&self.db)
+                .await
+                .map(|_| ())
+                .map_err(|e| Error::RustError(e.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn update_user_telegram_id(&self, id: i32, telegram_id: Option<&str>) -> Result<()> {
-        self.update_user_field(id, "telegram_id", telegram_id.to_js())
-            .await
+        if let Some(mut user) = self.get_user_by_id(id).await? {
+            user.telegram_id = telegram_id.map(str::to_string);
+            user.update(&self.db)
+                .await
+                .map(|_| ())
+                .map_err(|e| Error::RustError(e.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn update_user_github_id(&self, id: i32, github_id: Option<&str>) -> Result<()> {
-        self.update_user_field(id, "github_id", github_id.to_js())
-            .await
+        if let Some(mut user) = self.get_user_by_id(id).await? {
+            user.github_id = github_id.map(str::to_string);
+            user.update(&self.db)
+                .await
+                .map(|_| ())
+                .map_err(|e| Error::RustError(e.to_string()))?;
+        }
+        Ok(())
     }
 
     async fn create_session(&self, user_id: i32, token: &str, expires_at: i64) -> Result<()> {
-        let insert = self
-            .sessions()
-            .insert()
-            .set("user_id", user_id)
-            .set("token", token)
-            .set("expires_at", expires_at as f64);
+        let session = Session {
+            id: 0,
+            user_id,
+            token: token.to_string(),
+            expires_at,
+        };
 
-        self.sessions()
-            .execute(insert)
+        session
+            .insert(&self.db)
             .await
             .map(|_| ())
             .map_err(|e| Error::RustError(e.to_string()))
@@ -822,20 +874,5 @@ mod tests {
         assert!(AppDatabase::validate_select_field("created_at").is_err());
         assert!(AppDatabase::validate_select_field("avatar_url").is_err());
         assert!(AppDatabase::validate_select_field("1; DROP TABLE users").is_err());
-    }
-
-    #[test]
-    fn test_validate_update_field() {
-        // Allowed fields
-        assert!(AppDatabase::validate_update_field("password_hash").is_ok());
-        assert!(AppDatabase::validate_update_field("telegram_id").is_ok());
-        assert!(AppDatabase::validate_update_field("github_id").is_ok());
-
-        // Disallowed fields
-        assert!(AppDatabase::validate_update_field("email").is_err());
-        assert!(AppDatabase::validate_update_field("username").is_err());
-        assert!(AppDatabase::validate_update_field("id").is_err());
-        assert!(AppDatabase::validate_update_field("avatar_url").is_err());
-        assert!(AppDatabase::validate_update_field("1; DROP TABLE users").is_err());
     }
 }
