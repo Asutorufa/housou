@@ -292,27 +292,21 @@ function DetailsModalContent({
 
                         const rawDescription = info.description || "";
 
-                        // Use a hook to replace <br> with newlines safely during sanitization
-                        DOMPurify.addHook(
-                          "uponSanitizeElement",
-                          (node, data) => {
-                            if (data.tagName === "br") {
-                              const doc = node.ownerDocument || document;
-                              node.parentNode?.replaceChild(
-                                doc.createTextNode("\n"),
-                                node,
-                              );
-                            }
-                          },
-                        );
+                        // Sanitize and get a DOM fragment to avoid global hooks
+                        const fragment = DOMPurify.sanitize(rawDescription, {
+                          ...cleanConfig,
+                          RETURN_DOM_FRAGMENT: true,
+                        });
 
-                        const sanitized = DOMPurify.sanitize(
-                          rawDescription,
-                          cleanConfig,
-                        );
+                        // Replace <br> with newlines in the fragment
+                        fragment.querySelectorAll("br").forEach((br) => {
+                          br.replaceWith("\n");
+                        });
 
-                        // Clean up the hook
-                        DOMPurify.removeHook("uponSanitizeElement");
+                        // Serialize back to string
+                        const container = document.createElement("div");
+                        container.appendChild(fragment);
+                        const sanitized = container.innerHTML;
 
                         // Collapse multiple newlines into max 2
                         const collapsed = sanitized
