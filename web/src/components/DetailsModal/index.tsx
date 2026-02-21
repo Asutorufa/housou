@@ -291,14 +291,31 @@ function DetailsModalContent({
                         };
 
                         const rawDescription = info.description || "";
+
+                        // Use a hook to replace <br> with newlines safely during sanitization
+                        DOMPurify.addHook(
+                          "uponSanitizeElement",
+                          (node, data) => {
+                            if (data.tagName === "br") {
+                              const doc = node.ownerDocument || document;
+                              node.parentNode?.replaceChild(
+                                doc.createTextNode("\n"),
+                                node,
+                              );
+                            }
+                          },
+                        );
+
                         const sanitized = DOMPurify.sanitize(
                           rawDescription,
                           cleanConfig,
                         );
 
-                        // Collapse multiple newlines/brs into max 2
+                        // Clean up the hook
+                        DOMPurify.removeHook("uponSanitizeElement");
+
+                        // Collapse multiple newlines into max 2
                         const collapsed = sanitized
-                          .replace(/<br\s*\/?>/gi, "\n") // Convert br to newline
                           .replace(/\n{2,}/g, "\n") // Max 2 newlines
                           .trim();
 

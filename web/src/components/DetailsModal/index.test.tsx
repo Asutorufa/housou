@@ -132,4 +132,32 @@ describe("DetailsModal XSS Prevention", () => {
     // It might be present as text if rendered differently, but here the loop filters it out completely if url is invalid.
     expect(screen.queryByText("Malicious Site")).toBeNull();
   });
+
+  it("converts <br> tags to newlines", () => {
+    const mockAnimeWithBr = {
+      ...mockAnime,
+      info: {
+        ...mockAnime.info,
+        description: "Line 1<br>Line 2<br />Line 3",
+      } as UnifiedMetadata,
+    };
+
+    render(
+      <DetailsModal
+        isOpen={true}
+        onClose={() => {}}
+        anime={mockAnimeWithBr}
+        items={mockItems}
+        siteMeta={mockSiteMeta}
+      />,
+    );
+
+    const descriptionContainer =
+      screen.getByText("あらすじ").nextElementSibling;
+    expect(descriptionContainer).toBeTruthy();
+    // Check if innerHTML has newlines (which will be rendered due to whitespace-pre-wrap)
+    // The current implementation replaces <br> with \n.
+    // So innerHTML should be "Line 1\nLine 2\nLine 3" (approximately)
+    expect(descriptionContainer?.innerHTML).toContain("Line 1\nLine 2\nLine 3");
+  });
 });
