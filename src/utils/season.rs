@@ -17,11 +17,16 @@ pub fn get_season_timestamp_range(year: i32, season: Option<&str>) -> Result<(i6
         Some("Summer") => (7, 9),
         Some("Autumn") => (10, 12),
         None => (1, 12),
-        Some(other) => return Err(format!("Invalid season: {}", other)),
+        Some(other) => {
+            return Err(format!(
+                "Invalid season: {}. Expected one of 'Winter', 'Spring', 'Summer', 'Autumn', or None.",
+                other
+            ));
+        }
     };
 
     let start_month_enum = Month::try_from(start_month as u8)
-        .map_err(|_| format!("Invalid start month: {}", start_month))?;
+        .map_err(|_| format!("Failed to convert {} to Month enum.", start_month))?;
 
     let start_date = Date::from_calendar_date(year, start_month_enum, 1)
         .map_err(|e| format!("Invalid start date: {}", e))?;
@@ -36,7 +41,7 @@ pub fn get_season_timestamp_range(year: i32, season: Option<&str>) -> Result<(i6
     };
 
     let next_month_enum = Month::try_from(next_month as u8)
-        .map_err(|_| format!("Invalid next month: {}", next_month))?;
+        .map_err(|_| format!("Failed to convert {} to Month enum.", next_month))?;
 
     let end_date = Date::from_calendar_date(next_year, next_month_enum, 1)
         .map_err(|e| format!("Invalid end date: {}", e))?;
@@ -166,6 +171,6 @@ mod tests {
     fn test_invalid_season() {
         let res = get_season_timestamp_range(2024, Some("Invalid"));
         assert!(res.is_err());
-        assert_eq!(res.err(), Some("Invalid season: Invalid".to_string()));
+        assert_eq!(res.err(), Some("Invalid season: Invalid. Expected one of 'Winter', 'Spring', 'Summer', 'Autumn', or None.".to_string()));
     }
 }
