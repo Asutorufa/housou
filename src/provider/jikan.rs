@@ -380,26 +380,29 @@ mod tests {
         let anime = create_anime(json);
         let metadata = convert_to_metadata(anime);
 
-        assert_eq!(
-            metadata.source,
-            MetadataSource::Mal("1".to_string())
-        );
+        assert_eq!(metadata.source, MetadataSource::Mal("1".to_string()));
         assert_eq!(metadata.title.romaji, Some("Cowboy Bebop".to_string()));
         assert_eq!(metadata.title.english, Some("Cowboy Bebop".to_string()));
-        assert_eq!(metadata.title.native, Some("カウボーイビバップ".to_string()));
+        assert_eq!(
+            metadata.title.native,
+            Some("カウボーイビバップ".to_string())
+        );
 
         let translate = metadata.title_translate.unwrap();
-        assert_eq!(
-            translate.get("US"),
-            Some(&vec!["Cowboy Bebop".to_string()])
-        );
+        assert_eq!(translate.get("US"), Some(&vec!["Cowboy Bebop".to_string()]));
         assert_eq!(
             translate.get("JP"),
             Some(&vec!["カウボーイビバップ".to_string()])
         );
 
-        assert_eq!(metadata.cover_image.large, Some("large_jpg_url".to_string()));
-        assert_eq!(metadata.cover_image.extra_large, Some("jpg_url".to_string()));
+        assert_eq!(
+            metadata.cover_image.large,
+            Some("large_jpg_url".to_string())
+        );
+        assert_eq!(
+            metadata.cover_image.extra_large,
+            Some("jpg_url".to_string())
+        );
         assert_eq!(metadata.average_score, Some(87)); // 8.75 * 10 = 87.5 -> 87 as i32? Or rounding? 8.75 * 10.0 = 87.5. Cast to i32 truncates.
         assert_eq!(metadata.episodes, Some(26));
         assert_eq!(metadata.genres, vec!["Action", "Sci-Fi"]);
