@@ -84,7 +84,6 @@ pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
         // We log migration errors but do not block the whole app.
         if let Err(e) = db.migrate().await {
             console_error!("Migration failed: {}", e);
-            MIGRATION_DONE.store(false, Ordering::Relaxed);
         }
     }
 
