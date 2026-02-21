@@ -129,6 +129,7 @@ impl DatabaseExecutor for SqliteExecutor {
 mod tests {
     use super::*;
     use crate::db::AppDatabase;
+    use passkey_server::PasskeyStore;
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_sqlite_workflow() -> Result<()> {
@@ -198,6 +199,87 @@ mod tests {
             .map_err(|e| Error::RustError(e.to_string()))?;
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "Anime Title");
+
+        // --- Passkey Tests ---
+        // Create passkey
+        let cred_id = "cred123";
+        let public_key = "pubkey_json";
+        let pk_name = "My Phone";
+        let now = crate::utils::now_utc_ms();
+
+        db.create_passkey(user.id.to_string(), cred_id, public_key, pk_name, 0, now)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Get passkey
+        let pk = db
+            .get_passkey(cred_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?
+            .expect("Passkey not found");
+        assert_eq!(pk.user_id, user.id.to_string());
+        assert_eq!(pk.public_key, public_key);
+        assert_eq!(pk.name, pk_name);
+
+        // List passkeys
+        let pks = db
+            .list_passkeys(user.id.to_string())
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        assert_eq!(pks.len(), 1);
+        assert_eq!(pks[0].cred_id, cred_id);
+
+        // Update counter and name
+        db.update_passkey_counter(cred_id, 1, now + 100)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        db.update_passkey_name(cred_id, "My New Phone")
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        let pk_updated = db
+            .get_passkey(cred_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?
+            .expect("Passkey not found");
+        assert_eq!(pk_updated.counter, 1);
+        assert_eq!(pk_updated.name, "My New Phone");
+
+        // Passkey State Management
+        let state_id = "state_id_123";
+        let state_json = "{\"challenge\":\"abc\"}";
+        let expires_at = now + 60000;
+
+        db.save_state(state_id, state_json, expires_at)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        let state = db
+            .get_state(state_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?
+            .expect("State not found");
+        assert_eq!(state.id, state_id);
+        assert_eq!(state.state_json, state_json);
+
+        db.delete_state(state_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        let state_deleted = db
+            .get_state(state_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        assert!(state_deleted.is_none());
+
+        // Cleanup
+        db.delete_passkey(user.id.to_string(), cred_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        let pk_deleted = db
+            .get_passkey(cred_id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        assert!(pk_deleted.is_none());
 
         Ok(())
     }
