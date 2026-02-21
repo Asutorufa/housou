@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Index, Model, Repository, Table};
+use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Model, Repository, Table};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -226,7 +226,7 @@ impl Database for AppDatabase {
                     // For version 1 (initial snapshot), we MUST NOT use dynamic schema derivation
                     // (e.g. User::schema()) because the struct definition evolves over time.
                     // Instead, we manually reconstruct the exact schema state of version 1.
-                    use d1_orm::{Constraint, Column};
+                    use d1_orm::Column;
 
                     let mut stmts = Vec::new();
 
@@ -288,7 +288,7 @@ impl Database for AppDatabase {
                     // v3 migration will create them early.
 
                     // Best practice: Snapshot v3 state.
-                    use d1_orm::{Column, Constraint};
+                    use d1_orm::Column;
                     let mut stmts = Vec::new();
 
                     // passkeys
