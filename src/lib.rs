@@ -81,9 +81,11 @@ pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
             .is_ok()
     {
         let db = db::AppDatabase::new(d1);
-        // We log migration errors but do not block the whole app.
         if let Err(e) = db.migrate().await {
             console_error!("Migration failed: {}", e);
+            if cfg!(feature = "dev") {
+                return Response::error(format!("Migration failed: {}", e), 500);
+            }
         }
     }
 

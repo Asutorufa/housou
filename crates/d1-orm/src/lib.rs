@@ -23,6 +23,7 @@ pub use worker::D1Database;
 pub use worker::D1Result;
 
 pub fn to_js_value<T: serde::Serialize>(value: &T) -> Result<JsValue> {
-    serde_wasm_bindgen::to_value(value)
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_missing_as_null(true);
+    serde::Serialize::serialize(value, &serializer)
         .map_err(|e| Error::Database(format!("failed to serialize value into JsValue: {}", e)))
 }

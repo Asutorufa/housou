@@ -114,7 +114,7 @@ struct AppliedMigration {
 
 #[derive(Debug, Deserialize)]
 struct ExistsRow {
-    exists: i32,
+    found: i32,
 }
 
 impl<'a> Migrator<'a> {
@@ -201,26 +201,26 @@ impl<'a> Migrator<'a> {
     async fn table_exists(&self, table: &str) -> Result<bool> {
         let row = self
             .db
-            .prepare("SELECT 1 AS exists FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .prepare("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?")
             .bind(&[JsValue::from_str(table)])?
             .first::<ExistsRow>(None)
             .await?;
-        Ok(row.map(|r| r.exists == 1).unwrap_or(false))
+        Ok(row.map(|r| r.found == 1).unwrap_or(false))
     }
 
     async fn index_exists(&self, index: &str) -> Result<bool> {
         let row = self
             .db
-            .prepare("SELECT 1 AS exists FROM sqlite_master WHERE type = 'index' AND name = ?")
+            .prepare("SELECT 1 AS found FROM sqlite_master WHERE type = 'index' AND name = ?")
             .bind(&[JsValue::from_str(index)])?
             .first::<ExistsRow>(None)
             .await?;
-        Ok(row.map(|r| r.exists == 1).unwrap_or(false))
+        Ok(row.map(|r| r.found == 1).unwrap_or(false))
     }
 
     async fn column_exists(&self, table: &str, column: &str) -> Result<bool> {
         let sql = format!(
-            "SELECT 1 AS exists FROM pragma_table_info('{}') WHERE name = ? LIMIT 1",
+            "SELECT 1 AS found FROM pragma_table_info('{}') WHERE name = ? LIMIT 1",
             table
         );
         let row = self
@@ -229,7 +229,7 @@ impl<'a> Migrator<'a> {
             .bind(&[JsValue::from_str(column)])?
             .first::<ExistsRow>(None)
             .await?;
-        Ok(row.map(|r| r.exists == 1).unwrap_or(false))
+        Ok(row.map(|r| r.found == 1).unwrap_or(false))
     }
 
     async fn record_migration(&self, version: i32, applied_at: i64) -> Result<()> {
