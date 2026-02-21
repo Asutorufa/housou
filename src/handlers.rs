@@ -239,7 +239,7 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
     }
 }
 
-pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
+pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Result<Response> {
     let req_url = req.url()?;
     let cache_origin = req_url.origin().ascii_serialization();
 
@@ -259,10 +259,10 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         }
 
         let futures = requests.into_iter().map(|r| {
-            let env = &env;
+            let ctx = &ctx;
             let cache_origin = cache_origin.clone();
             async move {
-                let metadata = provider::fetch_metadata(&r, env, &cache_origin).await.ok();
+                let metadata = provider::fetch_metadata(&r, ctx, &cache_origin).await.ok();
                 provider::MetadataResponse {
                     request_id: r.request_id,
                     metadata,
@@ -297,7 +297,7 @@ pub async fn handle_metadata(mut req: Request, env: Env) -> Result<Response> {
         year,
     };
 
-    provider::get_metadata(args, &env, &cache_origin).await
+    provider::get_metadata(args, &ctx, &cache_origin).await
 }
 
 #[derive(serde_derive::Deserialize)]
