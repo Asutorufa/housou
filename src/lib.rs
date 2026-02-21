@@ -17,6 +17,36 @@ pub trait ResponseExt {
     fn add_security_headers(self) -> Result<Response>;
 }
 
+// Abstraction for setting headers to allow testing without worker::Response
+pub(crate) trait HeaderSetter {
+    fn set_header(&mut self, key: &str, value: &str) -> Result<()>;
+}
+
+impl HeaderSetter for Response {
+    fn set_header(&mut self, key: &str, value: &str) -> Result<()> {
+        self.headers_mut().set(key, value)
+    }
+}
+
+// Pure logic implementations
+fn add_cors_header_impl(setter: &mut impl HeaderSetter, origin: &str) -> Result<()> {
+    setter.set_header("Access-Control-Allow-Origin", origin)
+}
+
+fn add_header_impl(setter: &mut impl HeaderSetter, key: &str, value: &str) -> Result<()> {
+    setter.set_header(key, value)
+}
+
+fn add_security_headers_impl(setter: &mut impl HeaderSetter) -> Result<()> {
+    setter.set_header(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none';",
+    )?;
+    setter.set_header("X-Content-Type-Options", "nosniff")?;
+    setter.set_header("X-Frame-Options", "DENY")?;
+    Ok(())
+}
+
 static CORS_ALLOWED_ORIGIN: OnceLock<String> = OnceLock::new();
 static MIGRATION_DONE: AtomicBool = AtomicBool::new(false);
 
@@ -27,23 +57,18 @@ impl ResponseExt for Response {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|_| "*".to_string())
         });
-        self.headers_mut()
-            .set("Access-Control-Allow-Origin", allowed_origin)?;
+        add_cors_header_impl(&mut self, allowed_origin)?;
         Ok(self)
     }
 
     fn add_header(mut self, key: &str, value: &str) -> Result<Response> {
-        self.headers_mut().set(key, value)?;
+        add_header_impl(&mut self, key, value)?;
         Ok(self)
     }
 
-    fn add_security_headers(self) -> Result<Response> {
-        self.add_header(
-            "Content-Security-Policy",
-            "default-src 'none'; frame-ancestors 'none';",
-        )?
-        .add_header("X-Content-Type-Options", "nosniff")?
-        .add_header("X-Frame-Options", "DENY")
+    fn add_security_headers(mut self) -> Result<Response> {
+        add_security_headers_impl(&mut self)?;
+        Ok(self)
     }
 }
 
@@ -218,4 +243,68 @@ async fn router(req: Request, env: Env) -> Result<Response> {
         .options("/api/auth/*path", |_, _| Response::empty());
 
     router.run(req, env).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    struct MockHeaderSetter {
+        headers: HashMap<String, String>,
+    }
+
+    impl MockHeaderSetter {
+        fn new() -> Self {
+            Self {
+                headers: HashMap::new(),
+            }
+        }
+    }
+
+    impl HeaderSetter for MockHeaderSetter {
+        fn set_header(&mut self, key: &str, value: &str) -> Result<()> {
+            self.headers.insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_add_header() {
+        let mut setter = MockHeaderSetter::new();
+        add_header_impl(&mut setter, "Content-Type", "application/json").unwrap();
+        assert_eq!(
+            setter.headers.get("Content-Type"),
+            Some(&"application/json".to_string())
+        );
+    }
+
+    #[test]
+    fn test_add_security_headers() {
+        let mut setter = MockHeaderSetter::new();
+        add_security_headers_impl(&mut setter).unwrap();
+        assert_eq!(
+            setter.headers.get("Content-Security-Policy"),
+            Some(&"default-src 'none'; frame-ancestors 'none';".to_string())
+        );
+        assert_eq!(
+            setter.headers.get("X-Content-Type-Options"),
+            Some(&"nosniff".to_string())
+        );
+        assert_eq!(
+            setter.headers.get("X-Frame-Options"),
+            Some(&"DENY".to_string())
+        );
+    }
+
+    #[test]
+    fn test_add_cors_header() {
+        let mut setter = MockHeaderSetter::new();
+        let origin = "https://example.com";
+        add_cors_header_impl(&mut setter, origin).unwrap();
+        assert_eq!(
+            setter.headers.get("Access-Control-Allow-Origin"),
+            Some(&origin.to_string())
+        );
+    }
 }
