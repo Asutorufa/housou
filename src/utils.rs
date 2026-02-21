@@ -57,9 +57,10 @@ pub fn normalize_title_translate(
     normalized
 }
 
-pub fn now_utc() -> time::OffsetDateTime {
+pub fn now_utc() -> Result<time::OffsetDateTime> {
     let millis = Date::now().as_millis();
-    time::OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000).unwrap()
+    time::OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000)
+        .map_err(|e| Error::RustError(format!("Invalid timestamp: {}", e)))
 }
 
 pub fn now_utc_ms() -> i64 {

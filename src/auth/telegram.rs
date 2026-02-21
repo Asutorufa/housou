@@ -23,7 +23,7 @@ pub struct TelegramAuthData {
 
 fn verify_telegram_auth(data: &TelegramAuthData, bot_token: &str) -> Result<()> {
     // Check auth_date (prevent replay attacks, e.g., allow within 24 hours)
-    let now = crate::utils::now_utc().unix_timestamp();
+    let now = crate::utils::now_utc()?.unix_timestamp();
     if (now - data.auth_date).abs() > 86400 {
         return Err(Error::RustError("Telegram auth data expired".to_string()));
     }

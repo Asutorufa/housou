@@ -5,7 +5,7 @@ use crate::utils;
 use worker::*;
 
 pub async fn fetch_items(year: i32, season: Option<&str>) -> Result<Vec<Item>> {
-    let now = crate::utils::now_utc();
+    let now = crate::utils::now_utc()?;
     let current_year = now.year();
     let current_season_str = get_current_season_from_now(now);
 

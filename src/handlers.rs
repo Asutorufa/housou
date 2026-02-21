@@ -88,7 +88,7 @@ pub async fn handle_config(_req: Request, env: Env) -> Result<Response> {
     let site_meta = fetch_site_meta().await?;
 
     // Fixed range of years to avoid fetching all month files just to get the list
-    let current_year = crate::utils::now_utc().year();
+    let current_year = crate::utils::now_utc()?.year();
     // Add +1 year for future schedule
     let years: Vec<i32> = (config::START_YEAR..=current_year + 1).rev().collect();
 
