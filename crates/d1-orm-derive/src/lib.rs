@@ -11,6 +11,8 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let mut primary_key = "id".to_string();
     let mut primary_key_ident: Option<Ident> = None;
     let mut table_constraints = Vec::<String>::new();
+    let mut table_since: i32 = 1;
+    let mut table_until: Option<i32> = None;
 
     // Parse struct attributes for table name
     for attr in &input.attrs {
@@ -30,6 +32,24 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                         table_constraints.push(lit.value());
                     }
                     Ok(())
+                } else if meta.path.is_ident("since") {
+                    let value = meta.value()?;
+                    let s: Lit = value.parse()?;
+                    if let Lit::Int(lit) = s {
+                        if let Ok(v) = lit.base10_parse::<i32>() {
+                            table_since = v;
+                        }
+                    }
+                    Ok(())
+                } else if meta.path.is_ident("until") {
+                    let value = meta.value()?;
+                    let s: Lit = value.parse()?;
+                    if let Lit::Int(lit) = s {
+                        if let Ok(v) = lit.base10_parse::<i32>() {
+                            table_until = Some(v);
+                        }
+                    }
+                    Ok(())
                 } else {
                     Ok(())
                 }
@@ -37,8 +57,8 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         }
     }
 
-    let mut columns_setup = Vec::new();
-    let mut indexes_setup = Vec::new();
+    let mut columns_at_setup = Vec::new();
+    let mut indexes_at_setup = Vec::new();
     let mut insert_setters = Vec::new();
     let mut update_setters = Vec::new();
 
@@ -53,6 +73,11 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 let mut constraints = Vec::new();
                 let mut is_primary_key = false;
                 let mut is_auto_increment = false;
+                let mut has_index = false;
+                let mut has_unique_index = false;
+                let mut field_since: i32 = 1;
+                let mut field_until: Option<i32> = None;
+                let mut force_integer = false;
 
                 // Heuristic type mapping
                 let type_str = quote!(#ty).to_string();
@@ -87,23 +112,36 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                             } else if meta.path.is_ident("unique") {
                                 constraints.push(quote! { d1_orm::Constraint::Unique });
                             } else if meta.path.is_ident("index") {
-                                let idx_name = format!("idx_{}_{}", table_name, field_name);
-                                indexes_setup.push(quote! {
-                                    d1_orm::Index::new(#idx_name, #table_name).column(#field_name)
-                                });
+                                has_index = true;
+                            } else if meta.path.is_ident("unique_index") {
+                                has_unique_index = true;
+                            } else if meta.path.is_ident("integer") {
+                                force_integer = true;
+                            } else if meta.path.is_ident("since") {
+                                let value = meta.value()?;
+                                let s: Lit = value.parse()?;
+                                if let Lit::Int(lit) = s {
+                                    if let Ok(v) = lit.base10_parse::<i32>() {
+                                        field_since = v;
+                                    }
+                                }
+                            } else if meta.path.is_ident("until") {
+                                let value = meta.value()?;
+                                let s: Lit = value.parse()?;
+                                if let Lit::Int(lit) = s {
+                                    if let Ok(v) = lit.base10_parse::<i32>() {
+                                        field_until = Some(v);
+                                    }
+                                }
                             }
                             Ok(())
                         });
                     }
                 }
 
-                columns_setup.push(quote! {
-                    d1_orm::Column {
-                        name: #field_name.to_string(),
-                        col_type: #col_type,
-                        constraints: vec![#(#constraints),*],
-                    }
-                });
+                if force_integer {
+                    col_type = quote! { d1_orm::ColumnType::Integer };
+                }
 
                 if primary_key == "id" && field_name == "id" && primary_key_ident.is_none() {
                     primary_key_ident = Some(ident.clone());
@@ -119,6 +157,50 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
                 if !is_primary_key {
                     update_setters.push(quote! {
                         update = update.set(#field_name, d1_orm::to_js_value(&self.#ident)?);
+                    });
+                }
+
+                let field_until_check = if let Some(until) = field_until {
+                    quote! { version <= #until }
+                } else {
+                    quote! { true }
+                };
+
+                columns_at_setup.push(quote! {
+                    if version >= #field_since && #field_until_check {
+                        columns.push(d1_orm::Column {
+                            name: #field_name.to_string(),
+                            col_type: #col_type,
+                            constraints: vec![#(#constraints),*],
+                        });
+                    }
+                });
+
+                if has_index {
+                    indexes_at_setup.push(quote! {
+                        if version >= #field_since && #field_until_check {
+                            indexes.push(
+                                d1_orm::Index::new(
+                                    &format!("idx_{}_{}", #table_name, #field_name),
+                                    #table_name,
+                                )
+                                .column(#field_name),
+                            );
+                        }
+                    });
+                }
+                if has_unique_index {
+                    indexes_at_setup.push(quote! {
+                        if version >= #field_since && #field_until_check {
+                            indexes.push(
+                                d1_orm::Index::new(
+                                    &format!("idx_{}_{}", #table_name, #field_name),
+                                    #table_name,
+                                )
+                                .column(#field_name)
+                                .unique(),
+                            );
+                        }
                     });
                 }
             }
@@ -143,6 +225,11 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         .iter()
         .map(|c| quote! { #c.to_string() })
         .collect::<Vec<_>>();
+    let table_until_check = if let Some(until) = table_until {
+        quote! { version <= #until }
+    } else {
+        quote! { true }
+    };
 
     let expanded = quote! {
         impl d1_orm::Model for #name {
@@ -153,63 +240,62 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
         }
 
         impl #name {
-            pub fn schema() -> d1_orm::Table {
-                d1_orm::Table {
+            pub fn schema_at(version: i32) -> Option<d1_orm::Table> {
+                if version < #table_since || !(#table_until_check) {
+                    return None;
+                }
+                let mut columns = Vec::new();
+                #(#columns_at_setup)*
+                Some(d1_orm::Table {
                     name: #table_name.to_string(),
-                    columns: vec![
-                        #(#columns_setup),*
-                    ],
+                    columns,
                     constraints: vec![
                         #(#table_constraints_setup),*
                     ],
+                })
+            }
+
+            pub fn indexes_at(version: i32) -> Vec<d1_orm::Index> {
+                if version < #table_since || !(#table_until_check) {
+                    return Vec::new();
                 }
-            }
-
-            pub fn indexes() -> Vec<d1_orm::Index> {
-                vec![
-                    #(#indexes_setup),*
-                ]
-            }
-
-            pub fn repo<'a>(db: &'a d1_orm::D1Database) -> d1_orm::Repository<'a, Self> {
-                d1_orm::Repository::new(db)
+                let mut indexes = Vec::new();
+                #(#indexes_at_setup)*
+                indexes
             }
 
             pub async fn find_by_pk(
                 db: &d1_orm::D1Database,
                 id: impl Into<d1_orm::JsValue> + Send,
             ) -> d1_orm::Result<Option<Self>> {
-                Self::repo(db).find_by_id(id).await
+                d1_orm::Repository::<Self>::new(db).find_by_id(id).await
             }
 
-            pub async fn delete_by_pk(
-                db: &d1_orm::D1Database,
-                id: impl Into<d1_orm::JsValue> + Send,
-            ) -> d1_orm::Result<()> {
-                Self::repo(db).delete_by_id(id).await
-            }
-
-            pub fn insert_query(&self) -> d1_orm::Result<d1_orm::Insert> {
+            fn insert_query(&self) -> d1_orm::Result<d1_orm::Insert> {
                 let mut insert = d1_orm::Insert::new(#table_name);
                 #(#insert_setters)*
                 Ok(insert)
             }
 
-            pub fn update_query(&self) -> d1_orm::Result<d1_orm::Update> {
+            fn update_query(&self) -> d1_orm::Result<d1_orm::Update> {
                 #update_query_body
             }
 
             pub async fn insert(&self, db: &d1_orm::D1Database) -> d1_orm::Result<d1_orm::D1Result> {
-                Self::repo(db).execute(self.insert_query()?).await
+                d1_orm::Repository::<Self>::new(db)
+                    .execute(self.insert_query()?)
+                    .await
             }
 
             pub async fn insert_returning(&self, db: &d1_orm::D1Database) -> d1_orm::Result<Option<Self>> {
                 let insert = self.insert_query()?.returning("*");
-                Self::repo(db).insert_one(insert).await
+                d1_orm::Repository::<Self>::new(db).insert_one(insert).await
             }
 
             pub async fn update(&self, db: &d1_orm::D1Database) -> d1_orm::Result<d1_orm::D1Result> {
-                Self::repo(db).execute(self.update_query()?).await
+                d1_orm::Repository::<Self>::new(db)
+                    .execute(self.update_query()?)
+                    .await
             }
         }
     };

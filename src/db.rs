@@ -9,6 +9,17 @@ use serde_derive::{Deserialize, Serialize};
 use worker::wasm_bindgen::JsValue;
 use worker::*;
 
+macro_rules! d1_version_diff_sql {
+    ($model:ty, $from:expr, $to:expr) => {{
+        d1_orm::additive_migration_sql(
+            &<$model>::schema_at($from).expect("from schema version should exist"),
+            &<$model>::schema_at($to).expect("to schema version should exist"),
+            &<$model>::indexes_at($from),
+            &<$model>::indexes_at($to),
+        )
+    }};
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Model)]
 #[d1(table_name = "users")]
 pub struct User {
@@ -18,6 +29,7 @@ pub struct User {
     pub email: String,
     #[d1(unique)]
     pub username: String,
+    #[d1(since = 2)]
     pub avatar_url: Option<String>,
     #[serde(skip_serializing)]
     pub password_hash: Option<String>,
@@ -26,6 +38,7 @@ pub struct User {
     pub github_id: Option<String>,
     #[serde(skip_serializing)]
     #[allow(dead_code)]
+    #[d1(since = 4, unique_index)]
     pub telegram_id: Option<String>,
     pub created_at: i64,
 }
@@ -41,15 +54,20 @@ pub struct Session {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "user_items_v2")]
+#[d1(
+    table_name = "user_items_v2",
+    constraint = "PRIMARY KEY (user_id, title)",
+    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
+)]
 pub struct UserItem {
     #[d1(index)]
     pub user_id: i32,
     pub title: String, // Changed from item_id
+    #[d1(integer)]
     pub status: UserStatus,
     pub score: Option<i32>,
     pub updated_at: i64,
-    #[d1(index)]
+    #[d1(index, since = 5)]
     pub begin_at: Option<i64>,
 }
 
@@ -58,120 +76,6 @@ pub struct UserItem {
 pub struct UserItemSummary {
     pub status: UserStatus,
     pub score: Option<i32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "users")]
-struct UserV1 {
-    #[d1(primary_key, auto_increment)]
-    pub id: i32,
-    #[d1(unique)]
-    pub email: String,
-    #[d1(unique)]
-    pub username: String,
-    pub password_hash: Option<String>,
-    pub github_id: Option<String>,
-    pub created_at: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "users")]
-struct UserV2 {
-    #[d1(primary_key, auto_increment)]
-    pub id: i32,
-    #[d1(unique)]
-    pub email: String,
-    #[d1(unique)]
-    pub username: String,
-    pub password_hash: Option<String>,
-    pub github_id: Option<String>,
-    pub created_at: i64,
-    pub avatar_url: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "users")]
-struct UserV4 {
-    #[d1(primary_key, auto_increment)]
-    pub id: i32,
-    #[d1(unique)]
-    pub email: String,
-    #[d1(unique)]
-    pub username: String,
-    pub password_hash: Option<String>,
-    pub github_id: Option<String>,
-    pub created_at: i64,
-    pub avatar_url: Option<String>,
-    pub telegram_id: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "sessions")]
-struct SessionV1 {
-    #[d1(primary_key, auto_increment)]
-    pub id: i32,
-    pub user_id: i32,
-    #[d1(unique)]
-    pub token: String,
-    pub expires_at: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(
-    table_name = "user_items_v2",
-    constraint = "PRIMARY KEY (user_id, title)",
-    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
-)]
-struct UserItemV1 {
-    #[d1(index)]
-    pub user_id: i32,
-    pub title: String,
-    pub status: i32,
-    pub score: Option<i32>,
-    pub updated_at: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(
-    table_name = "user_items_v2",
-    constraint = "PRIMARY KEY (user_id, title)",
-    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
-)]
-struct UserItemV5 {
-    #[d1(index)]
-    pub user_id: i32,
-    pub title: String,
-    pub status: i32,
-    pub score: Option<i32>,
-    pub updated_at: i64,
-    #[d1(index)]
-    pub begin_at: Option<i64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(
-    table_name = "passkeys",
-    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
-)]
-struct PasskeyV3 {
-    #[d1(index)]
-    pub user_id: i32,
-    #[d1(primary_key)]
-    pub cred_id: String,
-    pub passkey_json: String,
-    pub name: String,
-    pub created_at: i64,
-    pub last_used_at: i64,
-    pub counter: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "passkey_states")]
-struct PasskeyStateV3 {
-    #[d1(primary_key)]
-    pub id: String,
-    pub state_json: String,
-    pub expires_at: i64,
 }
 
 #[async_trait(?Send)]
@@ -268,53 +172,35 @@ impl AppDatabase {
 
     fn migration_v1_sql() -> Vec<String> {
         let mut stmts = vec![
-            UserV1::schema().to_sql(),
-            SessionV1::schema().to_sql(),
-            UserItemV1::schema().to_sql(),
+            User::schema_at(1)
+                .expect("users should exist at v1")
+                .to_sql(),
+            Session::schema_at(1)
+                .expect("sessions should exist at v1")
+                .to_sql(),
+            UserItem::schema_at(1)
+                .expect("user_items_v2 should exist at v1")
+                .to_sql(),
         ];
-        stmts.extend(UserItemV1::indexes().into_iter().map(|idx| idx.to_sql()));
+        stmts.extend(UserItem::indexes_at(1).into_iter().map(|idx| idx.to_sql()));
         stmts
     }
 
     fn migration_v3_sql() -> Vec<String> {
         let mut stmts = vec![
-            PasskeyV3::schema().to_sql(),
-            PasskeyStateV3::schema().to_sql(),
+            PasskeyRow::schema_at(3)
+                .expect("passkeys should exist at v3")
+                .to_sql(),
+            PasskeyStateRow::schema_at(3)
+                .expect("passkey_states should exist at v3")
+                .to_sql(),
         ];
-        stmts.extend(PasskeyV3::indexes().into_iter().map(|idx| idx.to_sql()));
+        stmts.extend(
+            PasskeyRow::indexes_at(3)
+                .into_iter()
+                .map(|idx| idx.to_sql()),
+        );
         stmts
-    }
-
-    fn migration_v2_sql() -> Vec<String> {
-        d1_orm::additive_migration_sql(
-            &UserV1::schema(),
-            &UserV2::schema(),
-            &UserV1::indexes(),
-            &UserV2::indexes(),
-        )
-    }
-
-    fn migration_v4_sql() -> Vec<String> {
-        let mut sql = d1_orm::additive_migration_sql(
-            &UserV2::schema(),
-            &UserV4::schema(),
-            &UserV2::indexes(),
-            &UserV4::indexes(),
-        );
-        sql.push(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id)"
-                .to_string(),
-        );
-        sql
-    }
-
-    fn migration_v5_sql() -> Vec<String> {
-        d1_orm::additive_migration_sql(
-            &UserItemV1::schema(),
-            &UserItemV5::schema(),
-            &UserItemV1::indexes(),
-            &UserItemV5::indexes(),
-        )
     }
 }
 
@@ -333,7 +219,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 2,
-                sqls = Self::migration_v2_sql(),
+                sqls = d1_version_diff_sql!(User, 1, 2),
                 infer = [d1_orm::d1_probe!(column "users", "avatar_url")]
             ),
             d1_orm::d1_migration!(
@@ -346,7 +232,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 4,
-                sqls = Self::migration_v4_sql(),
+                sqls = d1_version_diff_sql!(User, 2, 4),
                 infer = [
                     d1_orm::d1_probe!(column "users", "telegram_id"),
                     d1_orm::d1_probe!(index "idx_users_telegram_id")
@@ -354,7 +240,7 @@ impl Database for AppDatabase {
             ),
             d1_orm::d1_migration!(
                 5,
-                sqls = Self::migration_v5_sql(),
+                sqls = d1_version_diff_sql!(UserItem, 4, 5),
                 infer = [
                     d1_orm::d1_probe!(column "user_items_v2", "begin_at"),
                     d1_orm::d1_probe!(index "idx_user_items_v2_begin_at")
@@ -624,7 +510,11 @@ impl Database for AppDatabase {
 /// Helper for deserializing DB rows into StoredPasskey.
 /// The DB column is "passkey_json" but our struct field is "public_key".
 #[derive(Debug, Serialize, Deserialize, Model)]
-#[d1(table_name = "passkeys")]
+#[d1(
+    table_name = "passkeys",
+    since = 3,
+    constraint = "FOREIGN KEY(user_id) REFERENCES users(id)"
+)]
 pub struct PasskeyRow {
     #[d1(index)]
     pub user_id: i32,
@@ -652,7 +542,7 @@ impl From<PasskeyRow> for StoredPasskey {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Model)]
-#[d1(table_name = "passkey_states")]
+#[d1(table_name = "passkey_states", since = 3)]
 pub struct PasskeyStateRow {
     #[d1(primary_key)]
     pub id: String,
