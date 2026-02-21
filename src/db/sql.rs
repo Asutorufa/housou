@@ -16,7 +16,7 @@ impl DatabaseValue {
             DatabaseValue::Text(s) => JsValue::from_str(&s),
             DatabaseValue::Int(i) => JsValue::from_f64(i as f64),
             DatabaseValue::Real(r) => JsValue::from_f64(r),
-            DatabaseValue::Blob(_) => JsValue::NULL, // TODO: support blobs if needed
+            DatabaseValue::Blob(b) => js_sys::Uint8Array::from(&b[..]).into(),
             DatabaseValue::Null => JsValue::NULL,
         }
     }

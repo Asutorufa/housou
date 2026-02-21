@@ -59,9 +59,9 @@ impl DatabaseExecutor for SqliteExecutor {
                         rusqlite::types::ValueRef::Integer(i) => {
                             serde_json::Value::Number(i.into())
                         }
-                        rusqlite::types::ValueRef::Real(f) => {
-                            serde_json::Value::Number(serde_json::Number::from_f64(f).unwrap())
-                        }
+                        rusqlite::types::ValueRef::Real(f) => serde_json::Number::from_f64(f)
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null),
                         rusqlite::types::ValueRef::Text(t) => {
                             serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
                         }
