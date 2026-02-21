@@ -129,12 +129,34 @@ impl AppDatabase {
         Self { db }
     }
 
+    fn validate_select_field(field: &str) -> Result<()> {
+        match field {
+            "id" | "email" | "username" | "github_id" | "telegram_id" => Ok(()),
+            _ => Err(Error::RustError(format!(
+                "Invalid field for selection: {}",
+                field
+            ))),
+        }
+    }
+
+    fn validate_update_field(field: &str) -> Result<()> {
+        match field {
+            "password_hash" | "telegram_id" | "github_id" => Ok(()),
+            _ => Err(Error::RustError(format!(
+                "Invalid field for update: {}",
+                field
+            ))),
+        }
+    }
+
     async fn get_user_by_field(&self, field: &str, value: JsValue) -> Result<Option<User>> {
+        Self::validate_select_field(field)?;
         let query = format!("SELECT * FROM users WHERE {} = ?", field);
         self.db.prepare(&query).bind(&[value])?.first(None).await
     }
 
     async fn update_user_field(&self, id: i32, field: &str, value: JsValue) -> Result<()> {
+        Self::validate_update_field(field)?;
         let query = format!("UPDATE users SET {} = ? WHERE id = ?", field);
         self.db
             .prepare(&query)
@@ -705,5 +727,41 @@ impl PasskeyStore for AppDatabase {
             .await
             .map_err(db_err)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_select_field() {
+        // Allowed fields
+        assert!(AppDatabase::validate_select_field("id").is_ok());
+        assert!(AppDatabase::validate_select_field("email").is_ok());
+        assert!(AppDatabase::validate_select_field("username").is_ok());
+        assert!(AppDatabase::validate_select_field("github_id").is_ok());
+        assert!(AppDatabase::validate_select_field("telegram_id").is_ok());
+
+        // Disallowed fields
+        assert!(AppDatabase::validate_select_field("password_hash").is_err());
+        assert!(AppDatabase::validate_select_field("created_at").is_err());
+        assert!(AppDatabase::validate_select_field("avatar_url").is_err());
+        assert!(AppDatabase::validate_select_field("1; DROP TABLE users").is_err());
+    }
+
+    #[test]
+    fn test_validate_update_field() {
+        // Allowed fields
+        assert!(AppDatabase::validate_update_field("password_hash").is_ok());
+        assert!(AppDatabase::validate_update_field("telegram_id").is_ok());
+        assert!(AppDatabase::validate_update_field("github_id").is_ok());
+
+        // Disallowed fields
+        assert!(AppDatabase::validate_update_field("email").is_err());
+        assert!(AppDatabase::validate_update_field("username").is_err());
+        assert!(AppDatabase::validate_update_field("id").is_err());
+        assert!(AppDatabase::validate_update_field("avatar_url").is_err());
+        assert!(AppDatabase::validate_update_field("1; DROP TABLE users").is_err());
     }
 }
