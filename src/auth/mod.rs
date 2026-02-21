@@ -1,5 +1,5 @@
 use crate::ResponseExt;
-use crate::db::{AppDatabase, Database, User};
+use crate::db::{AppDatabase, Database, DatabaseExecutor, User};
 use crate::model::UserStatus;
 use crate::utils;
 use argon2::{
@@ -32,7 +32,7 @@ pub(crate) const EMAIL_IN_USE_ERR: &str = "Email already in use";
 pub(crate) const USERNAME_TAKEN_ERR: &str = "Username already taken";
 
 // Helper to get DB
-pub fn get_db(env: &Env) -> Result<AppDatabase> {
+pub fn get_db(env: &Env) -> Result<AppDatabase<D1Database>> {
     let d1 = env.d1("DB")?;
     Ok(AppDatabase::new(d1))
 }
@@ -58,7 +58,13 @@ pub fn get_cookie_values(req: &Request, name: &str) -> Vec<String> {
 // Helper to get authenticated user
 pub async fn get_auth(req: &Request, env: &Env) -> Result<Option<(User, String)>> {
     let db = get_db(env)?;
+    get_auth_with_db(req, &db).await
+}
 
+pub async fn get_auth_with_db<E: DatabaseExecutor>(
+    req: &Request,
+    db: &AppDatabase<E>,
+) -> Result<Option<(User, String)>> {
     for token in get_cookie_values(req, SESSION_COOKIE_NAME) {
         if let Some(user) = db.get_user_by_session_token(&token).await? {
             return Ok(Some((user, token)));
@@ -213,7 +219,11 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
-pub async fn create_user_session(db: &AppDatabase, user_id: i32, secure: bool) -> Result<String> {
+pub async fn create_user_session<E: DatabaseExecutor>(
+    db: &AppDatabase<E>,
+    user_id: i32,
+    secure: bool,
+) -> Result<String> {
     let token = Uuid::new_v4().to_string();
     let expires_at = utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user_id, &token, expires_at).await?;

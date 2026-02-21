@@ -3,7 +3,7 @@ use crate::auth::{
     clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
     create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
-use crate::db::{AppDatabase, Database, User};
+use crate::db::{AppDatabase, Database, DatabaseExecutor, User};
 use serde::Deserialize;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
@@ -158,7 +158,10 @@ pub async fn fetch_github_user(access_token: &str) -> Result<GithubUser> {
     Ok(gh_user)
 }
 
-async fn find_or_create_github_user(db: &AppDatabase, gh_user: &GithubUser) -> Result<User> {
+async fn find_or_create_github_user<E: DatabaseExecutor>(
+    db: &AppDatabase<E>,
+    gh_user: &GithubUser,
+) -> Result<User> {
     let gh_id_str = gh_user.id.to_string();
 
     if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
