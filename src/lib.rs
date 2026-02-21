@@ -43,7 +43,8 @@ fn add_security_headers_impl(setter: &mut impl HeaderSetter) -> Result<()> {
         "default-src 'none'; frame-ancestors 'none';",
     )?;
     setter.set_header("X-Content-Type-Options", "nosniff")?;
-    setter.set_header("X-Frame-Options", "DENY")
+    setter.set_header("X-Frame-Options", "DENY")?;
+    Ok(())
 }
 
 static CORS_ALLOWED_ORIGIN: OnceLock<String> = OnceLock::new();
