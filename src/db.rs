@@ -1,7 +1,7 @@
 use crate::model::UserStatus;
 use crate::utils;
 use async_trait::async_trait;
-use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Model, Repository, Table};
+use d1_orm::{AlterTable, Bindable, ColumnType, D1Database, Index, Model, Repository, Table};
 use passkey_server::types::{PasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
 
@@ -265,7 +265,11 @@ impl Database for AppDatabase {
                     stmts.push(user_items.to_sql());
 
                     // Indexes for v1
-                    stmts.push("CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id)".to_string());
+                    stmts.push(
+                        Index::new("idx_user_items_v2_user_id", "user_items_v2")
+                            .column("user_id")
+                            .to_sql(),
+                    );
 
                     stmts
                 }
@@ -304,7 +308,11 @@ impl Database for AppDatabase {
                     let mut passkeys_t = passkeys;
                     passkeys_t.constraints.push("FOREIGN KEY(user_id) REFERENCES users(id)".to_string());
                     stmts.push(passkeys_t.to_sql());
-                    stmts.push("CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id)".to_string());
+                    stmts.push(
+                        Index::new("idx_passkeys_user_id", "passkeys")
+                            .column("user_id")
+                            .to_sql(),
+                    );
 
                     // passkey_states
                     let states = Table::new("passkey_states")
