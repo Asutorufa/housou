@@ -21,13 +21,7 @@ pub struct TelegramAuthData {
     pub hash: String,
 }
 
-fn verify_telegram_auth(data: &TelegramAuthData, bot_token: &str) -> Result<()> {
-    // Check auth_date (prevent replay attacks, e.g., allow within 24 hours)
-    let now = crate::utils::now_utc()?.unix_timestamp();
-    if (now - data.auth_date).abs() > 86400 {
-        return Err(Error::RustError("Telegram auth data expired".to_string()));
-    }
-
+fn verify_telegram_hash_internal(data: &TelegramAuthData, bot_token: &str) -> Result<()> {
     // Construct data-check-string
     let mut params = BTreeMap::new();
     params.insert("id", data.id.to_string());
@@ -59,21 +53,32 @@ fn verify_telegram_auth(data: &TelegramAuthData, bot_token: &str) -> Result<()> 
     let mut mac = HmacSha256::new_from_slice(&secret_key)
         .map_err(|_| Error::RustError("HMAC initialization failed".to_string()))?;
     mac.update(data_check_string.as_bytes());
-    let result = mac.finalize().into_bytes();
-    let calculated_hash = hex::encode(result);
 
-    if calculated_hash != data.hash {
-        return Err(Error::RustError("Invalid Telegram hash".to_string()));
-    }
+    // Verify using constant-time comparison
+    let provided_hash_bytes = hex::decode(&data.hash)
+        .map_err(|_| Error::RustError("Invalid Telegram hash format".to_string()))?;
+
+    mac.verify_slice(&provided_hash_bytes)
+        .map_err(|_| Error::RustError("Invalid Telegram hash".to_string()))?;
 
     Ok(())
+}
+
+fn verify_telegram_auth(data: &TelegramAuthData, bot_token: &str, now: i64) -> Result<()> {
+    // Check auth_date (prevent replay attacks, e.g., allow within 24 hours)
+    if (now - data.auth_date).abs() > 86400 {
+        return Err(Error::RustError("Telegram auth data expired".to_string()));
+    }
+
+    verify_telegram_hash_internal(data, bot_token)
 }
 
 pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Response> {
     let data: TelegramAuthData = req.json().await?;
     let bot_token = env.var("TELEGRAM_BOT_TOKEN")?.to_string();
+    let now = crate::utils::now_utc()?.unix_timestamp();
 
-    if let Err(e) = verify_telegram_auth(&data, &bot_token) {
+    if let Err(e) = verify_telegram_auth(&data, &bot_token, now) {
         return Response::error(e.to_string(), 401);
     }
 
@@ -132,8 +137,9 @@ pub async fn handle_telegram_bind(mut req: Request, env: Env) -> Result<Response
 
     let data: TelegramAuthData = req.json().await?;
     let bot_token = env.var("TELEGRAM_BOT_TOKEN")?.to_string();
+    let now = crate::utils::now_utc()?.unix_timestamp();
 
-    if let Err(e) = verify_telegram_auth(&data, &bot_token) {
+    if let Err(e) = verify_telegram_auth(&data, &bot_token, now) {
         return Response::error(e.to_string(), 401);
     }
 
@@ -177,4 +183,106 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
     db.update_user_telegram_id(user.id, None).await?;
 
     Response::ok("Telegram account disconnected")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    use hex;
+
+    // Helper to compute hash manually for testing
+    fn compute_hash(data: &TelegramAuthData, bot_token: &str) -> String {
+        let mut params = BTreeMap::new();
+        params.insert("id", data.id.to_string());
+        params.insert("first_name", data.first_name.clone());
+        if let Some(ln) = &data.last_name {
+            params.insert("last_name", ln.clone());
+        }
+        if let Some(un) = &data.username {
+            params.insert("username", un.clone());
+        }
+        if let Some(pu) = &data.photo_url {
+            params.insert("photo_url", pu.clone());
+        }
+        params.insert("auth_date", data.auth_date.to_string());
+
+        let data_check_string = params
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mut hasher = Sha256::new();
+        hasher.update(bot_token.as_bytes());
+        let secret_key = hasher.finalize();
+
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac = HmacSha256::new_from_slice(&secret_key).unwrap();
+        mac.update(data_check_string.as_bytes());
+        hex::encode(mac.finalize().into_bytes())
+    }
+
+    #[test]
+    fn test_verify_telegram_auth_success() {
+        let now = 1600000000;
+
+        let bot_token = "test_token";
+        let mut data = TelegramAuthData {
+            id: 12345,
+            first_name: "Test".to_string(),
+            last_name: Some("User".to_string()),
+            username: Some("testuser".to_string()),
+            photo_url: None,
+            auth_date: now,
+            hash: String::new(),
+        };
+
+        data.hash = compute_hash(&data, bot_token);
+
+        assert!(verify_telegram_auth(&data, bot_token, now).is_ok());
+    }
+
+    #[test]
+    fn test_verify_telegram_auth_invalid_hash() {
+        let now = 1600000000;
+
+        let bot_token = "test_token";
+        let mut data = TelegramAuthData {
+            id: 12345,
+            first_name: "Test".to_string(),
+            last_name: None,
+            username: None,
+            photo_url: None,
+            auth_date: now,
+            hash: "invalidhash".to_string(),
+        };
+
+        // Test with completely invalid hex
+        assert!(verify_telegram_auth(&data, bot_token, now).is_err());
+
+        // Test with valid hex but wrong hash
+        data.hash = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+        assert!(verify_telegram_auth(&data, bot_token, now).is_err());
+    }
+
+    #[test]
+    fn test_verify_telegram_auth_expired() {
+        let now = 1600000000;
+
+        let bot_token = "test_token";
+        let mut data = TelegramAuthData {
+            id: 12345,
+            first_name: "Test".to_string(),
+            last_name: None,
+            username: None,
+            photo_url: None,
+            auth_date: now - 86401, // Expired
+            hash: String::new(),
+        };
+        data.hash = compute_hash(&data, bot_token);
+
+        assert!(verify_telegram_auth(&data, bot_token, now).is_err());
+    }
 }
