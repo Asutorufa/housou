@@ -1,7 +1,6 @@
 use regex::Regex;
 use serde_derive::Serialize;
 use std::sync::OnceLock;
-use time::{Date as TimeDate, Month};
 use worker::*;
 
 use crate::db::Database;
@@ -270,10 +269,12 @@ fn is_safe_hostname(hostname: &str) -> bool {
     }
 
     // 2. Reject characters dangerous for URLs to prevent userinfo injection, port specification, and path/query manipulation
-    if hostname
-        .chars()
-        .any(|c| matches!(c, '@' | ':' | '/' | '\\' | '?' | '#' | ' ' | '\r' | '\n' | '\t'))
-    {
+    if hostname.chars().any(|c| {
+        matches!(
+            c,
+            '@' | ':' | '/' | '\\' | '?' | '#' | ' ' | '\r' | '\n' | '\t'
+        )
+    }) {
         return false;
     }
 
@@ -323,8 +324,10 @@ fn is_safe_hostname(hostname: &str) -> bool {
 
     // 7. Use Regex to enforce standard domain name format
     let re = DOMAIN_REGEX.get_or_init(|| {
-        Regex::new(r"^(?i)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$")
-            .expect("Invalid domain regex")
+        Regex::new(
+            r"^(?i)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+        )
+        .expect("Invalid domain regex")
     });
 
     re.is_match(hostname)
@@ -463,7 +466,7 @@ mod tests {
         // Invalid: Numeric hostnames (decimal/hex/octal representations of IPs)
         assert!(!is_safe_hostname("2130706433")); // 127.0.0.1 in decimal
         assert!(!is_safe_hostname("0x7f000001")); // 127.0.0.1 in hex (no dots)
-        assert!(!is_safe_hostname("127.1"));      // Shortened IPv4
+        assert!(!is_safe_hostname("127.1")); // Shortened IPv4
         assert!(!is_safe_hostname("0x7f.0.0.1")); // Hex-encoded labels
         assert!(!is_safe_hostname("0177.0.0.1")); // Octal labels
 
