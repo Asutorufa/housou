@@ -112,6 +112,8 @@ describe("useAnimeData", () => {
       return Promise.resolve({
         ok: false,
         status: 404,
+        statusText: "Not Found",
+        text: async () => "Not Found",
       });
     });
 

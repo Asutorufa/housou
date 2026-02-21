@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
 import type { LoginData, RegisterData, TelegramAuthData, User } from "../types";
 import { hashPassword } from "../utils/authUtils";
+import { fetcher } from "../utils/fetcher";
 
 export interface PasskeySummary {
   id: string;
@@ -43,23 +44,7 @@ interface AuthContextType {
   unbindTelegram: () => Promise<void>;
 }
 
-// Separate Error type for API responses
-class ApiError extends Error {
-  status?: number;
-}
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const fetcher = async (url: string) => {
-  const res = await fetch(url);
-  if (res.status === 401) {
-    const error = new ApiError("Unauthorized");
-    error.status = 401;
-    throw error;
-  }
-  if (!res.ok) throw new Error("Failed to fetch user");
-  return res.json();
-};
 
 const handleResponse = async (res: Response, defaultError: string) => {
   if (!res.ok) {

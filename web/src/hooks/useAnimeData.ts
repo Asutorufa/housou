@@ -10,18 +10,8 @@ import type {
   Site,
   UserItemSummary,
 } from "../types";
+import { fetcher } from "../utils/fetcher";
 import { useConfigInitialization } from "./useConfigInitialization";
-
-const fetcher = async (url: string) => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Items fetch failed: ${response.status} ${response.statusText} - ${errorText}`,
-    );
-  }
-  return response.json();
-};
 
 export function useAnimeData() {
   const [selections, setSelections] = useLocalStorage<Selections>(
