@@ -1,5 +1,7 @@
+use crate::db::sql::FieldUpdate;
 use crate::utils;
 use async_trait::async_trait;
+use serde::Deserialize;
 use worker::*;
 
 pub mod d1;
@@ -66,6 +68,145 @@ pub struct AppDatabase<E: DatabaseExecutor> {
     pub(crate) db: E,
 }
 
+#[derive(Debug, Deserialize)]
+struct TableColumnInfo {
+    name: String,
+}
+
+#[derive(Clone, Copy)]
+enum MigrationStep {
+    Sql(&'static str),
+    AddColumnIfMissing {
+        table: &'static str,
+        column: &'static str,
+        sql: &'static str,
+    },
+}
+
+struct Migration {
+    version: i32,
+    steps: &'static [MigrationStep],
+}
+
+const MIGRATION_V1_STEPS: &[MigrationStep] = &[
+    MigrationStep::Sql(
+        "CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE,
+            username TEXT,
+            password_hash TEXT,
+            github_id TEXT UNIQUE,
+            created_at INTEGER
+        );",
+    ),
+    MigrationStep::Sql(
+        "CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            token TEXT UNIQUE,
+            expires_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    ),
+    MigrationStep::Sql("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"),
+    MigrationStep::Sql(
+        "CREATE TABLE IF NOT EXISTS user_items_v2 (
+            user_id INTEGER,
+            title TEXT,
+            status INTEGER,
+            score INTEGER,
+            updated_at INTEGER,
+            PRIMARY KEY (user_id, title),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    ),
+    MigrationStep::Sql(
+        "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
+    ),
+];
+
+const MIGRATION_V2_STEPS: &[MigrationStep] = &[MigrationStep::AddColumnIfMissing {
+    table: "users",
+    column: "avatar_url",
+    sql: "ALTER TABLE users ADD COLUMN avatar_url TEXT;",
+}];
+
+const MIGRATION_V3_STEPS: &[MigrationStep] = &[
+    MigrationStep::Sql(
+        "CREATE TABLE IF NOT EXISTS passkeys (
+            user_id INTEGER NOT NULL,
+            cred_id TEXT PRIMARY KEY,
+            passkey_json TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_used_at INTEGER NOT NULL,
+            counter INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    ),
+    MigrationStep::Sql("CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);"),
+    MigrationStep::Sql(
+        "CREATE TABLE IF NOT EXISTS passkey_states (
+            id TEXT PRIMARY KEY,
+            state_json TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        );",
+    ),
+];
+
+const MIGRATION_V4_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumnIfMissing {
+        table: "users",
+        column: "telegram_id",
+        sql: "ALTER TABLE users ADD COLUMN telegram_id TEXT;",
+    },
+    MigrationStep::Sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
+    ),
+];
+
+const MIGRATION_V5_STEPS: &[MigrationStep] = &[
+    MigrationStep::AddColumnIfMissing {
+        table: "user_items_v2",
+        column: "begin_at",
+        sql: "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
+    },
+    MigrationStep::Sql(
+        "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
+    ),
+];
+
+const MIGRATION_V6_STEPS: &[MigrationStep] = &[MigrationStep::Sql(
+    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
+)];
+
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        steps: MIGRATION_V1_STEPS,
+    },
+    Migration {
+        version: 2,
+        steps: MIGRATION_V2_STEPS,
+    },
+    Migration {
+        version: 3,
+        steps: MIGRATION_V3_STEPS,
+    },
+    Migration {
+        version: 4,
+        steps: MIGRATION_V4_STEPS,
+    },
+    Migration {
+        version: 5,
+        steps: MIGRATION_V5_STEPS,
+    },
+    Migration {
+        version: 6,
+        steps: MIGRATION_V6_STEPS,
+    },
+];
+
 impl<E: DatabaseExecutor> AppDatabase<E> {
     pub fn new(db: E) -> Self {
         Self { db }
@@ -93,6 +234,40 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     pub(crate) async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
         self.db.execute_batch(sqls).await
     }
+
+    async fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+        let query = format!("PRAGMA table_info({table})");
+        let rows: Vec<TableColumnInfo> = self.query_all(Sql::Raw { sql: &query }).await?;
+        Ok(rows.iter().any(|c| c.name == column))
+    }
+
+    fn has_effective_updates<T: FieldUpdate>(updates: &[T], skipped_fields: &[&str]) -> bool {
+        updates.iter().any(|u| !skipped_fields.contains(&u.field()))
+    }
+
+    async fn apply_migration(&self, migration: &Migration) -> Result<()> {
+        crate::log!("Applying migration version {}", migration.version);
+
+        let mut batch_queries = Vec::with_capacity(migration.steps.len() + 1);
+        for step in migration.steps {
+            match step {
+                MigrationStep::Sql(sql) => batch_queries.push(Sql::Raw { sql }),
+                MigrationStep::AddColumnIfMissing { table, column, sql } => {
+                    if !self.has_column(table, column).await? {
+                        batch_queries.push(Sql::Raw { sql });
+                    }
+                }
+            }
+        }
+
+        let now = utils::now_utc_ms();
+        batch_queries.push(Sql::InsertMigration {
+            version: migration.version,
+            applied_at: now,
+        });
+
+        self.db.execute_batch(batch_queries).await
+    }
 }
 
 #[async_trait(?Send)]
@@ -108,93 +283,9 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             .and_then(|v| v.version)
             .unwrap_or(0);
 
-        // Define migrations
-        let migrations = vec![
-            // Version 1: Initial schema + Updates
-            (
-                1,
-                vec![
-                    "CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        email TEXT UNIQUE,
-                        username TEXT,
-                        password_hash TEXT,
-                        github_id TEXT UNIQUE,
-                        created_at INTEGER
-                    );",
-                    "CREATE TABLE IF NOT EXISTS sessions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        user_id INTEGER,
-                        token TEXT UNIQUE,
-                        expires_at INTEGER,
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
-                    "CREATE TABLE IF NOT EXISTS user_items_v2 (
-                        user_id INTEGER,
-                        title TEXT,
-                        status INTEGER,
-                        score INTEGER,
-                        updated_at INTEGER,
-                        PRIMARY KEY (user_id, title),
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
-                ],
-            ),
-            (2, vec!["ALTER TABLE users ADD COLUMN avatar_url TEXT;"]),
-            (
-                3,
-                vec![
-                    "CREATE TABLE IF NOT EXISTS passkeys (
-                        user_id INTEGER NOT NULL,
-                        cred_id TEXT PRIMARY KEY,
-                        passkey_json TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        last_used_at INTEGER NOT NULL,
-                        counter INTEGER NOT NULL,
-                        FOREIGN KEY(user_id) REFERENCES users(id)
-                    );",
-                    "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);",
-                    "CREATE TABLE IF NOT EXISTS passkey_states (
-                        id TEXT PRIMARY KEY,
-                        state_json TEXT NOT NULL,
-                        expires_at INTEGER NOT NULL
-                    );",
-                ],
-            ),
-            (
-                4,
-                vec![
-                    "ALTER TABLE users ADD COLUMN telegram_id TEXT;",
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
-                ],
-            ),
-            (
-                5,
-                vec![
-                    "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
-                    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
-                ],
-            ),
-        ];
-
-        for (version, queries) in migrations {
-            if version > current_version {
-                crate::log!("Applying migration version {}", version);
-                let mut batch_queries = Vec::with_capacity(queries.len() + 1);
-                for query in queries {
-                    batch_queries.push(Sql::Raw { sql: query });
-                }
-
-                let now = utils::now_utc_ms();
-                batch_queries.push(Sql::InsertMigration {
-                    version,
-                    applied_at: now,
-                });
-
-                self.db.execute_batch(batch_queries).await?;
+        for migration in MIGRATIONS {
+            if migration.version > current_version {
+                self.apply_migration(migration).await?;
             }
         }
 
@@ -232,6 +323,9 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     }
 
     async fn update_user(&self, id: i32, updates: Vec<UserUpdate>) -> Result<()> {
+        if !Self::has_effective_updates(&updates, &["id"]) {
+            return Ok(());
+        }
         let sql = Sql::UpdateUser { id, updates };
         self.execute(sql).await
     }
@@ -264,6 +358,9 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         title: &str,
         updates: Vec<crate::db::models::UserItemUpdate>,
     ) -> Result<()> {
+        if !Self::has_effective_updates(&updates, &["user_id", "title"]) {
+            return Ok(());
+        }
         let sql = Sql::UpdateUserItem {
             user_id,
             title,

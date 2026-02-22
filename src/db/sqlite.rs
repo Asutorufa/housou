@@ -6,6 +6,20 @@ use rusqlite::{Connection, Result as SqliteResult, params_from_iter};
 use std::sync::{Arc, Mutex};
 use worker::{Error, Result};
 
+fn database_value_to_sqlite_value(v: DatabaseValue) -> rusqlite::types::Value {
+    match v {
+        DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
+        DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
+        DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
+        DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
+        DatabaseValue::Null => rusqlite::types::Value::Null,
+    }
+}
+
+fn to_sqlite_params(values: Vec<DatabaseValue>) -> impl Iterator<Item = rusqlite::types::Value> {
+    values.into_iter().map(database_value_to_sqlite_value)
+}
+
 pub struct SqliteExecutor {
     conn: Arc<Mutex<Connection>>,
 }
@@ -32,14 +46,7 @@ impl DatabaseExecutor for SqliteExecutor {
         let conn = self.conn.lock().unwrap();
         let query = sql.sql();
         let values = sql.values();
-
-        let params = values.into_iter().map(|v| match v {
-            DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
-            DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
-            DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
-            DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
-            DatabaseValue::Null => rusqlite::types::Value::Null,
-        });
+        let params = to_sqlite_params(values);
 
         let mut stmt = conn
             .prepare(&query)
@@ -97,14 +104,7 @@ impl DatabaseExecutor for SqliteExecutor {
         let conn = self.conn.lock().unwrap();
         let query = sql.sql();
         let values = sql.values();
-
-        let params = values.into_iter().map(|v| match v {
-            DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
-            DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
-            DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
-            DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
-            DatabaseValue::Null => rusqlite::types::Value::Null,
-        });
+        let params = to_sqlite_params(values);
 
         conn.execute(&query, params_from_iter(params))
             .map_err(|e| Error::RustError(e.to_string()))?;
@@ -119,13 +119,7 @@ impl DatabaseExecutor for SqliteExecutor {
         for sql in sqls {
             let query = sql.sql();
             let values = sql.values();
-            let params = values.into_iter().map(|v| match v {
-                DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
-                DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
-                DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
-                DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
-                DatabaseValue::Null => rusqlite::types::Value::Null,
-            });
+            let params = to_sqlite_params(values);
             tx.execute(&query, params_from_iter(params))
                 .map_err(|e| Error::RustError(e.to_string()))?;
         }
@@ -301,6 +295,99 @@ mod tests {
             .map_err(|e| Error::RustError(e.to_string()))?;
         assert!(pk_deleted.is_none());
 
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_update_user_no_effective_fields_is_noop() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        let user = db
+            .create_user("noop@example.com", "noop", Some("hash"), None, None, None)
+            .await?;
+
+        db.update_user(user.id, vec![UserUpdate::id(user.id)])
+            .await?;
+
+        let user_after = db
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User should still exist");
+        assert_eq!(user_after.id, user.id);
+        assert_eq!(user_after.username, "noop");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_update_user_item_no_effective_fields_is_noop() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        let user = db
+            .create_user(
+                "item-noop@example.com",
+                "item_noop",
+                Some("hash"),
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        db.update_user_item(
+            user.id,
+            "Noop Title",
+            vec![
+                UserItemUpdate::user_id(user.id),
+                UserItemUpdate::title("Noop Title".to_string()),
+            ],
+        )
+        .await?;
+
+        let items = db.get_user_items_all(user.id).await?;
+        assert!(items.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migrate_handles_existing_columns_without_version_records() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        db.execute(Sql::Raw {
+            sql: "CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE,
+                username TEXT,
+                password_hash TEXT,
+                github_id TEXT UNIQUE,
+                telegram_id TEXT,
+                avatar_url TEXT,
+                created_at INTEGER
+            );",
+        })
+        .await?;
+        db.execute(Sql::Raw {
+            sql: "CREATE TABLE user_items_v2 (
+                user_id INTEGER,
+                title TEXT,
+                status INTEGER,
+                score INTEGER,
+                updated_at INTEGER,
+                begin_at INTEGER,
+                PRIMARY KEY (user_id, title)
+            );",
+        })
+        .await?;
+
+        db.migrate().await?;
+        db.migrate().await?;
         Ok(())
     }
 }
