@@ -19,8 +19,6 @@ pub trait FieldUpdate {
     fn into_value(self) -> DatabaseValue;
 }
 
-pub use crate::db::models::UserField;
-
 impl DatabaseValue {
     pub fn into_js(self) -> JsValue {
         match self {
@@ -128,17 +126,40 @@ impl CollectParams for Vec<JsValue> {
     }
 }
 
-impl CollectParams for Vec<(UserField, DatabaseValue)> {
-    fn collect_params(self, params: &mut Vec<DatabaseValue>) {
-        for (_, v) in self {
-            params.push(v);
-        }
-    }
+macro_rules! filter_updates {
+    ($updates:ident, [$($skip:ident),*]) => {{
+        let skip = [$(stringify!($skip)),*];
+        let valid: Vec<_> = $updates.iter().filter(|u| !skip.contains(&u.field())).collect();
+        if valid.is_empty() { return String::new(); }
+        valid
+    }};
 }
 
 macro_rules! sql_params {
     ($p:ident $field:ident [sql]) => {
         let _ = $field;
+    };
+    ($p:ident $field:ident [skip_id]) => {
+        for u in $field.clone() {
+            if u.field() != "id" {
+                u.collect_params($p);
+            }
+        }
+    };
+    ($p:ident $field:ident [skip_cred_id]) => {
+        for u in $field.clone() {
+            if u.field() != "cred_id" {
+                u.collect_params($p);
+            }
+        }
+    };
+    ($p:ident $field:ident [skip_user_id_title]) => {
+        for u in $field.clone() {
+            let f = u.field();
+            if f != "user_id" && f != "title" {
+                u.collect_params($p);
+            }
+        }
     };
     ($p:ident $field:ident) => {
         $field.clone().collect_params($p);
@@ -224,10 +245,10 @@ define_sql! {
         filter: crate::db::models::UserUpdate,
     } => format!("SELECT * FROM users WHERE {} = ?", filter.field()),
     UpdateUser {
-        updates: Vec<crate::db::models::UserUpdate>,
+        updates: Vec<crate::db::models::UserUpdate> [skip_id],
         id: i32,
     } => {
-        let fields = updates
+        let fields = filter_updates!(updates, [id])
             .iter()
             .map(|u| format!("{} = ?", u.field()))
             .collect::<Vec<_>>()
@@ -256,9 +277,10 @@ define_sql! {
     UpdateUserItem {
         user_id: i32,
         title: &'a str,
-        updates: Vec<crate::db::models::UserItemUpdate>,
+        updates: Vec<crate::db::models::UserItemUpdate> [skip_user_id_title],
     } => {
-        let field_names: Vec<_> = updates.iter().map(|u| u.field()).collect();
+        let valid_updates = filter_updates!(updates, [user_id, title]);
+        let field_names: Vec<_> = valid_updates.iter().map(|u| u.field()).collect();
         let cols = field_names
             .iter()
             .map(|f| format!(", {}", f))
@@ -303,25 +325,24 @@ define_sql! {
         last_used_at: i64,
         counter: i64,
     } => "INSERT INTO passkeys (user_id, cred_id, passkey_json, name, created_at, last_used_at, counter) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    GetPasskey {
+    GetPasskeyByField {
+        filter: crate::db::models::PasskeyUpdate,
+    } => format!("SELECT * FROM passkeys WHERE {} = ?", filter.field()),
+    UpdatePasskey {
+        updates: Vec<crate::db::models::PasskeyUpdate> [skip_cred_id],
         cred_id: &'a str,
-    } => "SELECT * FROM passkeys WHERE cred_id = ?",
-    ListPasskeys {
-        user_id: i32,
-    } => "SELECT * FROM passkeys WHERE user_id = ?",
+    } => {
+        let fields = filter_updates!(updates, [cred_id])
+            .iter()
+            .map(|u| format!("{} = ?", u.field()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("UPDATE passkeys SET {} WHERE cred_id = ?", fields)
+    },
     DeletePasskey {
         user_id: i32,
         cred_id: &'a str,
     } => "DELETE FROM passkeys WHERE user_id = ? AND cred_id = ?",
-    UpdatePasskeyCounter {
-        counter: i64,
-        last_used_at: i64,
-        cred_id: &'a str,
-    } => "UPDATE passkeys SET counter = ?, last_used_at = ? WHERE cred_id = ?",
-    UpdatePasskeyName {
-        name: &'a str,
-        cred_id: &'a str,
-    } => "UPDATE passkeys SET name = ? WHERE cred_id = ?",
 
     // Passkey States
     CleanupPasskeyStates {
@@ -333,9 +354,9 @@ define_sql! {
         expires_at: i64,
     } => "INSERT OR REPLACE INTO passkey_states (id, state_json, expires_at) VALUES (?, ?, ?)",
     GetPasskeyState {
-        id: &'a str,
+        filter: crate::db::models::PasskeyStateUpdate,
         now: i64,
-    } => "SELECT * FROM passkey_states WHERE id = ? AND expires_at > ?",
+    } => format!("SELECT * FROM passkey_states WHERE {} = ? AND expires_at > ?", filter.field()),
     DeletePasskeyState {
         id: &'a str,
     } => "DELETE FROM passkey_states WHERE id = ?",

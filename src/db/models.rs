@@ -92,6 +92,30 @@ define_model!(
     }
 );
 
+define_model!(
+    Passkey,
+    PasskeyField,
+    PasskeyUpdate {
+        user_id: i32,
+        cred_id: String,
+        passkey_json: String,
+        name: String,
+        created_at: i64,
+        last_used_at: i64,
+        counter: i64,
+    }
+);
+
+define_model!(
+    PasskeyState,
+    PasskeyStateField,
+    PasskeyStateUpdate {
+        id: String,
+        state_json: String,
+        expires_at: i64,
+    }
+);
+
 define_model!(UserItem, UserItemField, UserItemUpdate {
     user_id: i32,
     title: String,

@@ -1,26 +1,14 @@
-use crate::db::{AppDatabase, DatabaseExecutor, Sql};
+use crate::db::{
+    AppDatabase, DatabaseExecutor, Passkey, PasskeyState, PasskeyStateUpdate, PasskeyUpdate, Sql,
+};
 use crate::utils;
 use async_trait::async_trait;
-use passkey_server::types::{PasskeyState, StoredPasskey};
+use passkey_server::types::{PasskeyState as StoredPasskeyState, StoredPasskey};
 use passkey_server::{PasskeyError, PasskeyStore};
-use serde_derive::Deserialize;
 use worker::*;
 
-/// Helper for deserializing DB rows into StoredPasskey.
-/// The DB column is "passkey_json" but our struct field is "public_key".
-#[derive(Debug, Deserialize)]
-pub(crate) struct PasskeyRow {
-    pub user_id: i32,
-    pub cred_id: String,
-    pub passkey_json: String,
-    pub name: String,
-    pub created_at: i64,
-    pub last_used_at: i64,
-    pub counter: i64,
-}
-
-impl From<PasskeyRow> for StoredPasskey {
-    fn from(r: PasskeyRow) -> Self {
+impl From<Passkey> for StoredPasskey {
+    fn from(r: Passkey) -> Self {
         Self {
             user_id: r.user_id.to_string(),
             cred_id: r.cred_id,
@@ -33,15 +21,8 @@ impl From<PasskeyRow> for StoredPasskey {
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) struct PasskeyStateRow {
-    pub id: String,
-    pub state_json: String,
-    pub expires_at: i64,
-}
-
-impl From<PasskeyStateRow> for PasskeyState {
-    fn from(r: PasskeyStateRow) -> Self {
+impl From<PasskeyState> for StoredPasskeyState {
+    fn from(r: PasskeyState) -> Self {
         Self {
             id: r.id,
             state_json: r.state_json,
@@ -85,8 +66,10 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         &self,
         cred_id: &str,
     ) -> passkey_server::error::Result<Option<StoredPasskey>> {
-        let sql = Sql::GetPasskey { cred_id };
-        let row: Option<PasskeyRow> = self.query_first(sql).await.map_err(db_err)?;
+        let sql = Sql::GetPasskeyByField {
+            filter: PasskeyUpdate::cred_id(cred_id.to_string()),
+        };
+        let row: Option<Passkey> = self.query_first(sql).await.map_err(db_err)?;
         Ok(row.map(Into::into))
     }
 
@@ -97,10 +80,10 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         let user_id_int = user_id
             .parse::<i32>()
             .map_err(|_| PasskeyError::InternalError("Invalid user ID".into()))?;
-        let sql = Sql::ListPasskeys {
-            user_id: user_id_int,
+        let sql = Sql::GetPasskeyByField {
+            filter: PasskeyUpdate::user_id(user_id_int),
         };
-        let rows: Vec<PasskeyRow> = self.query_all(sql).await.map_err(db_err)?;
+        let rows: Vec<Passkey> = self.query_all(sql).await.map_err(db_err)?;
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
@@ -125,10 +108,12 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         new_counter: i64,
         last_used_at: i64,
     ) -> passkey_server::error::Result<()> {
-        let sql = Sql::UpdatePasskeyCounter {
+        let sql = Sql::UpdatePasskey {
             cred_id,
-            counter: new_counter,
-            last_used_at,
+            updates: vec![
+                PasskeyUpdate::counter(new_counter),
+                PasskeyUpdate::last_used_at(last_used_at),
+            ],
         };
         self.execute(sql).await.map_err(db_err)
     }
@@ -138,9 +123,9 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         cred_id: &str,
         new_name: &str,
     ) -> passkey_server::error::Result<()> {
-        let sql = Sql::UpdatePasskeyName {
+        let sql = Sql::UpdatePasskey {
             cred_id,
-            name: new_name,
+            updates: vec![PasskeyUpdate::name(new_name.to_string())],
         };
         self.execute(sql).await.map_err(db_err)
     }
@@ -164,12 +149,15 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         .map_err(db_err)
     }
 
-    async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {
+    async fn get_state(
+        &self,
+        id: &str,
+    ) -> passkey_server::error::Result<Option<StoredPasskeyState>> {
         let sql = Sql::GetPasskeyState {
-            id,
+            filter: PasskeyStateUpdate::id(id.to_string()),
             now: utils::now_utc_ms(),
         };
-        let row: Option<PasskeyStateRow> = self.query_first(sql).await.map_err(db_err)?;
+        let row: Option<PasskeyState> = self.query_first(sql).await.map_err(db_err)?;
         Ok(row.map(Into::into))
     }
 
