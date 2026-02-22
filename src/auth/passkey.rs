@@ -1,6 +1,6 @@
 use crate::ResponseExt;
 use crate::auth;
-use crate::db::Database;
+use crate::db::{Database, UserUpdate};
 use passkey_server::types::*;
 use serde::Deserialize;
 use worker::*;
@@ -108,7 +108,7 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
 
     // Fetch user to create session
     let user = db
-        .get_user_by_id(user_id)
+        .get_user(UserUpdate::id(user_id))
         .await?
         .ok_or_else(|| Error::RustError("User not found".into()))?;
 

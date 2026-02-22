@@ -1,5 +1,15 @@
 use worker::*;
 
+#[macro_export]
+macro_rules! log {
+    ($($t:tt)*) => {
+        #[cfg(target_arch = "wasm32")]
+        worker::console_log!($($t)*);
+        #[cfg(not(target_arch = "wasm32"))]
+        println!($($t)*);
+    }
+}
+
 pub async fn fetch_json<T: for<'de> serde::Deserialize<'de>>(url: &str) -> Result<Option<T>> {
     let mut init = RequestInit::new();
     init.with_method(Method::Get);
@@ -58,13 +68,30 @@ pub fn normalize_title_translate(tt: &mut crate::model::TitleTranslate) {
 }
 
 pub fn now_utc() -> Result<time::OffsetDateTime> {
-    let millis = Date::now().as_millis();
-    time::OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000)
-        .map_err(|e| Error::RustError(format!("Invalid timestamp: {}", e)))
+    #[cfg(target_arch = "wasm32")]
+    {
+        let millis = Date::now().as_millis();
+        time::OffsetDateTime::from_unix_timestamp_nanos((millis as i128) * 1_000_000)
+            .map_err(|e| Error::RustError(format!("Invalid timestamp: {}", e)))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok(time::OffsetDateTime::now_utc())
+    }
 }
 
 pub fn now_utc_ms() -> i64 {
-    Date::now().as_millis() as i64
+    #[cfg(target_arch = "wasm32")]
+    {
+        Date::now().as_millis() as i64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64
+    }
 }
 
 #[cfg(test)]

@@ -54,3 +54,7 @@ wasm-opt = false
 
 [workspace]
 members = ["crates/passkey"]
+
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+tokio = { version = "1", features = ["full"] }
