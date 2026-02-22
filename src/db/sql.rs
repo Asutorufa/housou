@@ -271,9 +271,9 @@ macro_rules! define_sql {
 define_sql! {
     Sql
     // General
-    Raw { sql: Cow<'a, str> [sql] } => clone_query_sql_cow(sql),
+    Raw { sql: Cow<'a, str> [sql] } => sql.to_string(),
     @adhoc(info)
-    AdHoc { info: MigrationInfo, sql: Cow<'a, str> [sql] } => clone_query_sql_cow(sql),
+    AdHoc { info: MigrationInfo, sql: Cow<'a, str> [sql] } => sql.to_string(),
 
     // Migrations
     CreateMigrationsTable => "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -461,13 +461,6 @@ impl<'a, T: FieldMeta> EffectiveUpdates<'a, T> {
 
     fn is_empty(&self) -> bool {
         self.valid.is_empty()
-    }
-}
-
-fn clone_query_sql_cow(sql: &Cow<'_, str>) -> Cow<'static, str> {
-    match sql {
-        Cow::Borrowed(v) => Cow::Owned((*v).to_owned()),
-        Cow::Owned(v) => Cow::Owned(v.clone()),
     }
 }
 
