@@ -1,5 +1,5 @@
 use crate::db::sql::DatabaseValue;
-use crate::db::{Database, DatabaseExecutor, Sql};
+use crate::db::{Database, DatabaseExecutor, SessionUpdate, Sql, UserItemUpdate, UserUpdate};
 use crate::model::UserStatus;
 use async_trait::async_trait;
 use rusqlite::{Connection, Result as SqliteResult, params_from_iter};
@@ -167,41 +167,52 @@ mod tests {
         assert_eq!(user.username, "testuser");
 
         // Get user by field
-        let user2 = db
-            .get_user_by_email("test@example.com")
-            .await
-            .map_err(|e| Error::RustError(e.to_string()))?
+        let user_by_email = db
+            .get_user(UserUpdate::email("test@example.com".to_string()))
+            .await?
             .expect("User not found");
-        assert_eq!(user2.id, user.id);
+        assert_eq!(user_by_email.id, user.id);
+
+        let user_by_id = db
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User not found");
+        assert_eq!(user_by_id.id, user.id);
 
         // Update user
-        db.update_user_field(
+        db.update_user(
             user.id,
-            "telegram_id",
-            DatabaseValue::Text("12345".to_string()),
+            vec![UserUpdate::telegram_id(Some("12345".to_string()))],
         )
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
         let user3 = db
-            .get_user_by_id(user.id)
-            .await
-            .map_err(|e| Error::RustError(e.to_string()))?
-            .expect("User not found");
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User should exist after update");
         assert_eq!(user3.telegram_id, Some("12345".to_string()));
 
         // Sessions
         db.create_session(user.id, "token123", crate::utils::now_utc_ms() + 10000)
             .await?;
         let auth_user = db
-            .get_user_by_session_token("token123")
+            .get_user_by_session_token(SessionUpdate::token("token123".to_string()))
             .await?
             .expect("Session not found");
         assert_eq!(auth_user.id, user.id);
 
-        // User items
-        db.update_user_item(user.id, "Anime Title", UserStatus::Watching, None, None)
-            .await
-            .map_err(|e| Error::RustError(e.to_string()))?;
+        // Update item
+        db.update_user_item(
+            user.id,
+            "Anime Title",
+            vec![
+                UserItemUpdate::status(UserStatus::Completed),
+                UserItemUpdate::score(Some(10)),
+                UserItemUpdate::updated_at(crate::utils::now_utc_ms()),
+            ],
+        )
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
         let items = db
             .get_user_items_all(user.id)
             .await

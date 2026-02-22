@@ -1,5 +1,5 @@
 use crate::ResponseExt;
-use crate::db::{AppDatabase, Database, DatabaseExecutor, User};
+use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserItemUpdate, UserUpdate};
 use crate::model::UserStatus;
 use crate::utils;
 use argon2::{
@@ -66,7 +66,10 @@ pub async fn get_auth_with_db<E: DatabaseExecutor>(
     db: &AppDatabase<E>,
 ) -> Result<Option<(User, String)>> {
     for token in get_cookie_values(req, SESSION_COOKIE_NAME) {
-        if let Some(user) = db.get_user_by_session_token(&token).await? {
+        if let Some(user) = db
+            .get_user_by_session_token(crate::db::SessionUpdate::token(token.clone()))
+            .await?
+        {
             return Ok(Some((user, token)));
         }
     }
@@ -234,10 +237,14 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    if (db.get_user_by_email(&body.email).await?).is_some() {
+    if (db.get_user(UserUpdate::email(body.email.clone())).await?).is_some() {
         return Response::error(EMAIL_IN_USE_ERR, 400);
     }
-    if (db.get_user_by_username(&body.username).await?).is_some() {
+    if (db
+        .get_user(UserUpdate::username(body.username.clone()))
+        .await?)
+        .is_some()
+    {
         return Response::error(USERNAME_TAKEN_ERR, 400);
     }
 
@@ -262,7 +269,7 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
     let db = get_db(&env)?;
 
     let user = db
-        .get_user_by_email(&body.email)
+        .get_user(UserUpdate::email(body.email.clone()))
         .await?
         .ok_or_else(|| Error::RustError("Invalid credentials".to_string()))?;
 
@@ -307,7 +314,9 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
 
     // Check unique username if changed
     if body.username != user.username
-        && let Some(existing) = db.get_user_by_username(&body.username).await?
+        && let Some(existing) = db
+            .get_user(UserUpdate::username(body.username.clone()))
+            .await?
         && existing.id != user.id
     {
         return Response::error(USERNAME_TAKEN_ERR, 409);
@@ -316,23 +325,25 @@ pub async fn handle_update_profile(mut req: Request, env: Env) -> Result<Respons
     // Check unique email if changed and provided
     if let Some(email) = &body.email
         && email != &user.email
-        && let Some(existing) = db.get_user_by_email(email).await?
+        && let Some(existing) = db.get_user(UserUpdate::email(email.clone())).await?
         && existing.id != user.id
     {
         return Response::error(EMAIL_IN_USE_ERR, 409);
     }
 
-    db.update_user_profile(
-        user.id,
-        &body.username,
-        body.email.as_deref(),
-        body.avatar_url.as_deref(),
-    )
-    .await?;
+    let mut updates = vec![UserUpdate::username(body.username)];
+
+    if let Some(email) = body.email {
+        updates.push(UserUpdate::email(email));
+    }
+
+    updates.push(UserUpdate::avatar_url(body.avatar_url));
+
+    db.update_user(user.id, updates).await?;
 
     // Return updated user safely
     let updated_user = db
-        .get_user_by_id(user.id)
+        .get_user(UserUpdate::id(user.id))
         .await?
         .ok_or_else(|| Error::RustError("User not found after update".to_string()))?;
     Response::from_json(&UserResponse::from(updated_user))
@@ -358,7 +369,11 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
     }
 
     let new_password_hash = hash_password(&body.new_password)?;
-    db.update_user_password(user.id, &new_password_hash).await?;
+    db.update_user(
+        user.id,
+        vec![UserUpdate::password_hash(Some(new_password_hash))],
+    )
+    .await?;
 
     Response::ok("Password updated")
 }
@@ -372,8 +387,17 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
     let body: UpdateItemRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    db.update_user_item(user.id, &body.title, body.status, body.score, body.begin_at)
-        .await?;
+    db.update_user_item(
+        user.id,
+        &body.title,
+        vec![
+            UserItemUpdate::status(body.status),
+            UserItemUpdate::score(body.score),
+            UserItemUpdate::begin_at(body.begin_at),
+            UserItemUpdate::updated_at(utils::now_utc_ms()),
+        ],
+    )
+    .await?;
     Response::ok("Updated")
 }
 

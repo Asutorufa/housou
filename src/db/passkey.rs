@@ -152,17 +152,16 @@ impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
         expires_at: i64,
     ) -> passkey_server::error::Result<()> {
         let now = utils::now_utc_ms();
-
-        self.execute(Sql::CleanupPasskeyStates { now })
-            .await
-            .map_err(db_err)?;
-
-        let sql = Sql::SavePasskeyState {
-            id,
-            state_json,
-            expires_at,
-        };
-        self.execute(sql).await.map_err(db_err)
+        self.execute_batch(vec![
+            Sql::CleanupPasskeyStates { now },
+            Sql::SavePasskeyState {
+                id,
+                state_json,
+                expires_at,
+            },
+        ])
+        .await
+        .map_err(db_err)
     }
 
     async fn get_state(&self, id: &str) -> passkey_server::error::Result<Option<PasskeyState>> {

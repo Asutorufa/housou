@@ -2,7 +2,7 @@ use crate::ResponseExt;
 use crate::auth::{
     SESSION_DURATION_DAYS, UserResponse, create_session_cookie, get_auth, get_db, is_secure,
 };
-use crate::db::Database;
+use crate::db::{Database, UserUpdate};
 use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -85,7 +85,10 @@ pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Respons
     let db = get_db(&env)?;
     let telegram_id_str = data.id.to_string();
 
-    let user = if let Some(u) = db.get_user_by_telegram_id(&telegram_id_str).await? {
+    let user = if let Some(u) = db
+        .get_user(UserUpdate::telegram_id(Some(telegram_id_str.clone())))
+        .await?
+    {
         u
     } else {
         // Create new user
@@ -97,13 +100,21 @@ pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Respons
         // Ensure username uniqueness
         // Try original, if taken try random suffix
         let mut final_username = username.clone();
-        if (db.get_user_by_username(&final_username).await?).is_some() {
+        if (db
+            .get_user(UserUpdate::username(final_username.clone()))
+            .await?)
+            .is_some()
+        {
             // Append 4 random hex chars using Uuid
             let suffix = Uuid::new_v4().simple().to_string();
             final_username = format!("{}_{}", username, &suffix[..4]);
 
             // If still taken (extremely unlikely), append telegram_id
-            if (db.get_user_by_username(&final_username).await?).is_some() {
+            if (db
+                .get_user(UserUpdate::username(final_username.clone()))
+                .await?)
+                .is_some()
+            {
                 final_username = format!("{}_{}", username, data.id);
             }
         }
@@ -147,19 +158,24 @@ pub async fn handle_telegram_bind(mut req: Request, env: Env) -> Result<Response
     let telegram_id_str = data.id.to_string();
 
     // Check if Telegram ID is already used by another user
-    if let Some(existing) = db.get_user_by_telegram_id(&telegram_id_str).await?
+    if let Some(existing) = db
+        .get_user(UserUpdate::telegram_id(Some(telegram_id_str.clone())))
+        .await?
         && existing.id != current_user.id
     {
         return Response::error("Telegram account already connected to another user", 409);
     }
 
     // Update user
-    db.update_user_telegram_id(current_user.id, Some(&telegram_id_str))
-        .await?;
+    db.update_user(
+        current_user.id,
+        vec![UserUpdate::telegram_id(Some(telegram_id_str.clone()))],
+    )
+    .await?;
 
     // Return updated user profile
     let updated_user = db
-        .get_user_by_id(current_user.id)
+        .get_user(UserUpdate::id(current_user.id))
         .await?
         .ok_or_else(|| Error::RustError("User not found".to_string()))?;
 
@@ -180,7 +196,8 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
     }
 
     let db = get_db(&env)?;
-    db.update_user_telegram_id(user.id, None).await?;
+    db.update_user(user.id, vec![UserUpdate::telegram_id(None)])
+        .await?;
 
     Response::ok("Telegram account disconnected")
 }

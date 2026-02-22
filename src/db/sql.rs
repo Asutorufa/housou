@@ -10,6 +10,17 @@ pub(crate) enum DatabaseValue {
     Null,
 }
 
+pub trait ToDatabaseValue {
+    fn to_value(self) -> DatabaseValue;
+}
+
+pub trait FieldUpdate {
+    fn field(&self) -> &'static str;
+    fn into_value(self) -> DatabaseValue;
+}
+
+pub use crate::db::models::UserField;
+
 impl DatabaseValue {
     pub fn into_js(self) -> JsValue {
         match self {
@@ -20,10 +31,6 @@ impl DatabaseValue {
             DatabaseValue::Null => JsValue::NULL,
         }
     }
-}
-
-pub(crate) trait ToDatabaseValue {
-    fn to_value(self) -> DatabaseValue;
 }
 
 impl ToDatabaseValue for i32 {
@@ -56,12 +63,18 @@ impl ToDatabaseValue for String {
     }
 }
 
-impl ToDatabaseValue for Option<&str> {
+impl<T: ToDatabaseValue> ToDatabaseValue for Option<T> {
     fn to_value(self) -> DatabaseValue {
         match self {
-            Some(s) => DatabaseValue::Text(s.to_string()),
+            Some(v) => v.to_value(),
             None => DatabaseValue::Null,
         }
+    }
+}
+
+impl ToDatabaseValue for crate::model::UserStatus {
+    fn to_value(self) -> DatabaseValue {
+        DatabaseValue::Int(self as i64)
     }
 }
 
@@ -91,7 +104,7 @@ impl ToDatabaseValue for &DatabaseValue {
     }
 }
 
-trait CollectParams {
+pub(crate) trait CollectParams {
     fn collect_params(self, params: &mut Vec<DatabaseValue>);
 }
 
@@ -111,6 +124,14 @@ impl CollectParams for Vec<JsValue> {
     fn collect_params(self, params: &mut Vec<DatabaseValue>) {
         for v in self {
             params.push(v.to_value());
+        }
+    }
+}
+
+impl CollectParams for Vec<(UserField, DatabaseValue)> {
+    fn collect_params(self, params: &mut Vec<DatabaseValue>) {
+        for (_, v) in self {
+            params.push(v);
         }
     }
 }
@@ -200,19 +221,19 @@ define_sql! {
         created_at: i64,
     } => "INSERT INTO users (email, username, password_hash, github_id, telegram_id, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *",
     GetUserByField {
-        field: &'a str [sql],
-        value: DatabaseValue,
-    } => format!("SELECT * FROM users WHERE {} = ?", field),
-    UpdateUserField {
-        field: &'a str [sql],
-        value: DatabaseValue,
+        filter: crate::db::models::UserUpdate,
+    } => format!("SELECT * FROM users WHERE {} = ?", filter.field()),
+    UpdateUser {
+        updates: Vec<crate::db::models::UserUpdate>,
         id: i32,
-    } => format!("UPDATE users SET {} = ? WHERE id = ?", field),
-    UpdateUserProfile {
-        updates: &'a str [sql],
-        params: Vec<DatabaseValue>,
-        id: i32,
-    } => format!("UPDATE users SET {} WHERE id = ?", updates),
+    } => {
+        let fields = updates
+            .iter()
+            .map(|u| format!("{} = ?", u.field()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("UPDATE users SET {} WHERE id = ?", fields)
+    },
 
     // Sessions
     CreateSession {
@@ -221,9 +242,12 @@ define_sql! {
         expires_at: i64,
     } => "INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)",
     GetUserBySessionToken {
-        token: &'a str,
+        filter: crate::db::models::SessionUpdate,
         now: i64,
-    } => "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ?",
+    } => format!(
+        "SELECT users.* FROM users INNER JOIN sessions ON users.id = sessions.user_id WHERE sessions.{} = ? AND sessions.expires_at > ?",
+        filter.field()
+    ),
     DeleteSession {
         token: &'a str,
     } => "DELETE FROM sessions WHERE token = ?",
@@ -232,17 +256,32 @@ define_sql! {
     UpdateUserItem {
         user_id: i32,
         title: &'a str,
-        status: i32,
-        score: DatabaseValue,
-        updated_at: i64,
-        begin_at: DatabaseValue,
-    } => "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at, begin_at)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(user_id, title) DO UPDATE SET 
-                status = excluded.status, 
-                score = excluded.score, 
-                updated_at = excluded.updated_at,
-                begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)",
+        updates: Vec<crate::db::models::UserItemUpdate>,
+    } => {
+        let field_names: Vec<_> = updates.iter().map(|u| u.field()).collect();
+        let cols = field_names
+            .iter()
+            .map(|f| format!(", {}", f))
+            .collect::<String>();
+        let placeholders = field_names.iter().map(|_| ", ?").collect::<String>();
+
+        let sets = field_names
+            .iter()
+            .map(|f| {
+                if *f == "begin_at" {
+                    "begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)".to_string()
+                } else {
+                    format!("{} = excluded.{}", f, f)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "INSERT INTO user_items_v2 (user_id, title {}) VALUES (?, ? {}) ON CONFLICT(user_id, title) DO UPDATE SET {}",
+            cols, placeholders, sets
+        )
+    },
     GetUserItemsAll {
         user_id: i32,
     } => "SELECT * FROM user_items_v2 WHERE user_id = ? AND status != 0",

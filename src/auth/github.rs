@@ -3,7 +3,7 @@ use crate::auth::{
     clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
     create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
-use crate::db::{AppDatabase, Database, DatabaseExecutor, User};
+use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserUpdate};
 use serde::Deserialize;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;
@@ -82,7 +82,8 @@ pub async fn handle_github_unbind(req: Request, env: Env) -> Result<Response> {
     }
 
     let db = get_db(&env)?;
-    db.update_user_github_id(user.id, None).await?;
+    db.update_user(user.id, vec![UserUpdate::github_id(None)])
+        .await?;
 
     Response::ok("GitHub account disconnected")
 }
@@ -164,7 +165,10 @@ async fn find_or_create_github_user<E: DatabaseExecutor>(
 ) -> Result<User> {
     let gh_id_str = gh_user.id.to_string();
 
-    if let Some(u) = db.get_user_by_github_id(&gh_id_str).await? {
+    if let Some(u) = db
+        .get_user(UserUpdate::github_id(Some(gh_id_str.clone())))
+        .await?
+    {
         Ok(u)
     } else {
         let email = gh_user
@@ -172,10 +176,14 @@ async fn find_or_create_github_user<E: DatabaseExecutor>(
             .clone()
             .unwrap_or_else(|| format!("{}@github.com", gh_user.login));
 
-        if (db.get_user_by_email(&email).await?).is_some() {
+        if (db.get_user(UserUpdate::email(email.clone())).await?).is_some() {
             return Err(Error::RustError(EMAIL_IN_USE_ERR.to_string()));
         }
-        if (db.get_user_by_username(&gh_user.login).await?).is_some() {
+        if (db
+            .get_user(UserUpdate::username(gh_user.login.clone()))
+            .await?)
+            .is_some()
+        {
             return Err(Error::RustError(USERNAME_TAKEN_ERR.to_string()));
         }
 
@@ -231,7 +239,10 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
             let gh_id_str = gh_user.id.to_string();
 
             // Check if GitHub ID is already used
-            if let Some(existing_user) = db.get_user_by_github_id(&gh_id_str).await? {
+            if let Some(existing_user) = db
+                .get_user(UserUpdate::github_id(Some(gh_id_str.clone())))
+                .await?
+            {
                 if existing_user.id != current_user.id {
                     return Response::error(
                         "GitHub account already connected to another user",
@@ -240,8 +251,11 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
                 }
             } else {
                 // Update user
-                db.update_user_github_id(current_user.id, Some(&gh_id_str))
-                    .await?;
+                db.update_user(
+                    current_user.id,
+                    vec![UserUpdate::github_id(Some(gh_id_str.clone()))],
+                )
+                .await?;
             }
 
             let mut resp = Response::redirect(Url::parse(&base_url)?)?;
