@@ -1,5 +1,8 @@
 use crate::db::sql::DatabaseValue;
-use crate::db::{Database, DatabaseExecutor, SessionUpdate, Sql, UserItemUpdate, UserUpdate};
+use crate::db::{
+    Database, DatabaseExecutor, Migration, MigrationStep, SessionUpdate, Sql, UserItemUpdate,
+    UserUpdate,
+};
 use crate::model::UserStatus;
 use async_trait::async_trait;
 use rusqlite::{Connection, Result as SqliteResult, params_from_iter};
@@ -351,6 +354,77 @@ mod tests {
 
         let items = db.get_user_items_all(user.id).await?;
         assert!(items.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migration_steps() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.execute(Sql::CreateMigrationsTable).await?;
+
+        // Test CreateTable
+        let step = Box::leak(Box::new(MigrationStep::CreateTable {
+            name: "test_table",
+            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY);", // No IF NOT EXISTS to test our guard
+        }));
+        let migration = Migration {
+            version: 1,
+            steps: std::slice::from_ref(step),
+        };
+        db.apply_migration(&migration).await?;
+        assert!(db.has_table("test_table").await?);
+
+        // Test CreateTable again (should be no-op due to has_table check)
+        let migration_v2 = Migration {
+            version: 2,
+            steps: std::slice::from_ref(step),
+        };
+        db.apply_migration(&migration_v2).await?;
+        assert!(db.has_table("test_table").await?);
+
+        // Test CreateIndex
+        let step_idx = Box::leak(Box::new(MigrationStep::CreateIndex {
+            name: "test_idx",
+            sql: "CREATE INDEX test_idx ON test_table(id);", // No IF NOT EXISTS
+        }));
+        let migration_v3 = Migration {
+            version: 3,
+            steps: std::slice::from_ref(step_idx),
+        };
+        db.apply_migration(&migration_v3).await?;
+        assert!(db.has_index("test_idx").await?);
+
+        // Test CreateIndex again (should be no-op due to has_index check)
+        let migration_v4 = Migration {
+            version: 4,
+            steps: std::slice::from_ref(step_idx),
+        };
+        db.apply_migration(&migration_v4).await?;
+        assert!(db.has_index("test_idx").await?);
+
+        // Test AddColumnIfMissing
+        let step_col = Box::leak(Box::new(MigrationStep::AddColumnIfMissing {
+            table: "test_table",
+            column: "new_col",
+            sql: "ALTER TABLE test_table ADD COLUMN new_col TEXT;",
+        }));
+        let migration_v5 = Migration {
+            version: 5,
+            steps: std::slice::from_ref(step_col),
+        };
+        db.apply_migration(&migration_v5).await?;
+        assert!(db.has_column("test_table", "new_col").await?);
+
+        // Test AddColumnIfMissing again (should be no-op due to has_column check)
+        let migration_v6 = Migration {
+            version: 6,
+            steps: std::slice::from_ref(step_col),
+        };
+        db.apply_migration(&migration_v6).await?;
+        assert!(db.has_column("test_table", "new_col").await?);
+
         Ok(())
     }
 

@@ -432,9 +432,14 @@ mod tests {
         }
     }
 
+    struct MockResponse {
+        data: Option<(Vec<u8>, String)>,
+        error: Option<String>,
+        delay: usize,
+    }
+
     struct MockFaviconFetcher {
-        // url -> (success_data, error_msg, delay)
-        responses: HashMap<String, (Option<(Vec<u8>, String)>, Option<String>, usize)>,
+        responses: HashMap<String, MockResponse>,
     }
 
     impl MockFaviconFetcher {
@@ -450,27 +455,28 @@ mod tests {
             result: Result<Option<(Vec<u8>, String)>>,
             delay: usize,
         ) {
-            let (data, err) = match result {
+            let (data, error) = match result {
                 Ok(d) => (d, None),
                 Err(e) => (None, Some(e.to_string())),
             };
-            self.responses.insert(url.to_string(), (data, err, delay));
+            self.responses
+                .insert(url.to_string(), MockResponse { data, error, delay });
         }
     }
 
     #[async_trait::async_trait(?Send)]
     impl FaviconFetcher for MockFaviconFetcher {
         async fn fetch(&self, url: &str) -> Result<Option<(Vec<u8>, String)>> {
-            if let Some((data, err, delay)) = self.responses.get(url) {
-                let result = if let Some(e) = err {
+            if let Some(res) = self.responses.get(url) {
+                let result = if let Some(e) = &res.error {
                     Err(Error::RustError(e.clone()))
                 } else {
-                    Ok(data.clone())
+                    Ok(res.data.clone())
                 };
 
                 let state = Arc::new(Mutex::new(DelayedResult {
                     value: Some(result),
-                    delay_polls: *delay,
+                    delay_polls: res.delay,
                 }));
 
                 DelayedFuture { state }.await

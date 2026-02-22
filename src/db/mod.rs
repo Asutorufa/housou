@@ -74,8 +74,15 @@ struct TableColumnInfo {
 }
 
 #[derive(Clone, Copy)]
-enum MigrationStep {
-    Sql(&'static str),
+pub(crate) enum MigrationStep {
+    CreateTable {
+        name: &'static str,
+        sql: &'static str,
+    },
+    CreateIndex {
+        name: &'static str,
+        sql: &'static str,
+    },
     AddColumnIfMissing {
         table: &'static str,
         column: &'static str,
@@ -83,14 +90,15 @@ enum MigrationStep {
     },
 }
 
-struct Migration {
+pub(crate) struct Migration {
     version: i32,
     steps: &'static [MigrationStep],
 }
 
 const MIGRATION_V1_STEPS: &[MigrationStep] = &[
-    MigrationStep::Sql(
-        "CREATE TABLE IF NOT EXISTS users (
+    MigrationStep::CreateTable {
+        name: "users",
+        sql: "CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE,
             username TEXT,
@@ -98,19 +106,24 @@ const MIGRATION_V1_STEPS: &[MigrationStep] = &[
             github_id TEXT UNIQUE,
             created_at INTEGER
         );",
-    ),
-    MigrationStep::Sql(
-        "CREATE TABLE IF NOT EXISTS sessions (
+    },
+    MigrationStep::CreateTable {
+        name: "sessions",
+        sql: "CREATE TABLE IF NOT EXISTS sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             token TEXT UNIQUE,
             expires_at INTEGER,
             FOREIGN KEY(user_id) REFERENCES users(id)
         );",
-    ),
-    MigrationStep::Sql("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);"),
-    MigrationStep::Sql(
-        "CREATE TABLE IF NOT EXISTS user_items_v2 (
+    },
+    MigrationStep::CreateIndex {
+        name: "idx_users_username",
+        sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
+    },
+    MigrationStep::CreateTable {
+        name: "user_items_v2",
+        sql: "CREATE TABLE IF NOT EXISTS user_items_v2 (
             user_id INTEGER,
             title TEXT,
             status INTEGER,
@@ -119,10 +132,11 @@ const MIGRATION_V1_STEPS: &[MigrationStep] = &[
             PRIMARY KEY (user_id, title),
             FOREIGN KEY(user_id) REFERENCES users(id)
         );",
-    ),
-    MigrationStep::Sql(
-        "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
-    ),
+    },
+    MigrationStep::CreateIndex {
+        name: "idx_user_items_v2_user_id",
+        sql: "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
+    },
 ];
 
 const MIGRATION_V2_STEPS: &[MigrationStep] = &[MigrationStep::AddColumnIfMissing {
@@ -132,8 +146,9 @@ const MIGRATION_V2_STEPS: &[MigrationStep] = &[MigrationStep::AddColumnIfMissing
 }];
 
 const MIGRATION_V3_STEPS: &[MigrationStep] = &[
-    MigrationStep::Sql(
-        "CREATE TABLE IF NOT EXISTS passkeys (
+    MigrationStep::CreateTable {
+        name: "passkeys",
+        sql: "CREATE TABLE IF NOT EXISTS passkeys (
             user_id INTEGER NOT NULL,
             cred_id TEXT PRIMARY KEY,
             passkey_json TEXT NOT NULL,
@@ -143,15 +158,19 @@ const MIGRATION_V3_STEPS: &[MigrationStep] = &[
             counter INTEGER NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
         );",
-    ),
-    MigrationStep::Sql("CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);"),
-    MigrationStep::Sql(
-        "CREATE TABLE IF NOT EXISTS passkey_states (
+    },
+    MigrationStep::CreateIndex {
+        name: "idx_passkeys_user_id",
+        sql: "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);",
+    },
+    MigrationStep::CreateTable {
+        name: "passkey_states",
+        sql: "CREATE TABLE IF NOT EXISTS passkey_states (
             id TEXT PRIMARY KEY,
             state_json TEXT NOT NULL,
             expires_at INTEGER NOT NULL
         );",
-    ),
+    },
 ];
 
 const MIGRATION_V4_STEPS: &[MigrationStep] = &[
@@ -160,9 +179,10 @@ const MIGRATION_V4_STEPS: &[MigrationStep] = &[
         column: "telegram_id",
         sql: "ALTER TABLE users ADD COLUMN telegram_id TEXT;",
     },
-    MigrationStep::Sql(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
-    ),
+    MigrationStep::CreateIndex {
+        name: "idx_users_telegram_id",
+        sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
+    },
 ];
 
 const MIGRATION_V5_STEPS: &[MigrationStep] = &[
@@ -171,14 +191,16 @@ const MIGRATION_V5_STEPS: &[MigrationStep] = &[
         column: "begin_at",
         sql: "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
     },
-    MigrationStep::Sql(
-        "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
-    ),
+    MigrationStep::CreateIndex {
+        name: "idx_user_items_v2_begin_at",
+        sql: "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
+    },
 ];
 
-const MIGRATION_V6_STEPS: &[MigrationStep] = &[MigrationStep::Sql(
-    "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
-)];
+const MIGRATION_V6_STEPS: &[MigrationStep] = &[MigrationStep::CreateIndex {
+    name: "idx_user_items_v2_user_id_begin_at",
+    sql: "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
+}];
 
 const MIGRATIONS: &[Migration] = &[
     Migration {
@@ -235,7 +257,19 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
         self.db.execute_batch(sqls).await
     }
 
-    async fn has_column(&self, table: &str, column: &str) -> Result<bool> {
+    pub(crate) async fn has_table(&self, name: &str) -> Result<bool> {
+        let query = format!("SELECT name FROM sqlite_master WHERE type='table' AND name='{name}'");
+        let rows: Vec<TableColumnInfo> = self.query_all(Sql::Raw { sql: &query }).await?;
+        Ok(!rows.is_empty())
+    }
+
+    pub(crate) async fn has_index(&self, name: &str) -> Result<bool> {
+        let query = format!("SELECT name FROM sqlite_master WHERE type='index' AND name='{name}'");
+        let rows: Vec<TableColumnInfo> = self.query_all(Sql::Raw { sql: &query }).await?;
+        Ok(!rows.is_empty())
+    }
+
+    pub(crate) async fn has_column(&self, table: &str, column: &str) -> Result<bool> {
         let query = format!("PRAGMA table_info({table})");
         let rows: Vec<TableColumnInfo> = self.query_all(Sql::Raw { sql: &query }).await?;
         Ok(rows.iter().any(|c| c.name == column))
@@ -245,13 +279,22 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
         updates.iter().any(|u| !skipped_fields.contains(&u.field()))
     }
 
-    async fn apply_migration(&self, migration: &Migration) -> Result<()> {
+    pub(crate) async fn apply_migration(&self, migration: &Migration) -> Result<()> {
         crate::log!("Applying migration version {}", migration.version);
 
         let mut batch_queries = Vec::with_capacity(migration.steps.len() + 1);
         for step in migration.steps {
             match step {
-                MigrationStep::Sql(sql) => batch_queries.push(Sql::Raw { sql }),
+                MigrationStep::CreateTable { name, sql } => {
+                    if !self.has_table(name).await? {
+                        batch_queries.push(Sql::Raw { sql });
+                    }
+                }
+                MigrationStep::CreateIndex { name, sql } => {
+                    if !self.has_index(name).await? {
+                        batch_queries.push(Sql::Raw { sql });
+                    }
+                }
                 MigrationStep::AddColumnIfMissing { table, column, sql } => {
                     if !self.has_column(table, column).await? {
                         batch_queries.push(Sql::Raw { sql });
