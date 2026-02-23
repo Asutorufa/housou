@@ -9,9 +9,9 @@ keywords = ["orm", "cloudflare-d1", "sqlite", "sql-builder", "wasm"]
 categories = ["database", "wasm", "web-programming"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-async-trait = "0.1"
-serde_json = "1.0"
+serde = { workspace = true }
+async-trait = { workspace = true }
+serde_json = { workspace = true }
 
 # D1 backend
 worker = { version = "0.7.4", features = ["d1"], optional = true }
@@ -27,4 +27,4 @@ d1 = ["dep:worker", "dep:js-sys"]
 sqlite = ["dep:rusqlite", "dep:hex"]
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true }
