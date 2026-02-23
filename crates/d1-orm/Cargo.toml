@@ -15,10 +15,10 @@ serde_json = "1.0"
 
 # D1 backend
 worker = { version = "0.7.4", features = ["d1"], optional = true }
-js-sys = { version = "0.3", optional = true }
+js-sys = { workspace = true, optional = true }
 
 # Sqlite backend
-rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+rusqlite = { workspace = true, optional = true }
 hex = { version = "0.4", optional = true }
 
 [features]
