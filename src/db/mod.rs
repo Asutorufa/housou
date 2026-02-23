@@ -458,6 +458,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!tables.is_empty());
+        assert_eq!(tables[0].name, "users");
 
         Ok(())
     }
