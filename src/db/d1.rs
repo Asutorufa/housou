@@ -23,7 +23,7 @@ impl DatabaseExecutor for D1Database {
     where
         T: serde::de::DeserializeOwned,
     {
-        self.prepare(sql.sql().as_ref())
+        self.prepare(sql.sql())
             .bind(&sql.params::<WasmBackend>())?
             .all()
             .await?
@@ -34,14 +34,14 @@ impl DatabaseExecutor for D1Database {
     where
         T: serde::de::DeserializeOwned,
     {
-        self.prepare(sql.sql().as_ref())
+        self.prepare(sql.sql())
             .bind(&sql.params::<WasmBackend>())?
             .first(None)
             .await
     }
 
     async fn execute(&self, sql: Sql<'_>) -> Result<()> {
-        self.prepare(sql.sql().as_ref())
+        self.prepare(sql.sql())
             .bind(&sql.params::<WasmBackend>())?
             .run()
             .await?;
@@ -52,7 +52,7 @@ impl DatabaseExecutor for D1Database {
         let mut statements = Vec::with_capacity(sqls.len());
         for sql in sqls {
             statements.push(
-                self.prepare(sql.sql().as_ref())
+                self.prepare(sql.sql())
                     .bind(&sql.params::<WasmBackend>())?,
             );
         }

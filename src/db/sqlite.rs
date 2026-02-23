@@ -45,12 +45,10 @@ impl DatabaseExecutor for SqliteExecutor {
         T: serde::de::DeserializeOwned,
     {
         let conn = self.conn.lock().unwrap();
-        let sql_str = sql.sql();
-        let query = sql_str.as_ref();
         let params = sql.params::<SqliteBackend>();
 
         let mut stmt = conn
-            .prepare(query)
+            .prepare(sql.sql().as_ref())
             .map_err(|e| Error::RustError(e.to_string()))?;
         let column_names: Vec<String> = stmt
             .column_names()
@@ -103,11 +101,9 @@ impl DatabaseExecutor for SqliteExecutor {
 
     async fn execute(&self, sql: Sql<'_>) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let sql_str = sql.sql(); // Bind sql.sql() to a variable
-        let query = sql_str.as_ref(); // Then get the reference
         let params = sql.params::<SqliteBackend>();
 
-        conn.execute(query, params_from_iter(params))
+        conn.execute(sql.sql().as_ref(), params_from_iter(params))
             .map_err(|e| Error::RustError(e.to_string()))?;
         Ok(())
     }
@@ -118,10 +114,8 @@ impl DatabaseExecutor for SqliteExecutor {
             .transaction()
             .map_err(|e| Error::RustError(e.to_string()))?;
         for sql in sqls {
-            let sql_str = sql.sql();
-            let query = sql_str.as_ref();
             let params = sql.params::<SqliteBackend>();
-            tx.execute(query, params_from_iter(params))
+            tx.execute(sql.sql().as_ref(), params_from_iter(params))
                 .map_err(|e| Error::RustError(e.to_string()))?;
         }
         tx.commit().map_err(|e| Error::RustError(e.to_string()))?;

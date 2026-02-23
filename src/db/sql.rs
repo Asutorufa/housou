@@ -131,9 +131,8 @@ pub(crate) fn filter_updates<T: FieldMeta>(updates: &[T]) -> Vec<&T> {
 }
 
 macro_rules! sql_params {
-    ($p:ident $field:ident [sql]) => {
-        let _ = $field;
-    };
+    ($p:ident sql) => {};
+    ($p:ident info) => {};
     ($p:ident $field:ident [skip_primary_key]) => {
         let valid_updates = $crate::db::sql::filter_updates($field);
         for u in valid_updates {
@@ -236,6 +235,7 @@ macro_rules! define_sql {
                     match self {
                         $(
                             $enum_name::$name $( { $($field,)* } )? => {
+                                $( $(let _ = &$field;)* )?
                                 $(
                                     $(
                                         sql_params!(v $field $( [$mode] )? );
@@ -271,9 +271,9 @@ macro_rules! define_sql {
 define_sql! {
     Sql
     // General
-    Raw { sql: Cow<'a, str> [sql] } => sql.to_string(),
+    Raw { sql: Cow<'a, str> } => sql.to_string(),
     @adhoc(info)
-    AdHoc { info: MigrationInfo, sql: Cow<'a, str> [sql] } => sql.to_string(),
+    AdHoc { info: MigrationInfo, sql: Cow<'a, str> } => sql.to_string(),
 
     // Migrations
     CreateMigrationsTable => "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -290,7 +290,7 @@ define_sql! {
     // Schema Checks
     CheckTableExists { name: &'a str } => "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
     CheckIndexExists { name: &'a str } => "SELECT name FROM sqlite_master WHERE type='index' AND name = ?",
-    GetTableInfo { table: &'a str [sql] } => format!("PRAGMA table_info({})", table),
+    GetTableInfo { table: &'a str } => "SELECT * FROM pragma_table_info(?)",
 
     // Migration Steps
     @table("users")
