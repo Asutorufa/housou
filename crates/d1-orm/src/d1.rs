@@ -28,7 +28,12 @@ impl DatabaseExecutor for D1Database {
         Q: Query + 'async_trait,
     {
         let (sql_str, params) = sql.build_params::<WasmBackend>()?;
-        self.prepare(sql_str.as_ref()).bind(&params)?.all().await?.results().map_err(Error::from)
+        self.prepare(sql_str.as_ref())
+            .bind(&params)?
+            .all()
+            .await?
+            .results()
+            .map_err(Error::from)
     }
 
     async fn query_first<T, Q>(&self, sql: Q) -> Result<Option<T>, Error>
@@ -37,7 +42,11 @@ impl DatabaseExecutor for D1Database {
         Q: Query + 'async_trait,
     {
         let (sql_str, params) = sql.build_params::<WasmBackend>()?;
-        self.prepare(sql_str.as_ref()).bind(&params)?.first(None).await.map_err(Error::from)
+        self.prepare(sql_str.as_ref())
+            .bind(&params)?
+            .first(None)
+            .await
+            .map_err(Error::from)
     }
 
     async fn execute<Q>(&self, sql: Q) -> Result<(), Error>

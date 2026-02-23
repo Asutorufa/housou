@@ -159,9 +159,7 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     }
 
     fn has_effective_updates<T: FieldUpdate>(updates: &[T], skipped_fields: &[&str]) -> bool {
-        updates
-            .iter()
-            .any(|u| !skipped_fields.contains(&u.field()))
+        updates.iter().any(|u| !skipped_fields.contains(&u.field()))
     }
 
     pub(crate) async fn apply_migration(&self, migration: &Migration) -> Result<()> {
@@ -322,12 +320,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_migrations_and_basic_workflow() -> Result<()> {
-        let executor = SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
         let db = AppDatabase::new(executor);
 
         db.migrate().await?;
 
-        let user = db.create_user("test@example.com", "testuser", None, None, None, None).await?;
+        let user = db
+            .create_user("test@example.com", "testuser", None, None, None, None)
+            .await?;
         assert_eq!(user.username, "testuser");
         assert_eq!(user.email, "test@example.com");
 

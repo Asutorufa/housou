@@ -1,5 +1,5 @@
-use crate::types::DatabaseValue;
 use crate::error::Error;
+use crate::types::DatabaseValue;
 use std::borrow::Cow;
 
 pub trait SqlBackend {
@@ -40,9 +40,7 @@ pub trait Query {
 }
 
 pub trait QueryExt: Query {
-    fn build_params<B: SqlBackend>(
-        &self,
-    ) -> Result<(Cow<'static, str>, Vec<B::Param>), Error> {
+    fn build_params<B: SqlBackend>(&self) -> Result<(Cow<'static, str>, Vec<B::Param>), Error> {
         self.build()
             .map(|(sql, values)| (sql, values.into_iter().map(B::convert).collect()))
     }

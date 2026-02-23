@@ -23,18 +23,21 @@
 //! - `d1`: Cloudflare D1 backend (requires `d1` feature).
 //! - `sqlite`: SQLite backend (requires `sqlite` feature).
 
-pub mod error;
-pub mod types;
-pub mod traits;
 pub mod builder;
+pub mod error;
 pub mod macros;
+pub mod traits;
+pub mod types;
 
 #[cfg(feature = "d1")]
 pub mod d1;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
-pub use error::Error;
-pub use types::DatabaseValue;
-pub use traits::{DatabaseExecutor, Query, QueryExt, SqlBackend, FieldMeta, FieldUpdate, ToParams, MigrationMeta, MigrationInfo, IntoResultCow};
 pub use builder::{build_update_sql, build_upsert_sql, UpsertConfig};
+pub use error::Error;
+pub use traits::{
+    DatabaseExecutor, FieldMeta, FieldUpdate, IntoResultCow, MigrationInfo, MigrationMeta, Query,
+    QueryExt, SqlBackend, ToParams,
+};
+pub use types::DatabaseValue;

@@ -1,4 +1,4 @@
-use d1_orm::{FieldUpdate, MigrationInfo, build_update_sql, build_upsert_sql, UpsertConfig};
+use d1_orm::{FieldUpdate, MigrationInfo, UpsertConfig, build_update_sql, build_upsert_sql};
 use std::borrow::Cow;
 
 d1_orm::define_sql! {

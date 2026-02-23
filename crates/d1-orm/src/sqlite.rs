@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::traits::{DatabaseExecutor, Query, QueryExt, SqlBackend};
 use crate::types::DatabaseValue;
 use async_trait::async_trait;
-use rusqlite::{Connection, params_from_iter};
+use rusqlite::{params_from_iter, Connection};
 use std::sync::{Arc, Mutex};
 
 pub struct SqliteBackend;
@@ -48,37 +48,31 @@ impl DatabaseExecutor for SqliteExecutor {
         let conn = self.conn.lock().unwrap();
         let (sql_str, params) = sql.build_params::<SqliteBackend>()?;
 
-        let mut stmt = conn
-            .prepare(sql_str.as_ref())?;
+        let mut stmt = conn.prepare(sql_str.as_ref())?;
         let column_names: Vec<String> = stmt
             .column_names()
             .into_iter()
             .map(|s| s.to_string())
             .collect();
 
-        let rows = stmt
-            .query_map(params_from_iter(params), |row| {
-                let mut map = serde_json::Map::new();
-                for (i, name) in column_names.iter().enumerate() {
-                    let val: serde_json::Value = match row.get_ref(i)? {
-                        rusqlite::types::ValueRef::Null => serde_json::Value::Null,
-                        rusqlite::types::ValueRef::Integer(i) => {
-                            serde_json::Value::Number(i.into())
-                        }
-                        rusqlite::types::ValueRef::Real(f) => serde_json::Number::from_f64(f)
-                            .map(serde_json::Value::Number)
-                            .unwrap_or(serde_json::Value::Null),
-                        rusqlite::types::ValueRef::Text(t) => {
-                            serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
-                        }
-                        rusqlite::types::ValueRef::Blob(b) => {
-                            serde_json::Value::String(hex::encode(b))
-                        }
-                    };
-                    map.insert(name.clone(), val);
-                }
-                Ok(serde_json::Value::Object(map))
-            })?;
+        let rows = stmt.query_map(params_from_iter(params), |row| {
+            let mut map = serde_json::Map::new();
+            for (i, name) in column_names.iter().enumerate() {
+                let val: serde_json::Value = match row.get_ref(i)? {
+                    rusqlite::types::ValueRef::Null => serde_json::Value::Null,
+                    rusqlite::types::ValueRef::Integer(i) => serde_json::Value::Number(i.into()),
+                    rusqlite::types::ValueRef::Real(f) => serde_json::Number::from_f64(f)
+                        .map(serde_json::Value::Number)
+                        .unwrap_or(serde_json::Value::Null),
+                    rusqlite::types::ValueRef::Text(t) => {
+                        serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
+                    }
+                    rusqlite::types::ValueRef::Blob(b) => serde_json::Value::String(hex::encode(b)),
+                };
+                map.insert(name.clone(), val);
+            }
+            Ok(serde_json::Value::Object(map))
+        })?;
 
         let mut results = Vec::new();
         for row in rows {
