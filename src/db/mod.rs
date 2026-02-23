@@ -1,18 +1,15 @@
-use crate::db::core::FieldUpdate;
 use crate::utils;
 use async_trait::async_trait;
+pub use d1_orm::{DatabaseExecutor, FieldUpdate, MigrationInfo, MigrationMeta};
 use serde::Deserialize;
 use worker::*;
 
-pub mod core;
-pub mod d1;
 pub mod models;
 pub mod passkey;
 pub mod sql;
-#[cfg(test)]
-pub mod sqlite;
 
 pub use models::*;
+pub use sql::Sql;
 
 #[async_trait(?Send)]
 pub trait Database {
@@ -49,8 +46,6 @@ pub trait Database {
     ) -> Result<Vec<UserItem>>;
 }
 
-pub use core::DatabaseExecutor;
-
 pub struct AppDatabase<E: DatabaseExecutor> {
     pub(crate) db: E,
 }
@@ -59,9 +54,6 @@ pub struct AppDatabase<E: DatabaseExecutor> {
 struct TableColumnInfo {
     name: String,
 }
-
-pub use core::{MigrationInfo, MigrationMeta};
-pub use sql::Sql;
 
 pub(crate) struct Migration {
     version: i32,
@@ -121,22 +113,34 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     where
         T: serde::de::DeserializeOwned,
     {
-        self.db.query_all(sql).await
+        self.db
+            .query_all(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
     {
-        self.db.query_first(sql).await
+        self.db
+            .query_first(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn execute(&self, sql: Sql<'_>) -> Result<()> {
-        self.db.execute(sql).await
+        self.db
+            .execute(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
-        self.db.execute_batch(sqls).await
+        self.db
+            .execute_batch(sqls)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn has_table(&self, name: &str) -> Result<bool> {
@@ -159,7 +163,6 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     }
 
     pub(crate) async fn apply_migration(&self, migration: &Migration) -> Result<()> {
-        use crate::db::MigrationMeta;
         crate::log!("Applying migration version {}", migration.version);
 
         let mut batch_queries = Vec::with_capacity(migration.steps.len() + 1);
@@ -186,7 +189,7 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
             applied_at: now,
         });
 
-        self.db.execute_batch(batch_queries).await
+        self.execute_batch(batch_queries).await
     }
 }
 
@@ -307,5 +310,269 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             end_ts,
         };
         self.query_all(sql).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use d1_orm::sqlite::SqliteExecutor;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migrations_and_basic_workflow() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        db.migrate().await?;
+
+        let user = db
+            .create_user("test@example.com", "testuser", None, None, None, None)
+            .await?;
+        assert_eq!(user.username, "testuser");
+        assert_eq!(user.email, "test@example.com");
+
+        let fetched = db.get_user(UserUpdate::id(user.id)).await?.unwrap();
+        assert_eq!(fetched.id, user.id);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_sqlite_workflow_extended() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        // Run migrations
+        db.migrate()
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Create user
+        let user = db
+            .create_user(
+                "extended@example.com",
+                "extendeduser",
+                Some("hash"),
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        assert_eq!(user.email, "extended@example.com");
+        assert_eq!(user.username, "extendeduser");
+
+        // Get user by field
+        let user_by_email = db
+            .get_user(UserUpdate::email("extended@example.com".to_string()))
+            .await?
+            .expect("User not found");
+        assert_eq!(user_by_email.id, user.id);
+
+        let user_by_id = db
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User not found");
+        assert_eq!(user_by_id.id, user.id);
+
+        // Update user
+        db.update_user(
+            user.id,
+            vec![UserUpdate::telegram_id(Some("12345".to_string()))],
+        )
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+        let user3 = db
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User should exist after update");
+        assert_eq!(user3.telegram_id, Some("12345".to_string()));
+
+        // Sessions
+        db.create_session(user.id, "token123", crate::utils::now_utc_ms() + 10000)
+            .await?;
+        let auth_user = db
+            .get_user_by_session_token(SessionUpdate::token("token123".to_string()))
+            .await?
+            .expect("Session not found");
+        assert_eq!(auth_user.id, user.id);
+
+        // Update item
+        db.update_user_item(
+            user.id,
+            "Anime Title",
+            vec![
+                UserItemUpdate::status(crate::model::UserStatus::Completed),
+                UserItemUpdate::score(Some(10)),
+                UserItemUpdate::updated_at(crate::utils::now_utc_ms()),
+            ],
+        )
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+        let items = db
+            .get_user_items_all(user.id)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Anime Title");
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_update_user_no_effective_fields_is_noop() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        let user = db
+            .create_user("noop@example.com", "noop", Some("hash"), None, None, None)
+            .await?;
+
+        db.update_user(user.id, vec![UserUpdate::id(user.id)])
+            .await?;
+
+        let user_after = db
+            .get_user(UserUpdate::id(user.id))
+            .await?
+            .expect("User should still exist");
+        assert_eq!(user_after.id, user.id);
+        assert_eq!(user_after.username, "noop");
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_update_user_item_no_effective_fields_is_noop() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        let user = db
+            .create_user(
+                "item-noop@example.com",
+                "item_noop",
+                Some("hash"),
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        db.update_user_item(
+            user.id,
+            "Noop Title",
+            vec![
+                UserItemUpdate::user_id(user.id),
+                UserItemUpdate::title("Noop Title".to_string()),
+            ],
+        )
+        .await?;
+
+        let items = db.get_user_items_all(user.id).await?;
+        assert!(items.is_empty());
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migration_steps() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.execute(Sql::CreateMigrationsTable).await?;
+
+        // Test CreateTable
+        let steps: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Table("test_table"),
+            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY);".into(),
+        }]));
+        let migration = Migration { version: 1, steps };
+        db.apply_migration(&migration).await?;
+        assert!(db.has_table("test_table").await?);
+
+        // Test CreateTable again (should be no-op due to has_table check)
+        let migration_v2 = Migration { version: 2, steps };
+        db.apply_migration(&migration_v2).await?;
+        assert!(db.has_table("test_table").await?);
+
+        // Test CreateIndex
+        let steps_idx: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Index("test_idx"),
+            sql: "CREATE INDEX test_idx ON test_table(id);".into(),
+        }]));
+        let migration_v3 = Migration {
+            version: 3,
+            steps: steps_idx,
+        };
+        db.apply_migration(&migration_v3).await?;
+        assert!(db.has_index("test_idx").await?);
+
+        // Test CreateIndex again (should be no-op due to has_index check)
+        let migration_v4 = Migration {
+            version: 4,
+            steps: steps_idx,
+        };
+        db.apply_migration(&migration_v4).await?;
+        assert!(db.has_index("test_idx").await?);
+
+        // Test AddColumnIfMissing
+        let steps_col: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Column {
+                table: "test_table",
+                column: "new_col",
+            },
+            sql: "ALTER TABLE test_table ADD COLUMN new_col TEXT;".into(),
+        }]));
+        let migration_v5 = Migration {
+            version: 5,
+            steps: steps_col,
+        };
+        db.apply_migration(&migration_v5).await?;
+        assert!(db.has_column("test_table", "new_col").await?);
+
+        // Test AddColumnIfMissing again (should be no-op due to has_column check)
+        let migration_v6 = Migration {
+            version: 6,
+            steps: steps_col,
+        };
+        db.apply_migration(&migration_v6).await?;
+        assert!(db.has_column("test_table", "new_col").await?);
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migration_idempotent_when_records_missing() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        // Run migrations normally
+        db.migrate()
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Drop the schema_migrations table, but keep the created tables
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("schema_migrations"),
+            sql: std::borrow::Cow::Borrowed("DROP TABLE schema_migrations;"),
+        })
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Run migrations again
+        // It should recreate schema_migrations and perform idempotency checks
+        // skipping tables/indexes/columns that already exist.
+        db.migrate()
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Verify that tables still exist and are accessible
+        assert!(db.has_table("users").await.unwrap_or(false));
+
+        Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use crate::ResponseExt;
-use crate::db::{AppDatabase, Database, User, UserItemUpdate, UserUpdate, core::DatabaseExecutor};
+use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserItemUpdate, UserUpdate};
 use crate::model::UserStatus;
 use crate::utils;
 use argon2::{

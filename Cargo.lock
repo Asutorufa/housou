@@ -380,6 +380,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "d1-orm"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "hex",
+ "js-sys",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "worker",
+]
+
+[[package]]
 name = "darling"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -851,6 +865,7 @@ dependencies = [
  "async-trait",
  "console_error_panic_hook",
  "cookie",
+ "d1-orm",
  "futures",
  "getrandom 0.4.1",
  "hex",
