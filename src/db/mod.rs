@@ -1,4 +1,4 @@
-use crate::db::sql::{FieldUpdate, Query};
+use crate::db::sql::FieldUpdate;
 use crate::utils;
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -187,7 +187,7 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
             };
 
             if should_apply {
-                batch_queries.push(Sql::Raw { sql: step.sql() });
+                batch_queries.push(step.clone());
             }
         }
 

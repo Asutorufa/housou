@@ -1,5 +1,5 @@
 use crate::db::models::UserItemUpdate;
-use crate::db::sql::{DatabaseValue, MigrationInfo, Query, QueryExt, SqlBackend};
+use crate::db::sql::{DatabaseValue, MigrationInfo, QueryExt, SqlBackend};
 use crate::db::{Database, DatabaseExecutor, Migration, SessionUpdate, Sql, UserUpdate};
 use crate::model::UserStatus;
 use async_trait::async_trait;
@@ -14,7 +14,9 @@ impl SqlBackend for SqliteBackend {
         match v {
             DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
             DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
+            DatabaseValue::UInt(u) => rusqlite::types::Value::Integer(u as i64),
             DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
+            DatabaseValue::Bool(b) => rusqlite::types::Value::Integer(if b { 1 } else { 0 }),
             DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
             DatabaseValue::Null => rusqlite::types::Value::Null,
         }
@@ -45,10 +47,12 @@ impl DatabaseExecutor for SqliteExecutor {
         T: serde::de::DeserializeOwned,
     {
         let conn = self.conn.lock().unwrap();
-        let params = sql.params::<SqliteBackend>();
+        let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+            return Ok(Vec::new());
+        };
 
         let mut stmt = conn
-            .prepare(sql.sql().as_ref())
+            .prepare(sql_str.as_ref())
             .map_err(|e| Error::RustError(e.to_string()))?;
         let column_names: Vec<String> = stmt
             .column_names()
@@ -101,9 +105,11 @@ impl DatabaseExecutor for SqliteExecutor {
 
     async fn execute(&self, sql: Sql<'_>) -> Result<()> {
         let conn = self.conn.lock().unwrap();
-        let params = sql.params::<SqliteBackend>();
+        let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+            return Ok(());
+        };
 
-        conn.execute(sql.sql().as_ref(), params_from_iter(params))
+        conn.execute(sql_str.as_ref(), params_from_iter(params))
             .map_err(|e| Error::RustError(e.to_string()))?;
         Ok(())
     }
@@ -114,8 +120,10 @@ impl DatabaseExecutor for SqliteExecutor {
             .transaction()
             .map_err(|e| Error::RustError(e.to_string()))?;
         for sql in sqls {
-            let params = sql.params::<SqliteBackend>();
-            tx.execute(sql.sql().as_ref(), params_from_iter(params))
+            let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+                continue;
+            };
+            tx.execute(sql_str.as_ref(), params_from_iter(params))
                 .map_err(|e| Error::RustError(e.to_string()))?;
         }
         tx.commit().map_err(|e| Error::RustError(e.to_string()))?;
@@ -422,7 +430,8 @@ mod tests {
             SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
         let db = AppDatabase::new(executor);
 
-        db.execute(Sql::Raw {
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("users"),
             sql: "CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE,
@@ -436,7 +445,8 @@ mod tests {
             .into(),
         })
         .await?;
-        db.execute(Sql::Raw {
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("user_items_v2"),
             sql: "CREATE TABLE user_items_v2 (
                 user_id INTEGER,
                 title TEXT,

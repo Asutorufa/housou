@@ -44,9 +44,9 @@ macro_rules! define_model {
                     $( Self::$field(_) => stringify!($field) ),*
                 }
             }
-            fn into_value(self) -> crate::db::sql::DatabaseValue {
+            fn into_value(&self) -> crate::db::sql::DatabaseValue {
                 match self {
-                    $( Self::$field(v) => v.into() ),*
+                    $( Self::$field(v) => v.clone().into() ),*
                 }
             }
         }
@@ -62,16 +62,18 @@ macro_rules! define_model {
         }
 
         impl crate::db::sql::ToParams for $update_enum {
-            fn to_params(self) -> Vec<crate::db::sql::DatabaseValue> {
+            fn add_params(&self, params: &mut Vec<crate::db::sql::DatabaseValue>) {
                 match self {
-                    $( Self::$field(v) => vec![v.into()] ),*
+                    $( Self::$field(v) => params.push(v.clone().into()) ),*
                 }
             }
         }
 
         impl crate::db::sql::ToParams for Vec<$update_enum> {
-            fn to_params(self) -> Vec<crate::db::sql::DatabaseValue> {
-                self.into_iter().flat_map(|u| u.to_params()).collect()
+            fn add_params(&self, params: &mut Vec<crate::db::sql::DatabaseValue>) {
+                for u in self {
+                    u.add_params(params);
+                }
             }
         }
     };

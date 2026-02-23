@@ -2,12 +2,14 @@ use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub(crate) enum DatabaseValue {
-    Text(String),
+    Null,
+    Bool(bool),
     Int(i64),
+    UInt(u64),
     Real(f64),
+    Text(String),
     #[allow(dead_code)]
     Blob(Vec<u8>),
-    Null,
 }
 
 impl From<i32> for DatabaseValue {
@@ -16,9 +18,27 @@ impl From<i32> for DatabaseValue {
     }
 }
 
+impl From<u32> for DatabaseValue {
+    fn from(v: u32) -> Self {
+        DatabaseValue::UInt(v as u64)
+    }
+}
+
 impl From<i64> for DatabaseValue {
     fn from(v: i64) -> Self {
         DatabaseValue::Int(v)
+    }
+}
+
+impl From<u64> for DatabaseValue {
+    fn from(v: u64) -> Self {
+        DatabaseValue::UInt(v)
+    }
+}
+
+impl From<bool> for DatabaseValue {
+    fn from(v: bool) -> Self {
+        DatabaseValue::Bool(v)
     }
 }
 
@@ -67,23 +87,53 @@ impl From<&DatabaseValue> for DatabaseValue {
 pub trait FieldUpdate {
     fn field(&self) -> &'static str;
     #[allow(dead_code)]
-    fn into_value(self) -> DatabaseValue;
+    fn into_value(&self) -> DatabaseValue;
 }
 
 impl DatabaseValue {}
 
 pub trait ToParams {
-    fn to_params(self) -> Vec<DatabaseValue>;
+    fn add_params(&self, params: &mut Vec<DatabaseValue>);
 }
 
-impl<T: Into<DatabaseValue>> ToParams for T {
-    fn to_params(self) -> Vec<DatabaseValue> {
-        vec![self.into()]
+impl<T: Clone + Into<DatabaseValue>> ToParams for T {
+    fn add_params(&self, params: &mut Vec<DatabaseValue>) {
+        params.push(self.clone().into());
     }
 }
 
 impl ToParams for Vec<DatabaseValue> {
-    fn to_params(self) -> Vec<DatabaseValue> {
+    fn add_params(&self, params: &mut Vec<DatabaseValue>) {
+        for v in self {
+            params.push(v.clone());
+        }
+    }
+}
+
+pub trait IntoOptionCow {
+    fn into_option_cow(self) -> Option<Cow<'static, str>>;
+}
+
+impl IntoOptionCow for &'static str {
+    fn into_option_cow(self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed(self))
+    }
+}
+
+impl IntoOptionCow for String {
+    fn into_option_cow(self) -> Option<Cow<'static, str>> {
+        Some(Cow::Owned(self))
+    }
+}
+
+impl IntoOptionCow for Cow<'static, str> {
+    fn into_option_cow(self) -> Option<Cow<'static, str>> {
+        Some(self)
+    }
+}
+
+impl IntoOptionCow for Option<Cow<'static, str>> {
+    fn into_option_cow(self) -> Option<Cow<'static, str>> {
         self
     }
 }
@@ -94,13 +144,13 @@ pub trait SqlBackend {
 }
 
 pub trait Query {
-    fn sql(&self) -> Cow<'static, str>;
-    fn values(&self) -> Vec<DatabaseValue>;
+    fn build(&self) -> Option<(Cow<'static, str>, Vec<DatabaseValue>)>;
 }
 
 pub trait QueryExt: Query {
-    fn params<B: SqlBackend>(&self) -> Vec<B::Param> {
-        self.values().into_iter().map(B::convert).collect()
+    fn build_params<B: SqlBackend>(&self) -> Option<(Cow<'static, str>, Vec<B::Param>)> {
+        self.build()
+            .map(|(sql, values)| (sql, values.into_iter().map(B::convert).collect()))
     }
 }
 
@@ -121,26 +171,19 @@ pub enum MigrationInfo {
 }
 
 impl ToParams for MigrationInfo {
-    fn to_params(self) -> Vec<DatabaseValue> {
-        vec![]
-    }
-}
-
-pub(crate) fn filter_updates<T: FieldMeta>(updates: &[T]) -> Vec<&T> {
-    updates.iter().filter(|u| !u.is_primary_key()).collect()
+    fn add_params(&self, _params: &mut Vec<DatabaseValue>) {}
 }
 
 macro_rules! sql_params {
     ($p:ident sql) => {};
     ($p:ident info) => {};
     ($p:ident $field:ident [skip_primary_key]) => {
-        let valid_updates = $crate::db::sql::filter_updates($field);
-        for u in valid_updates {
-            $p.extend(u.clone().to_params());
+        for u in $field.iter().filter(|u| !u.is_primary_key()) {
+            $p.push(u.into_value());
         }
     };
     ($p:ident $field:ident) => {
-        $p.extend($field.clone().to_params());
+        $crate::db::sql::ToParams::add_params($field, &mut $p);
     };
 }
 
@@ -166,39 +209,6 @@ pub trait MigrationMeta {
     fn migration_info(&self) -> Option<MigrationInfo>;
 }
 
-macro_rules! impl_migration_meta_for_variants {
-    (
-        $enum_name:ident<$lt:lifetime>;
-        $(
-            $( @$mtype:ident ( $($margs:tt)* ) )?
-            $name:ident $( { $($field:ident : $ftype:ty $( [ $mode:ident ] )? ),* $(,)? } )? => $sql:expr
-        ),* $(,)?
-    ) => {
-        impl<$lt> $crate::db::MigrationMeta for $enum_name<$lt> {
-            fn migration_info(&self) -> Option<$crate::db::sql::MigrationInfo> {
-                match self {
-                    $(
-                        $enum_name::$name $( { $($field,)* } )? => {
-                            $( $(let _ = $field;)* )?
-                            None $( .or(Some(migration_info_helper!(@$mtype($($margs)*)))) )?
-                        }
-                    ),*
-                }
-            }
-        }
-    };
-}
-
-macro_rules! maybe_impl_migration_meta {
-    ($enum_name:ident<$lt:lifetime>; [ $($all:tt)* ]; [ @ $mtype:ident ( $($margs:tt)* ) $($rest:tt)* ]) => {
-        impl_migration_meta_for_variants!($enum_name<$lt>; $($all)*);
-    };
-    ($enum_name:ident<$lt:lifetime>; [ $($all:tt)* ]; [ $first:tt $($rest:tt)* ]) => {
-        maybe_impl_migration_meta!($enum_name<$lt>; [ $($all)* ]; [ $($rest)* ]);
-    };
-    ($enum_name:ident<$lt:lifetime>; [ $($all:tt)* ]; [ ]) => {};
-}
-
 macro_rules! define_sql {
     (
         $enum_name:ident
@@ -216,64 +226,48 @@ macro_rules! define_sql {
         }
 
         impl<'a> $crate::db::sql::Query for $enum_name<'a> {
-            fn sql(&self) -> ::std::borrow::Cow<'static, str> {
+            fn build(&self) -> Option<(::std::borrow::Cow<'static, str>, Vec<$crate::db::sql::DatabaseValue>)> {
                 match self {
                     $(
                         $enum_name::$name $( { $($field,)* } )? => {
-                             $( $(let _ = $field;)* )?
-                             $sql.into()
-                        },
-                    )*
-                }
-            }
-
-            fn values(&self) -> Vec<$crate::db::sql::DatabaseValue> {
-                if self.sql().is_empty() {
-                    Vec::new()
-                } else {
-                    let mut v = Vec::new();
-                    match self {
-                        $(
-                            $enum_name::$name $( { $($field,)* } )? => {
-                                $( $(let _ = &$field;)* )?
+                            $( $(let _ = &$field;)* )?
+                            let sql: Option<::std::borrow::Cow<'static, str>> = $crate::db::sql::IntoOptionCow::into_option_cow($sql);
+                            sql.map(|sql| {
+                                #[allow(unused_mut)]
+                                let mut v = Vec::new();
                                 $(
                                     $(
                                         sql_params!(v $field $( [$mode] )? );
                                     )*
                                 )?
-                            }
-                        )*
-                    }
-                    v
+                                (sql, v)
+                            })
+                        },
+                    )*
                 }
             }
         }
 
-        maybe_impl_migration_meta!(
-            $enum_name<'a>;
-            [
-                $(
-                    $( @$mtype ( $($margs)* ) )?
-                    $name $( { $($field : $ftype $( [ $mode ] )? ),* } )? => $sql,
-                )*
-            ];
-            [
-                $(
-                    $( @$mtype ( $($margs)* ) )?
-                    $name $( { $($field : $ftype $( [ $mode ] )? ),* } )? => $sql,
-                )*
-            ]
-        );
-
+        impl<'a> $crate::db::MigrationMeta for $enum_name<'a> {
+            fn migration_info(&self) -> Option<$crate::db::sql::MigrationInfo> {
+                match self {
+                    $(
+                        $enum_name::$name $( { $($field,)* } )? => {
+                            $( $(let _ = $field;)* )?
+                            None $( .or(Some(migration_info_helper!(@$mtype($($margs)*)))) )?
+                        }
+                    ),*
+                }
+            }
+        }
     };
 }
 
 define_sql! {
     Sql
     // General
-    Raw { sql: Cow<'a, str> } => sql.to_string(),
     @adhoc(info)
-    AdHoc { info: MigrationInfo, sql: Cow<'a, str> } => sql.to_string(),
+    AdHoc { info: MigrationInfo, sql: Cow<'static, str> } => sql.clone(),
 
     // Migrations
     CreateMigrationsTable => "CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -448,79 +442,77 @@ define_sql! {
     } => "DELETE FROM passkey_states WHERE id = ?",
 }
 
-struct EffectiveUpdates<'a, T> {
-    valid: Vec<&'a T>,
-}
-
-impl<'a, T: FieldMeta> EffectiveUpdates<'a, T> {
-    fn from_slice(updates: &'a [T]) -> Self {
-        Self {
-            valid: filter_updates(updates),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.valid.is_empty()
-    }
-}
-
 fn build_update_assignment_sql<T: FieldMeta + FieldUpdate>(
     table: &str,
     key_field: &str,
     updates: &[T],
-) -> Cow<'static, str> {
-    let effective = EffectiveUpdates::from_slice(updates);
-    if effective.is_empty() {
-        Cow::Borrowed("")
-    } else {
-        let fields = effective
-            .valid
-            .iter()
-            .map(|u| format!("{} = ?", u.field()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        Cow::Owned(format!(
-            "UPDATE {} SET {} WHERE {} = ?",
-            table, fields, key_field
-        ))
+) -> Option<Cow<'static, str>> {
+    let valid = updates.iter().filter(|u| !u.is_primary_key());
+    let count = valid.clone().count();
+    if count == 0 {
+        return None;
     }
+
+    use std::fmt::Write;
+    let mut sql = String::with_capacity(64 + table.len() + key_field.len() + count * 40);
+    write!(sql, "UPDATE {} SET ", table).unwrap();
+
+    for (i, u) in valid.enumerate() {
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        write!(sql, "{} = ?", u.field()).unwrap();
+    }
+    write!(sql, " WHERE {} = ?", key_field).unwrap();
+
+    Some(Cow::Owned(sql))
 }
 
-fn build_update_user_sql(updates: &[crate::db::models::UserUpdate]) -> Cow<'static, str> {
+fn build_update_user_sql(updates: &[crate::db::models::UserUpdate]) -> Option<Cow<'static, str>> {
     build_update_assignment_sql("users", "id", updates)
 }
 
-fn build_update_passkey_sql(updates: &[crate::db::models::PasskeyUpdate]) -> Cow<'static, str> {
+fn build_update_passkey_sql(
+    updates: &[crate::db::models::PasskeyUpdate],
+) -> Option<Cow<'static, str>> {
     build_update_assignment_sql("passkeys", "cred_id", updates)
 }
 
-fn build_update_user_item_sql(updates: &[crate::db::models::UserItemUpdate]) -> Cow<'static, str> {
-    let effective = EffectiveUpdates::from_slice(updates);
-    if effective.is_empty() {
-        Cow::Borrowed("")
-    } else {
-        let field_names: Vec<_> = effective.valid.iter().map(|u| u.field()).collect();
-        let cols = field_names
-            .iter()
-            .map(|f| format!(", {}", f))
-            .collect::<String>();
-        let placeholders = field_names.iter().map(|_| ", ?").collect::<String>();
-
-        let sets = field_names
-            .iter()
-            .map(|f| {
-                if *f == "begin_at" {
-                    "begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)".to_string()
-                } else {
-                    format!("{} = excluded.{}", f, f)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        Cow::Owned(format!(
-            "INSERT INTO user_items_v2 (user_id, title {}) VALUES (?, ? {}) ON CONFLICT(user_id, title) DO UPDATE SET {}",
-            cols, placeholders, sets
-        ))
+fn build_update_user_item_sql(
+    updates: &[crate::db::models::UserItemUpdate],
+) -> Option<Cow<'static, str>> {
+    let valid = updates.iter().filter(|u| !u.is_primary_key());
+    let count = valid.clone().count();
+    if count == 0 {
+        return None;
     }
+
+    use std::fmt::Write;
+    let mut sql = String::with_capacity(64 + "user_items_v2".len() + "user_id".len() + count * 40);
+    sql.push_str("INSERT INTO user_items_v2 (user_id, title");
+
+    for u in valid.clone() {
+        write!(sql, ", {}", u.field()).unwrap();
+    }
+
+    sql.push_str(") VALUES (?, ?");
+    for _ in 0..count {
+        sql.push_str(", ?");
+    }
+
+    sql.push_str(") ON CONFLICT(user_id, title) DO UPDATE SET ");
+
+    for (i, u) in valid.enumerate() {
+        if i > 0 {
+            sql.push_str(", ");
+        }
+        let f = u.field();
+        if f == "begin_at" {
+            sql.push_str("begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)");
+        } else {
+            write!(sql, "{} = excluded.{}", f, f).unwrap();
+        }
+    }
+
+    Some(Cow::Owned(sql))
 }
