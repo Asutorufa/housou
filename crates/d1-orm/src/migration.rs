@@ -107,7 +107,9 @@ where
         let exists = match info {
             MigrationInfo::Table(name) => check_table_exists(db, name).await?,
             MigrationInfo::Index(name) => check_index_exists(db, name).await?,
-            MigrationInfo::Column { table, column } => check_column_exists(db, table, column).await?,
+            MigrationInfo::Column { table, column } => {
+                check_column_exists(db, table, column).await?
+            }
         };
 
         if !exists {
