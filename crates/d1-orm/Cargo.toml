@@ -1,0 +1,24 @@
+[package]
+name = "d1-orm"
+version = "0.1.0"
+edition = "2021"
+description = "A lightweight ORM/SQL builder for Cloudflare D1 and SQLite"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+async-trait = "0.1"
+serde_json = "1.0"
+
+# D1 backend
+worker = { version = "0.7.4", features = ["d1"], optional = true }
+js-sys = { version = "0.3", optional = true }
+
+# Sqlite backend
+rusqlite = { version = "0.32", features = ["bundled"], optional = true }
+hex = { version = "0.4", optional = true }
+
+[features]
+default = []
+d1 = ["dep:worker", "dep:js-sys"]
+sqlite = ["dep:rusqlite", "dep:hex"]

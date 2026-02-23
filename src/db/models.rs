@@ -1,6 +1,13 @@
 use crate::model::UserStatus;
+use d1_orm::DatabaseValue;
 
-crate::define_model!(User, UserField, UserUpdate {
+impl From<UserStatus> for DatabaseValue {
+    fn from(v: UserStatus) -> Self {
+        DatabaseValue::Int(v as i64)
+    }
+}
+
+d1_orm::define_model!(User, UserField, UserUpdate {
     id: i32 [pk],
     email: String,
     username: String,
@@ -16,7 +23,7 @@ crate::define_model!(User, UserField, UserUpdate {
     created_at: i64,
 });
 
-crate::define_model!(
+d1_orm::define_model!(
     #[allow(dead_code)]
     Session,
     SessionField,
@@ -28,7 +35,7 @@ crate::define_model!(
     }
 );
 
-crate::define_model!(
+d1_orm::define_model!(
     Passkey,
     PasskeyField,
     PasskeyUpdate {
@@ -42,7 +49,7 @@ crate::define_model!(
     }
 );
 
-crate::define_model!(
+d1_orm::define_model!(
     PasskeyState,
     PasskeyStateField,
     PasskeyStateUpdate {
@@ -52,7 +59,7 @@ crate::define_model!(
     }
 );
 
-crate::define_model!(UserItem, UserItemField, UserItemUpdate {
+d1_orm::define_model!(UserItem, UserItemField, UserItemUpdate {
     user_id: i32 [pk],
     title: String [pk],
     status: UserStatus,
@@ -61,7 +68,7 @@ crate::define_model!(UserItem, UserItemField, UserItemUpdate {
     begin_at: Option<i64>,
 });
 
-crate::define_model!(
+d1_orm::define_model!(
     #[serde(rename_all = "camelCase")]
     UserItemSummary,
     UserItemSummaryField,
@@ -71,7 +78,7 @@ crate::define_model!(
     }
 );
 
-crate::define_model!(
+d1_orm::define_model!(
     SchemaVersion,
     SchemaVersionField,
     SchemaVersionUpdate {

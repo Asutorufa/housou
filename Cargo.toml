@@ -16,6 +16,7 @@ dev = []                       # Use local data.json instead of fetching from Gi
 passkey-server = { path = "crates/passkey", default-features = false, features = [
     "wasm",
 ] }
+d1-orm = { path = "crates/d1-orm", features = ["d1"] }
 worker = { version = "0.7.4", features = ["d1"] }
 url = "2.5"
 serde = "1.0.228"
@@ -53,8 +54,9 @@ strip = true
 wasm-opt = false
 
 [workspace]
-members = ["crates/passkey"]
+members = ["crates/passkey", "crates/d1-orm"]
 
 [dev-dependencies]
+d1-orm = { path = "crates/d1-orm", features = ["sqlite"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tokio = { version = "1", features = ["full"] }

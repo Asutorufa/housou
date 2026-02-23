@@ -1,13 +1,7 @@
-pub use crate::db::core::*;
+use d1_orm::{FieldUpdate, MigrationInfo, build_update_sql, build_upsert_sql, UpsertConfig};
 use std::borrow::Cow;
 
-impl From<crate::model::UserStatus> for DatabaseValue {
-    fn from(v: crate::model::UserStatus) -> Self {
-        DatabaseValue::Int(v as i64)
-    }
-}
-
-crate::define_sql! {
+d1_orm::define_sql! {
     Sql
     // General
     @adhoc(info)

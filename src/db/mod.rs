@@ -1,18 +1,15 @@
-use crate::db::core::FieldUpdate;
 use crate::utils;
 use async_trait::async_trait;
+pub use d1_orm::{DatabaseExecutor, FieldUpdate, MigrationInfo, MigrationMeta};
 use serde::Deserialize;
 use worker::*;
 
-pub mod core;
-pub mod d1;
 pub mod models;
 pub mod passkey;
 pub mod sql;
-#[cfg(test)]
-pub mod sqlite;
 
 pub use models::*;
+pub use sql::Sql;
 
 #[async_trait(?Send)]
 pub trait Database {
@@ -49,8 +46,6 @@ pub trait Database {
     ) -> Result<Vec<UserItem>>;
 }
 
-pub use core::DatabaseExecutor;
-
 pub struct AppDatabase<E: DatabaseExecutor> {
     pub(crate) db: E,
 }
@@ -59,9 +54,6 @@ pub struct AppDatabase<E: DatabaseExecutor> {
 struct TableColumnInfo {
     name: String,
 }
-
-pub use core::{MigrationInfo, MigrationMeta};
-pub use sql::Sql;
 
 pub(crate) struct Migration {
     version: i32,
@@ -121,22 +113,34 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     where
         T: serde::de::DeserializeOwned,
     {
-        self.db.query_all(sql).await
+        self.db
+            .query_all(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
     {
-        self.db.query_first(sql).await
+        self.db
+            .query_first(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn execute(&self, sql: Sql<'_>) -> Result<()> {
-        self.db.execute(sql).await
+        self.db
+            .execute(sql)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
-        self.db.execute_batch(sqls).await
+        self.db
+            .execute_batch(sqls)
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))
     }
 
     pub(crate) async fn has_table(&self, name: &str) -> Result<bool> {
@@ -155,11 +159,12 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
     }
 
     fn has_effective_updates<T: FieldUpdate>(updates: &[T], skipped_fields: &[&str]) -> bool {
-        updates.iter().any(|u| !skipped_fields.contains(&u.field()))
+        updates
+            .iter()
+            .any(|u| !skipped_fields.contains(&u.field()))
     }
 
     pub(crate) async fn apply_migration(&self, migration: &Migration) -> Result<()> {
-        use crate::db::MigrationMeta;
         crate::log!("Applying migration version {}", migration.version);
 
         let mut batch_queries = Vec::with_capacity(migration.steps.len() + 1);
@@ -186,7 +191,7 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
             applied_at: now,
         });
 
-        self.db.execute_batch(batch_queries).await
+        self.execute_batch(batch_queries).await
     }
 }
 
@@ -307,5 +312,28 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             end_ts,
         };
         self.query_all(sql).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use d1_orm::sqlite::SqliteExecutor;
+
+    #[tokio::test]
+    async fn test_migrations_and_basic_workflow() -> Result<()> {
+        let executor = SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        db.migrate().await?;
+
+        let user = db.create_user("test@example.com", "testuser", None, None, None, None).await?;
+        assert_eq!(user.username, "testuser");
+        assert_eq!(user.email, "test@example.com");
+
+        let fetched = db.get_user(UserUpdate::id(user.id)).await?.unwrap();
+        assert_eq!(fetched.id, user.id);
+
+        Ok(())
     }
 }
