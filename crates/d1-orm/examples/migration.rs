@@ -1,5 +1,5 @@
 use d1_orm::sqlite::SqliteExecutor;
-use d1_orm::{define_sql, DatabaseExecutor, MigrationInfo, MigrationMeta};
+use d1_orm::{define_sql, migrate};
 
 // Define some migration SQL statements with migration metadata attached
 define_sql!(
@@ -32,33 +32,8 @@ async fn main() -> Result<(), d1_orm::Error> {
 
     println!("Starting migrations...");
 
-    for step in steps {
-        if let Some(info) = step.migration_info() {
-            match info {
-                MigrationInfo::Table(name) => {
-                    println!("Ensuring table '{}' exists...", name);
-                    // In a real app, you would check if the table exists first:
-                    // SELECT name FROM sqlite_master WHERE type='table' AND name = ?
-                }
-                MigrationInfo::Index(name) => {
-                    println!("Ensuring index '{}' exists...", name);
-                    // Check if index exists:
-                    // SELECT name FROM sqlite_master WHERE type='index' AND name = ?
-                }
-                MigrationInfo::Column { table, column } => {
-                    println!(
-                        "Ensuring column '{}' exists in table '{}'...",
-                        column, table
-                    );
-                    // Check if column exists:
-                    // SELECT * FROM pragma_table_info(?)
-                }
-            }
-
-            // Execute the migration step
-            executor.execute(step).await?;
-        }
-    }
+    // Execute migrations using the generic helper
+    migrate(&executor, steps).await?;
 
     println!("Migrations completed successfully!");
 
