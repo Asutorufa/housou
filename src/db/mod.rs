@@ -1,7 +1,6 @@
 use crate::utils;
 use async_trait::async_trait;
-pub use d1_orm::{DatabaseExecutor, FieldUpdate, MigrationInfo, MigrationMeta};
-use serde::Deserialize;
+pub use d1_orm::{DatabaseExecutor, FieldUpdate, Migration, MigrationInfo};
 use worker::*;
 
 pub mod models;
@@ -50,58 +49,52 @@ pub struct AppDatabase<E: DatabaseExecutor> {
     pub(crate) db: E,
 }
 
-#[derive(Debug, Deserialize)]
-struct TableColumnInfo {
-    name: String,
+fn get_migrations() -> Vec<Migration<Sql<'static>>> {
+    vec![
+        Migration::new(
+            1,
+            "Initial schema",
+            vec![
+                Sql::CreateUsersTable,
+                Sql::CreateSessionsTable,
+                Sql::CreateUsersUsernameIndex,
+                Sql::CreateUserItemsV2Table,
+                Sql::CreateUserItemsV2UserIdIndex,
+            ],
+        ),
+        Migration::new(2, "Add avatar_url", vec![Sql::AddUsersAvatarUrlColumn]),
+        Migration::new(
+            3,
+            "Add passkeys",
+            vec![
+                Sql::CreatePasskeysTable,
+                Sql::CreatePasskeysUserIdIndex,
+                Sql::CreatePasskeyStatesTable,
+            ],
+        ),
+        Migration::new(
+            4,
+            "Add telegram_id",
+            vec![
+                Sql::AddUsersTelegramIdColumn,
+                Sql::CreateUsersTelegramIdIndex,
+            ],
+        ),
+        Migration::new(
+            5,
+            "Add begin_at",
+            vec![
+                Sql::AddUserItemsV2BeginAtColumn,
+                Sql::CreateUserItemsV2BeginAtIndex,
+            ],
+        ),
+        Migration::new(
+            6,
+            "Add composite index",
+            vec![Sql::CreateUserItemsV2UserIdBeginAtIndex],
+        ),
+    ]
 }
-
-pub(crate) struct Migration {
-    version: i32,
-    steps: &'static [Sql<'static>],
-}
-
-const MIGRATIONS: &[Migration] = &[
-    Migration {
-        version: 1,
-        steps: &[
-            Sql::CreateUsersTable,
-            Sql::CreateSessionsTable,
-            Sql::CreateUsersUsernameIndex,
-            Sql::CreateUserItemsV2Table,
-            Sql::CreateUserItemsV2UserIdIndex,
-        ],
-    },
-    Migration {
-        version: 2,
-        steps: &[Sql::AddUsersAvatarUrlColumn],
-    },
-    Migration {
-        version: 3,
-        steps: &[
-            Sql::CreatePasskeysTable,
-            Sql::CreatePasskeysUserIdIndex,
-            Sql::CreatePasskeyStatesTable,
-        ],
-    },
-    Migration {
-        version: 4,
-        steps: &[
-            Sql::AddUsersTelegramIdColumn,
-            Sql::CreateUsersTelegramIdIndex,
-        ],
-    },
-    Migration {
-        version: 5,
-        steps: &[
-            Sql::AddUserItemsV2BeginAtColumn,
-            Sql::CreateUserItemsV2BeginAtIndex,
-        ],
-    },
-    Migration {
-        version: 6,
-        steps: &[Sql::CreateUserItemsV2UserIdBeginAtIndex],
-    },
-];
 
 impl<E: DatabaseExecutor> AppDatabase<E> {
     pub fn new(db: E) -> Self {
@@ -143,76 +136,25 @@ impl<E: DatabaseExecutor> AppDatabase<E> {
             .map_err(|e| Error::RustError(e.to_string()))
     }
 
-    pub(crate) async fn has_table(&self, name: &str) -> Result<bool> {
-        let rows: Vec<TableColumnInfo> = self.query_all(Sql::CheckTableExists { name }).await?;
-        Ok(!rows.is_empty())
-    }
-
-    pub(crate) async fn has_index(&self, name: &str) -> Result<bool> {
-        let rows: Vec<TableColumnInfo> = self.query_all(Sql::CheckIndexExists { name }).await?;
-        Ok(!rows.is_empty())
-    }
-
-    pub(crate) async fn has_column(&self, table: &str, column: &str) -> Result<bool> {
-        let rows: Vec<TableColumnInfo> = self.query_all(Sql::GetTableInfo { table }).await?;
-        Ok(rows.iter().any(|c| c.name == column))
-    }
-
     fn has_effective_updates<T: FieldUpdate>(updates: &[T], skipped_fields: &[&str]) -> bool {
         updates.iter().any(|u| !skipped_fields.contains(&u.field()))
-    }
-
-    pub(crate) async fn apply_migration(&self, migration: &Migration) -> Result<()> {
-        crate::log!("Applying migration version {}", migration.version);
-
-        let mut batch_queries = Vec::with_capacity(migration.steps.len() + 1);
-        for step in migration.steps {
-            let info = step.migration_info();
-
-            let should_apply = match info {
-                Some(MigrationInfo::Table(name)) => !self.has_table(name).await?,
-                Some(MigrationInfo::Index(name)) => !self.has_index(name).await?,
-                Some(MigrationInfo::Column { table, column }) => {
-                    !self.has_column(table, column).await?
-                }
-                None => true,
-            };
-
-            if should_apply {
-                batch_queries.push(step.clone());
-            }
-        }
-
-        let now = utils::now_utc_ms();
-        batch_queries.push(Sql::InsertMigration {
-            version: migration.version,
-            applied_at: now,
-        });
-
-        self.execute_batch(batch_queries).await
     }
 }
 
 #[async_trait(?Send)]
 impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     async fn migrate(&self) -> Result<()> {
-        // Create schema_migrations table if not exists
-        self.execute(Sql::CreateMigrationsTable).await?;
-
-        // Get current version
-        let current_version: i32 = self
-            .query_first::<SchemaVersion>(Sql::GetSchemaVersion)
-            .await?
-            .and_then(|v| v.version)
-            .unwrap_or(0);
-
-        for migration in MIGRATIONS {
-            if migration.version > current_version {
-                self.apply_migration(migration).await?;
-            }
-        }
-
-        Ok(())
+        let migrations = get_migrations();
+        d1_orm::migrate(
+            &self.db,
+            migrations,
+            Some("schema_migrations"),
+            Some(|msg: &str| {
+                crate::log!("{}", msg);
+            }),
+        )
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))
     }
 
     async fn create_user(
@@ -317,6 +259,12 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
 mod tests {
     use super::*;
     use d1_orm::sqlite::SqliteExecutor;
+    use serde::Deserialize;
+
+    #[derive(Debug, Deserialize)]
+    struct TableColumnInfo {
+        name: String,
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_migrations_and_basic_workflow() -> Result<()> {
@@ -478,73 +426,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_migration_steps() -> Result<()> {
-        let executor =
-            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
-        let db = AppDatabase::new(executor);
-        db.execute(Sql::CreateMigrationsTable).await?;
-
-        // Test CreateTable
-        let steps: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
-            info: MigrationInfo::Table("test_table"),
-            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY);".into(),
-        }]));
-        let migration = Migration { version: 1, steps };
-        db.apply_migration(&migration).await?;
-        assert!(db.has_table("test_table").await?);
-
-        // Test CreateTable again (should be no-op due to has_table check)
-        let migration_v2 = Migration { version: 2, steps };
-        db.apply_migration(&migration_v2).await?;
-        assert!(db.has_table("test_table").await?);
-
-        // Test CreateIndex
-        let steps_idx: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
-            info: MigrationInfo::Index("test_idx"),
-            sql: "CREATE INDEX test_idx ON test_table(id);".into(),
-        }]));
-        let migration_v3 = Migration {
-            version: 3,
-            steps: steps_idx,
-        };
-        db.apply_migration(&migration_v3).await?;
-        assert!(db.has_index("test_idx").await?);
-
-        // Test CreateIndex again (should be no-op due to has_index check)
-        let migration_v4 = Migration {
-            version: 4,
-            steps: steps_idx,
-        };
-        db.apply_migration(&migration_v4).await?;
-        assert!(db.has_index("test_idx").await?);
-
-        // Test AddColumnIfMissing
-        let steps_col: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
-            info: MigrationInfo::Column {
-                table: "test_table",
-                column: "new_col",
-            },
-            sql: "ALTER TABLE test_table ADD COLUMN new_col TEXT;".into(),
-        }]));
-        let migration_v5 = Migration {
-            version: 5,
-            steps: steps_col,
-        };
-        db.apply_migration(&migration_v5).await?;
-        assert!(db.has_column("test_table", "new_col").await?);
-
-        // Test AddColumnIfMissing again (should be no-op due to has_column check)
-        let migration_v6 = Migration {
-            version: 6,
-            steps: steps_col,
-        };
-        db.apply_migration(&migration_v6).await?;
-        assert!(db.has_column("test_table", "new_col").await?);
-
-        Ok(())
-    }
-
-    #[tokio::test(flavor = "current_thread")]
     async fn test_migration_idempotent_when_records_missing() -> Result<()> {
         let executor =
             SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
@@ -571,7 +452,11 @@ mod tests {
             .map_err(|e| Error::RustError(e.to_string()))?;
 
         // Verify that tables still exist and are accessible
-        assert!(db.has_table("users").await.unwrap_or(false));
+        let tables: Vec<TableColumnInfo> = db
+            .query_all(Sql::CheckTableExists { name: "users" })
+            .await
+            .unwrap();
+        assert!(!tables.is_empty());
 
         Ok(())
     }
