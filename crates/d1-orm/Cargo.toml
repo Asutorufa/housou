@@ -3,7 +3,10 @@ name = "d1-orm"
 version = "0.1.0"
 edition = "2021"
 description = "A lightweight ORM/SQL builder for Cloudflare D1 and SQLite"
+repository = "https://github.com/Asutorufa/housou/tree/master/crates/d1-orm"
 license = "MIT"
+keywords = ["orm", "cloudflare-d1", "sqlite", "sql-builder", "wasm"]
+categories = ["database", "wasm", "web-programming"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
