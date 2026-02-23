@@ -1,5 +1,5 @@
 use d1_orm::sqlite::SqliteExecutor;
-use d1_orm::{define_sql, migrate};
+use d1_orm::{define_sql, migrate, Migration};
 
 // Define some migration SQL statements with migration metadata attached
 define_sql!(
@@ -24,16 +24,35 @@ async fn main() -> Result<(), d1_orm::Error> {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     let executor = SqliteExecutor::new(conn);
 
-    let steps = vec![
-        MyMigrations::CreateUsersTable,
-        MyMigrations::CreateUsersUsernameIndex,
-        MyMigrations::AddUsersEmailColumn,
+    // 2. Define migrations
+    let migrations = vec![
+        Migration::new(
+            1,
+            "Initial setup",
+            vec![
+                MyMigrations::CreateUsersTable,
+                MyMigrations::CreateUsersUsernameIndex,
+            ],
+        ),
+        Migration::new(
+            2,
+            "Add email column",
+            vec![MyMigrations::AddUsersEmailColumn],
+        ),
     ];
 
     println!("Starting migrations...");
 
     // Execute migrations using the generic helper
-    migrate(&executor, steps).await?;
+    // Uses default table "_d1_migrations" and println! logger
+    // Explicit type annotation |msg: &str| helps the compiler with lifetime inference
+    migrate(
+        &executor,
+        migrations,
+        None,
+        Some(|msg: &str| println!("{}", msg)),
+    )
+    .await?;
 
     println!("Migrations completed successfully!");
 
