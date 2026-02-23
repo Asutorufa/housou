@@ -45,7 +45,10 @@ impl DatabaseExecutor for SqliteExecutor {
         T: serde::de::DeserializeOwned,
         Q: Query + 'async_trait,
     {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Other(format!("Mutex lock failed: {}", e)))?;
         let (sql_str, params) = sql.build_params::<SqliteBackend>()?;
 
         let mut stmt = conn.prepare(sql_str.as_ref())?;
@@ -67,7 +70,9 @@ impl DatabaseExecutor for SqliteExecutor {
                     rusqlite::types::ValueRef::Text(t) => {
                         serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
                     }
-                    rusqlite::types::ValueRef::Blob(b) => serde_json::Value::String(hex::encode(b)),
+                    rusqlite::types::ValueRef::Blob(b) => {
+                        serde_json::Value::String(hex::encode(b))
+                    }
                 };
                 map.insert(name.clone(), val);
             }
@@ -97,7 +102,10 @@ impl DatabaseExecutor for SqliteExecutor {
     where
         Q: Query + 'async_trait,
     {
-        let conn = self.conn.lock().unwrap();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Other(format!("Mutex lock failed: {}", e)))?;
         let (sql_str, params) = sql.build_params::<SqliteBackend>()?;
 
         conn.execute(sql_str.as_ref(), params_from_iter(params))?;
@@ -108,7 +116,10 @@ impl DatabaseExecutor for SqliteExecutor {
     where
         Q: Query + 'async_trait,
     {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| Error::Other(format!("Mutex lock failed: {}", e)))?;
         let tx = conn.transaction()?;
         for sql in sqls {
             let (sql_str, params) = sql.build_params::<SqliteBackend>()?;
