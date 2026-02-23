@@ -101,24 +101,28 @@ pub fn build_upsert_sql<T: FieldMeta + FieldUpdate>(
             sql.push_str(pk);
             first = false;
         }
-        sql.push_str(") DO UPDATE SET ");
+        if valid_count > 0 {
+            sql.push_str(") DO UPDATE SET ");
 
-        first = true;
-        for u in valid {
-            if !first {
-                sql.push_str(", ");
-            }
-            let f = u.field();
+            first = true;
+            for u in valid {
+                if !first {
+                    sql.push_str(", ");
+                }
+                let f = u.field();
 
-            let mut resolved = false;
-            if let Some(custom_sql) = config.custom_conflict_resolution.and_then(|cf| cf(f)) {
-                sql.push_str(custom_sql);
-                resolved = true;
+                let mut resolved = false;
+                if let Some(custom_sql) = config.custom_conflict_resolution.and_then(|cf| cf(f)) {
+                    sql.push_str(custom_sql);
+                    resolved = true;
+                }
+                if !resolved {
+                    write!(sql, "{} = excluded.{}", f, f).unwrap();
+                }
+                first = false;
             }
-            if !resolved {
-                write!(sql, "{} = excluded.{}", f, f).unwrap();
-            }
-            first = false;
+        } else {
+            sql.push_str(") DO NOTHING");
         }
     }
 

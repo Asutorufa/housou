@@ -543,4 +543,36 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migration_idempotent_when_records_missing() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        // Run migrations normally
+        db.migrate()
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Drop the schema_migrations table, but keep the created tables
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("schema_migrations"),
+            sql: std::borrow::Cow::Borrowed("DROP TABLE schema_migrations;"),
+        })
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Run migrations again
+        // It should recreate schema_migrations and perform idempotency checks
+        // skipping tables/indexes/columns that already exist.
+        db.migrate()
+            .await
+            .map_err(|e| Error::RustError(e.to_string()))?;
+
+        // Verify that tables still exist and are accessible
+        assert!(db.has_table("users").await.unwrap_or(false));
+
+        Ok(())
+    }
 }

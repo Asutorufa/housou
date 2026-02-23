@@ -22,3 +22,6 @@ hex = { version = "0.4", optional = true }
 default = []
 d1 = ["dep:worker", "dep:js-sys"]
 sqlite = ["dep:rusqlite", "dep:hex"]
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
