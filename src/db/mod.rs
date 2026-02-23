@@ -1,6 +1,6 @@
 use crate::utils;
 use async_trait::async_trait;
-pub use d1_orm::{DatabaseExecutor, FieldUpdate, Migration, MigrationInfo};
+pub use d1_orm::{DatabaseExecutor, FieldUpdate, Migration};
 use worker::*;
 
 pub mod models;
@@ -259,6 +259,7 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
 mod tests {
     use super::*;
     use d1_orm::sqlite::SqliteExecutor;
+    use d1_orm::MigrationInfo;
     use serde::Deserialize;
 
     #[derive(Debug, Deserialize)]
