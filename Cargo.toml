@@ -17,21 +17,21 @@ passkey-server = { path = "crates/passkey", default-features = false, features =
     "wasm",
 ] }
 d1-orm = { path = "crates/d1-orm", features = ["d1"] }
-worker = { version = "0.7.4", features = ["d1"] }
+worker = { workspace = true, features = ["d1"] }
 url = "2.5"
-serde = "1.0.228"
+serde = { workspace = true }
 serde_derive = "1.0.228"
-serde_json = "1.0.149"
+serde_json = { workspace = true }
 console_error_panic_hook = "0.1.7"
 regex = "1.12.3"
-js-sys = "0.3.77"
+js-sys = { workspace = true }
 futures = "0.3.32"
 argon2 = "0.5"
 rand_core = "0.10"
 uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
 getrandom = { version = "0.4", features = ["wasm_js"] }
-async-trait = "0.1"
+async-trait = { workspace = true }
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "17adf938c1d9831dc150a73d59bf2ec6b186d23c", default-features = false, features = [
     "async",
 ] }
@@ -56,7 +56,16 @@ wasm-opt = false
 [workspace]
 members = ["crates/passkey", "crates/d1-orm"]
 
+[workspace.dependencies]
+js-sys = "0.3.88"
+rusqlite = { version = "0.38", features = ["bundled"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+worker = "0.7.4"
+
 [dev-dependencies]
 d1-orm = { path = "crates/d1-orm", features = ["sqlite"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
-tokio = { version = "1", features = ["full"] }
+rusqlite = { workspace = true }
+tokio = { workspace = true }

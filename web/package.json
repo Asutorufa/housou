@@ -21,7 +21,7 @@
     "clsx": "^2.1.1",
     "dompurify": "^3.3.1",
     "lucide-react": "^0.575.0",
-    "motion": "^12.34.2",
+    "motion": "^12.34.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "swr": "^2.4.0",
@@ -41,9 +41,9 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.24",
-    "eslint": "^10.0.0",
+    "eslint": "^10.0.1",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.0",
+    "eslint-plugin-react-refresh": "^0.5.1",
     "globals": "^17.0.0",
     "jsdom": "^28.1.0",
     "msw": "^2.12.10",
@@ -61,6 +61,6 @@
     ]
   },
   "overrides": {
-    "eslint": "^10.0.0"
+    "eslint": "^10.0.1"
   }
 }
