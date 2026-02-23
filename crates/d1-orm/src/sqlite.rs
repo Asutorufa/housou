@@ -70,9 +70,7 @@ impl DatabaseExecutor for SqliteExecutor {
                     rusqlite::types::ValueRef::Text(t) => {
                         serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
                     }
-                    rusqlite::types::ValueRef::Blob(b) => {
-                        serde_json::Value::String(hex::encode(b))
-                    }
+                    rusqlite::types::ValueRef::Blob(b) => serde_json::Value::String(hex::encode(b)),
                 };
                 map.insert(name.clone(), val);
             }

@@ -317,7 +317,6 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
 mod tests {
     use super::*;
     use d1_orm::sqlite::SqliteExecutor;
-    use tokio;
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_migrations_and_basic_workflow() -> Result<()> {
@@ -338,7 +337,6 @@ mod tests {
 
         Ok(())
     }
-}
 
     #[tokio::test(flavor = "current_thread")]
     async fn test_sqlite_workflow_extended() -> Result<()> {
@@ -545,3 +543,4 @@ mod tests {
 
         Ok(())
     }
+}
