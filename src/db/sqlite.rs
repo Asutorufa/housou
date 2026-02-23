@@ -1,26 +1,27 @@
-use crate::db::sql::DatabaseValue;
-use crate::db::{
-    Database, DatabaseExecutor, Migration, MigrationStep, SessionUpdate, Sql, UserItemUpdate,
-    UserUpdate,
-};
+use crate::db::core::{DatabaseValue, MigrationInfo, QueryExt, SqlBackend};
+use crate::db::models::UserItemUpdate;
+use crate::db::sql::Sql;
+use crate::db::{Database, DatabaseExecutor, Migration, SessionUpdate, UserUpdate};
 use crate::model::UserStatus;
 use async_trait::async_trait;
 use rusqlite::{Connection, Result as SqliteResult, params_from_iter};
 use std::sync::{Arc, Mutex};
 use worker::{Error, Result};
 
-fn database_value_to_sqlite_value(v: DatabaseValue) -> rusqlite::types::Value {
-    match v {
-        DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
-        DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
-        DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
-        DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
-        DatabaseValue::Null => rusqlite::types::Value::Null,
+pub struct SqliteBackend;
+impl SqlBackend for SqliteBackend {
+    type Param = rusqlite::types::Value;
+    fn convert(v: DatabaseValue) -> Self::Param {
+        match v {
+            DatabaseValue::Text(s) => rusqlite::types::Value::Text(s),
+            DatabaseValue::Int(i) => rusqlite::types::Value::Integer(i),
+            DatabaseValue::UInt(u) => rusqlite::types::Value::Integer(u as i64),
+            DatabaseValue::Real(r) => rusqlite::types::Value::Real(r),
+            DatabaseValue::Bool(b) => rusqlite::types::Value::Integer(if b { 1 } else { 0 }),
+            DatabaseValue::Blob(b) => rusqlite::types::Value::Blob(b),
+            DatabaseValue::Null => rusqlite::types::Value::Null,
+        }
     }
-}
-
-fn to_sqlite_params(values: Vec<DatabaseValue>) -> impl Iterator<Item = rusqlite::types::Value> {
-    values.into_iter().map(database_value_to_sqlite_value)
 }
 
 pub struct SqliteExecutor {
@@ -42,17 +43,18 @@ impl SqliteExecutor {
 
 #[async_trait(?Send)]
 impl DatabaseExecutor for SqliteExecutor {
-    async fn query_all<T>(&self, sql: Sql<'_>) -> Result<Vec<T>>
+    async fn query_all<T, Q>(&self, sql: Q) -> worker::Result<Vec<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
         let conn = self.conn.lock().unwrap();
-        let query = sql.sql();
-        let values = sql.values();
-        let params = to_sqlite_params(values);
+        let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+            return Ok(Vec::new());
+        };
 
         let mut stmt = conn
-            .prepare(&query)
+            .prepare(sql_str.as_ref())
             .map_err(|e| Error::RustError(e.to_string()))?;
         let column_names: Vec<String> = stmt
             .column_names()
@@ -95,35 +97,42 @@ impl DatabaseExecutor for SqliteExecutor {
         Ok(results)
     }
 
-    async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
+    async fn query_first<T, Q>(&self, sql: Q) -> worker::Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
         let results: Vec<T> = self.query_all(sql).await?;
         Ok(results.into_iter().next())
     }
 
-    async fn execute(&self, sql: Sql<'_>) -> Result<()> {
+    async fn execute<Q>(&self, sql: Q) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
         let conn = self.conn.lock().unwrap();
-        let query = sql.sql();
-        let values = sql.values();
-        let params = to_sqlite_params(values);
+        let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+            return Ok(());
+        };
 
-        conn.execute(&query, params_from_iter(params))
+        conn.execute(sql_str.as_ref(), params_from_iter(params))
             .map_err(|e| Error::RustError(e.to_string()))?;
         Ok(())
     }
 
-    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
+    async fn execute_batch<Q>(&self, sqls: Vec<Q>) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn
             .transaction()
             .map_err(|e| Error::RustError(e.to_string()))?;
         for sql in sqls {
-            let query = sql.sql();
-            let values = sql.values();
-            let params = to_sqlite_params(values);
-            tx.execute(&query, params_from_iter(params))
+            let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+                continue;
+            };
+            tx.execute(sql_str.as_ref(), params_from_iter(params))
                 .map_err(|e| Error::RustError(e.to_string()))?;
         }
         tx.commit().map_err(|e| Error::RustError(e.to_string()))?;
@@ -365,33 +374,27 @@ mod tests {
         db.execute(Sql::CreateMigrationsTable).await?;
 
         // Test CreateTable
-        let step = Box::leak(Box::new(MigrationStep::CreateTable {
-            name: "test_table",
-            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY);", // No IF NOT EXISTS to test our guard
-        }));
-        let migration = Migration {
-            version: 1,
-            steps: std::slice::from_ref(step),
-        };
+        let steps: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Table("test_table"),
+            sql: "CREATE TABLE test_table (id INTEGER PRIMARY KEY);".into(),
+        }]));
+        let migration = Migration { version: 1, steps };
         db.apply_migration(&migration).await?;
         assert!(db.has_table("test_table").await?);
 
         // Test CreateTable again (should be no-op due to has_table check)
-        let migration_v2 = Migration {
-            version: 2,
-            steps: std::slice::from_ref(step),
-        };
+        let migration_v2 = Migration { version: 2, steps };
         db.apply_migration(&migration_v2).await?;
         assert!(db.has_table("test_table").await?);
 
         // Test CreateIndex
-        let step_idx = Box::leak(Box::new(MigrationStep::CreateIndex {
-            name: "test_idx",
-            sql: "CREATE INDEX test_idx ON test_table(id);", // No IF NOT EXISTS
-        }));
+        let steps_idx: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Index("test_idx"),
+            sql: "CREATE INDEX test_idx ON test_table(id);".into(),
+        }]));
         let migration_v3 = Migration {
             version: 3,
-            steps: std::slice::from_ref(step_idx),
+            steps: steps_idx,
         };
         db.apply_migration(&migration_v3).await?;
         assert!(db.has_index("test_idx").await?);
@@ -399,20 +402,22 @@ mod tests {
         // Test CreateIndex again (should be no-op due to has_index check)
         let migration_v4 = Migration {
             version: 4,
-            steps: std::slice::from_ref(step_idx),
+            steps: steps_idx,
         };
         db.apply_migration(&migration_v4).await?;
         assert!(db.has_index("test_idx").await?);
 
         // Test AddColumnIfMissing
-        let step_col = Box::leak(Box::new(MigrationStep::AddColumnIfMissing {
-            table: "test_table",
-            column: "new_col",
-            sql: "ALTER TABLE test_table ADD COLUMN new_col TEXT;",
-        }));
+        let steps_col: &'static [Sql<'static>] = Box::leak(Box::new([Sql::AdHoc {
+            info: MigrationInfo::Column {
+                table: "test_table",
+                column: "new_col",
+            },
+            sql: "ALTER TABLE test_table ADD COLUMN new_col TEXT;".into(),
+        }]));
         let migration_v5 = Migration {
             version: 5,
-            steps: std::slice::from_ref(step_col),
+            steps: steps_col,
         };
         db.apply_migration(&migration_v5).await?;
         assert!(db.has_column("test_table", "new_col").await?);
@@ -420,7 +425,7 @@ mod tests {
         // Test AddColumnIfMissing again (should be no-op due to has_column check)
         let migration_v6 = Migration {
             version: 6,
-            steps: std::slice::from_ref(step_col),
+            steps: steps_col,
         };
         db.apply_migration(&migration_v6).await?;
         assert!(db.has_column("test_table", "new_col").await?);
@@ -434,7 +439,8 @@ mod tests {
             SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
         let db = AppDatabase::new(executor);
 
-        db.execute(Sql::Raw {
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("users"),
             sql: "CREATE TABLE users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE,
@@ -444,10 +450,12 @@ mod tests {
                 telegram_id TEXT,
                 avatar_url TEXT,
                 created_at INTEGER
-            );",
+            );"
+            .into(),
         })
         .await?;
-        db.execute(Sql::Raw {
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("user_items_v2"),
             sql: "CREATE TABLE user_items_v2 (
                 user_id INTEGER,
                 title TEXT,
@@ -456,7 +464,8 @@ mod tests {
                 updated_at INTEGER,
                 begin_at INTEGER,
                 PRIMARY KEY (user_id, title)
-            );",
+            );"
+            .into(),
         })
         .await?;
 

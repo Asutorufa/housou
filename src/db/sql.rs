@@ -1,224 +1,18 @@
-use worker::wasm_bindgen::JsValue;
+pub use crate::db::core::*;
+use std::borrow::Cow;
 
-#[derive(Clone, Debug)]
-pub(crate) enum DatabaseValue {
-    Text(String),
-    Int(i64),
-    Real(f64),
-    #[allow(dead_code)]
-    Blob(Vec<u8>),
-    Null,
-}
-
-pub trait ToDatabaseValue {
-    fn to_value(self) -> DatabaseValue;
-}
-
-pub trait FieldUpdate {
-    fn field(&self) -> &'static str;
-    fn into_value(self) -> DatabaseValue;
-}
-
-impl DatabaseValue {
-    pub fn into_js(self) -> JsValue {
-        match self {
-            DatabaseValue::Text(s) => JsValue::from_str(&s),
-            DatabaseValue::Int(i) => JsValue::from_f64(i as f64),
-            DatabaseValue::Real(r) => JsValue::from_f64(r),
-            DatabaseValue::Blob(b) => js_sys::Uint8Array::from(&b[..]).into(),
-            DatabaseValue::Null => JsValue::NULL,
-        }
+impl From<crate::model::UserStatus> for DatabaseValue {
+    fn from(v: crate::model::UserStatus) -> Self {
+        DatabaseValue::Int(v as i64)
     }
 }
 
-impl ToDatabaseValue for i32 {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Int(self as i64)
-    }
-}
+crate::define_sql! {
+    Sql
+    // General
+    @adhoc(info)
+    AdHoc { info: MigrationInfo, sql: Cow<'static, str> } => sql.clone(),
 
-impl ToDatabaseValue for i64 {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Int(self)
-    }
-}
-
-impl ToDatabaseValue for f64 {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Real(self)
-    }
-}
-
-impl ToDatabaseValue for &str {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Text(self.to_string())
-    }
-}
-
-impl ToDatabaseValue for String {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Text(self)
-    }
-}
-
-impl<T: ToDatabaseValue> ToDatabaseValue for Option<T> {
-    fn to_value(self) -> DatabaseValue {
-        match self {
-            Some(v) => v.to_value(),
-            None => DatabaseValue::Null,
-        }
-    }
-}
-
-impl ToDatabaseValue for crate::model::UserStatus {
-    fn to_value(self) -> DatabaseValue {
-        DatabaseValue::Int(self as i64)
-    }
-}
-
-impl ToDatabaseValue for JsValue {
-    fn to_value(self) -> DatabaseValue {
-        if self.is_null() || self.is_undefined() {
-            DatabaseValue::Null
-        } else if let Some(s) = self.as_string() {
-            DatabaseValue::Text(s)
-        } else if let Some(f) = self.as_f64() {
-            DatabaseValue::Real(f)
-        } else {
-            DatabaseValue::Null
-        }
-    }
-}
-
-impl ToDatabaseValue for DatabaseValue {
-    fn to_value(self) -> DatabaseValue {
-        self
-    }
-}
-
-impl ToDatabaseValue for &DatabaseValue {
-    fn to_value(self) -> DatabaseValue {
-        self.clone()
-    }
-}
-
-pub(crate) trait CollectParams {
-    fn collect_params(self, params: &mut Vec<DatabaseValue>);
-}
-
-impl<T: ToDatabaseValue> CollectParams for T {
-    fn collect_params(self, params: &mut Vec<DatabaseValue>) {
-        params.push(self.to_value());
-    }
-}
-
-impl CollectParams for Vec<DatabaseValue> {
-    fn collect_params(self, params: &mut Vec<DatabaseValue>) {
-        params.extend(self);
-    }
-}
-
-impl CollectParams for Vec<JsValue> {
-    fn collect_params(self, params: &mut Vec<DatabaseValue>) {
-        for v in self {
-            params.push(v.to_value());
-        }
-    }
-}
-
-macro_rules! filter_updates {
-    ($updates:ident, [$($skip:ident),*]) => {{
-        let skip = [$(stringify!($skip)),*];
-        let valid: Vec<_> = $updates.iter().filter(|u| !skip.contains(&u.field())).collect();
-        if valid.is_empty() { return String::new(); }
-        valid
-    }};
-}
-
-macro_rules! sql_params {
-    ($p:ident $field:ident [sql]) => {
-        let _ = $field;
-    };
-    ($p:ident $field:ident [skip_id]) => {
-        for u in $field.clone() {
-            if u.field() != "id" {
-                u.collect_params($p);
-            }
-        }
-    };
-    ($p:ident $field:ident [skip_cred_id]) => {
-        for u in $field.clone() {
-            if u.field() != "cred_id" {
-                u.collect_params($p);
-            }
-        }
-    };
-    ($p:ident $field:ident [skip_user_id_title]) => {
-        for u in $field.clone() {
-            let f = u.field();
-            if f != "user_id" && f != "title" {
-                u.collect_params($p);
-            }
-        }
-    };
-    ($p:ident $field:ident) => {
-        $field.clone().collect_params($p);
-    };
-}
-
-macro_rules! define_sql {
-    (
-        $(
-            $name:ident $( { $($field:ident : $ftype:ty $( [ $mode:ident ] )? ),* $(,)? } )? => $sql:expr
-        ),* $(,)?
-    ) => {
-        #[derive(Clone, Debug)]
-        pub enum Sql<'a> {
-            Raw { sql: &'a str },
-            $(
-                $name $( { $($field : $ftype),* } )?,
-            )*
-        }
-
-        impl<'a> Sql<'a> {
-            pub fn sql(&self) -> String {
-                match self {
-                    Sql::Raw { sql } => sql.to_string(),
-                    $(
-                        Sql::$name $( { $($field,)* } )? => {
-                             $( $(let _ = $field;)* )?
-                             $sql.into()
-                        },
-                    )*
-                }
-            }
-
-            pub fn values(&self) -> Vec<DatabaseValue> {
-                let mut v = Vec::new();
-                let values = &mut v;
-                match self {
-                    Sql::Raw { .. } => {}
-                    $(
-                        Sql::$name $( { $($field,)* } )? => {
-                            $(
-                                $(
-                                    sql_params!(values $field $( [$mode] )? );
-                                )*
-                            )?
-                        }
-                    )*
-                }
-                v
-            }
-
-            pub fn params(&self) -> Vec<JsValue> {
-                self.values().into_iter().map(|v| v.into_js()).collect()
-            }
-        }
-    };
-}
-
-define_sql! {
     // Migrations
     CreateMigrationsTable => "CREATE TABLE IF NOT EXISTS schema_migrations (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -230,6 +24,75 @@ define_sql! {
         version: i32,
         applied_at: i64,
     } => "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+
+    // Schema Checks
+    CheckTableExists { name: &'a str } => "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+    CheckIndexExists { name: &'a str } => "SELECT name FROM sqlite_master WHERE type='index' AND name = ?",
+    GetTableInfo { table: &'a str } => "SELECT * FROM pragma_table_info(?)",
+
+    // Migration Steps
+    @table("users")
+    CreateUsersTable => "CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE,
+            username TEXT,
+            password_hash TEXT,
+            github_id TEXT UNIQUE,
+            created_at INTEGER
+        );",
+    @table("sessions")
+    CreateSessionsTable => "CREATE TABLE IF NOT EXISTS sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            token TEXT UNIQUE,
+            expires_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    @index("idx_users_username")
+    CreateUsersUsernameIndex => "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);",
+    @table("user_items_v2")
+    CreateUserItemsV2Table => "CREATE TABLE IF NOT EXISTS user_items_v2 (
+            user_id INTEGER,
+            title TEXT,
+            status INTEGER,
+            score INTEGER,
+            updated_at INTEGER,
+            PRIMARY KEY (user_id, title),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    @index("idx_user_items_v2_user_id")
+    CreateUserItemsV2UserIdIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id ON user_items_v2(user_id);",
+    @column("users", "avatar_url")
+    AddUsersAvatarUrlColumn => "ALTER TABLE users ADD COLUMN avatar_url TEXT;",
+    @table("passkeys")
+    CreatePasskeysTable => "CREATE TABLE IF NOT EXISTS passkeys (
+            user_id INTEGER NOT NULL,
+            cred_id TEXT PRIMARY KEY,
+            passkey_json TEXT NOT NULL,
+            name TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            last_used_at INTEGER NOT NULL,
+            counter INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    @index("idx_passkeys_user_id")
+    CreatePasskeysUserIdIndex => "CREATE INDEX IF NOT EXISTS idx_passkeys_user_id ON passkeys(user_id);",
+    @table("passkey_states")
+    CreatePasskeyStatesTable => "CREATE TABLE IF NOT EXISTS passkey_states (
+            id TEXT PRIMARY KEY,
+            state_json TEXT NOT NULL,
+            expires_at INTEGER NOT NULL
+        );",
+    @column("users", "telegram_id")
+    AddUsersTelegramIdColumn => "ALTER TABLE users ADD COLUMN telegram_id TEXT;",
+    @index("idx_users_telegram_id")
+    CreateUsersTelegramIdIndex => "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);",
+    @column("user_items_v2", "begin_at")
+    AddUserItemsV2BeginAtColumn => "ALTER TABLE user_items_v2 ADD COLUMN begin_at INTEGER;",
+    @index("idx_user_items_v2_begin_at")
+    CreateUserItemsV2BeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
+    @index("idx_user_items_v2_user_id_begin_at")
+    CreateUserItemsV2UserIdBeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
 
     // Users
     CreateUser {
@@ -245,16 +108,9 @@ define_sql! {
         filter: crate::db::models::UserUpdate,
     } => format!("SELECT * FROM users WHERE {} = ?", filter.field()),
     UpdateUser {
-        updates: Vec<crate::db::models::UserUpdate> [skip_id],
+        updates: Vec<crate::db::models::UserUpdate> [skip_primary_key],
         id: i32,
-    } => {
-        let fields = filter_updates!(updates, [id])
-            .iter()
-            .map(|u| format!("{} = ?", u.field()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("UPDATE users SET {} WHERE id = ?", fields)
-    },
+    } => build_update_sql("users", "id", updates),
 
     // Sessions
     CreateSession {
@@ -277,32 +133,20 @@ define_sql! {
     UpdateUserItem {
         user_id: i32,
         title: &'a str,
-        updates: Vec<crate::db::models::UserItemUpdate> [skip_user_id_title],
+        updates: Vec<crate::db::models::UserItemUpdate> [skip_primary_key],
     } => {
-        let valid_updates = filter_updates!(updates, [user_id, title]);
-        let field_names: Vec<_> = valid_updates.iter().map(|u| u.field()).collect();
-        let cols = field_names
-            .iter()
-            .map(|f| format!(", {}", f))
-            .collect::<String>();
-        let placeholders = field_names.iter().map(|_| ", ?").collect::<String>();
-
-        let sets = field_names
-            .iter()
-            .map(|f| {
-                if *f == "begin_at" {
-                    "begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)".to_string()
+        let config = UpsertConfig {
+            table: "user_items_v2",
+            primary_keys: &["user_id", "title"],
+            custom_conflict_resolution: Some(&|field| {
+                if field == "begin_at" {
+                    Some("begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)")
                 } else {
-                    format!("{} = excluded.{}", f, f)
+                    None
                 }
-            })
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        format!(
-            "INSERT INTO user_items_v2 (user_id, title {}) VALUES (?, ? {}) ON CONFLICT(user_id, title) DO UPDATE SET {}",
-            cols, placeholders, sets
-        )
+            }),
+        };
+        build_upsert_sql(&config, updates)
     },
     GetUserItemsAll {
         user_id: i32,
@@ -312,7 +156,7 @@ define_sql! {
         start_ts: i64,
         end_ts: i64,
     } => "SELECT * FROM user_items_v2
-             WHERE user_id = ? AND status != 0 
+             WHERE user_id = ? AND status != 0
              AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))",
 
     // Passkeys
@@ -329,16 +173,9 @@ define_sql! {
         filter: crate::db::models::PasskeyUpdate,
     } => format!("SELECT * FROM passkeys WHERE {} = ?", filter.field()),
     UpdatePasskey {
-        updates: Vec<crate::db::models::PasskeyUpdate> [skip_cred_id],
+        updates: Vec<crate::db::models::PasskeyUpdate> [skip_primary_key],
         cred_id: &'a str,
-    } => {
-        let fields = filter_updates!(updates, [cred_id])
-            .iter()
-            .map(|u| format!("{} = ?", u.field()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("UPDATE passkeys SET {} WHERE cred_id = ?", fields)
-    },
+    } => build_update_sql("passkeys", "cred_id", updates),
     DeletePasskey {
         user_id: i32,
         cred_id: &'a str,
