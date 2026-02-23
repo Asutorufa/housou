@@ -8,6 +8,7 @@
 //! - **Type-Safe SQL Builder**: `define_sql!` macro for type-safe parameter binding and zero-overhead declarative SQL queries.
 //! - **Model Definition**: `define_model!` macro for defining structs, mapping database models, and generating update structs automatically.
 //! - **WASM Compatible**: Works flawlessly within WASM targets like Cloudflare Workers (non-Send environments).
+//! - **Migration System**: Built-in generic `migrate` utility to effortlessly apply schema modifications.
 //! - **Async Trait**: Implements an ecosystem agnostic `DatabaseExecutor` trait for async database operations.
 //!
 //! ## Modules
@@ -94,6 +95,7 @@
 pub mod builder;
 pub mod error;
 pub mod macros;
+pub mod migration;
 pub mod traits;
 pub mod types;
 
@@ -104,6 +106,7 @@ pub mod sqlite;
 
 pub use builder::{build_update_sql, build_upsert_sql, UpsertConfig};
 pub use error::Error;
+pub use migration::{migrate, Migration};
 pub use traits::{
     DatabaseExecutor, FieldMeta, FieldUpdate, IntoResultCow, MigrationInfo, MigrationMeta, Query,
     QueryExt, SqlBackend, ToParams,

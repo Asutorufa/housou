@@ -101,6 +101,43 @@ async fn main() -> Result<(), d1_orm::Error> {
 }
 ```
 
+### 4. Database Migrations
+
+Easily manage incremental database changes with a generic `migrate` helper.
+
+```rust,no_run
+use d1_orm::{define_sql, migrate, Migration, sqlite::SqliteExecutor};
+
+define_sql!(
+    MyMigrations
+    @table("users")
+    CreateUsersTable => "CREATE TABLE users (id INTEGER PRIMARY KEY)",
+);
+
+#[tokio::main]
+async fn main() -> Result<(), d1_orm::Error> {
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    let executor = SqliteExecutor::new(conn);
+
+    let migrations = vec![
+        Migration::new(
+            1,
+            "Initial setup",
+            vec![MyMigrations::CreateUsersTable],
+        ),
+    ];
+
+    migrate(
+        &executor,
+        migrations,
+        None, // Uses default table "_d1_migrations"
+        Some(|msg: &str| println!("{}", msg)),
+    ).await?;
+    
+    Ok(())
+}
+```
+
 ## Credits
 
 Part of the [Housou](https://github.com/Asutorufa/housou) project.

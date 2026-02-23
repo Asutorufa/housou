@@ -1,5 +1,5 @@
 use d1_orm::sqlite::SqliteExecutor;
-use d1_orm::{define_sql, DatabaseExecutor, MigrationInfo, MigrationMeta};
+use d1_orm::{define_sql, migrate, Migration};
 
 // Define some migration SQL statements with migration metadata attached
 define_sql!(
@@ -24,41 +24,35 @@ async fn main() -> Result<(), d1_orm::Error> {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     let executor = SqliteExecutor::new(conn);
 
-    let steps = vec![
-        MyMigrations::CreateUsersTable,
-        MyMigrations::CreateUsersUsernameIndex,
-        MyMigrations::AddUsersEmailColumn,
+    // 2. Define migrations
+    let migrations = vec![
+        Migration::new(
+            1,
+            "Initial setup",
+            vec![
+                MyMigrations::CreateUsersTable,
+                MyMigrations::CreateUsersUsernameIndex,
+            ],
+        ),
+        Migration::new(
+            2,
+            "Add email column",
+            vec![MyMigrations::AddUsersEmailColumn],
+        ),
     ];
 
     println!("Starting migrations...");
 
-    for step in steps {
-        if let Some(info) = step.migration_info() {
-            match info {
-                MigrationInfo::Table(name) => {
-                    println!("Ensuring table '{}' exists...", name);
-                    // In a real app, you would check if the table exists first:
-                    // SELECT name FROM sqlite_master WHERE type='table' AND name = ?
-                }
-                MigrationInfo::Index(name) => {
-                    println!("Ensuring index '{}' exists...", name);
-                    // Check if index exists:
-                    // SELECT name FROM sqlite_master WHERE type='index' AND name = ?
-                }
-                MigrationInfo::Column { table, column } => {
-                    println!(
-                        "Ensuring column '{}' exists in table '{}'...",
-                        column, table
-                    );
-                    // Check if column exists:
-                    // SELECT * FROM pragma_table_info(?)
-                }
-            }
-
-            // Execute the migration step
-            executor.execute(step).await?;
-        }
-    }
+    // Execute migrations using the generic helper
+    // Uses default table "_d1_migrations" and println! logger
+    // Explicit type annotation |msg: &str| helps the compiler with lifetime inference
+    migrate(
+        &executor,
+        migrations,
+        None,
+        Some(|msg: &str| println!("{}", msg)),
+    )
+    .await?;
 
     println!("Migrations completed successfully!");
 
