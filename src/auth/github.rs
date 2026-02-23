@@ -3,7 +3,7 @@ use crate::auth::{
     clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
     create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
-use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserUpdate};
+use crate::db::{AppDatabase, Database, User, UserUpdate, core::DatabaseExecutor};
 use serde::Deserialize;
 use uuid::Uuid;
 use worker::wasm_bindgen::JsValue;

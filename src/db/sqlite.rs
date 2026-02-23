@@ -1,6 +1,7 @@
+use crate::db::core::{DatabaseValue, MigrationInfo, QueryExt, SqlBackend};
 use crate::db::models::UserItemUpdate;
-use crate::db::sql::{DatabaseValue, MigrationInfo, QueryExt, SqlBackend};
-use crate::db::{Database, DatabaseExecutor, Migration, SessionUpdate, Sql, UserUpdate};
+use crate::db::sql::Sql;
+use crate::db::{Database, DatabaseExecutor, Migration, SessionUpdate, UserUpdate};
 use crate::model::UserStatus;
 use async_trait::async_trait;
 use rusqlite::{Connection, Result as SqliteResult, params_from_iter};
@@ -42,12 +43,13 @@ impl SqliteExecutor {
 
 #[async_trait(?Send)]
 impl DatabaseExecutor for SqliteExecutor {
-    async fn query_all<T>(&self, sql: Sql<'_>) -> Result<Vec<T>>
+    async fn query_all<T, Q>(&self, sql: Q) -> worker::Result<Vec<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
         let conn = self.conn.lock().unwrap();
-        let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+        let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
             return Ok(Vec::new());
         };
 
@@ -95,17 +97,21 @@ impl DatabaseExecutor for SqliteExecutor {
         Ok(results)
     }
 
-    async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
+    async fn query_first<T, Q>(&self, sql: Q) -> worker::Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
         let results: Vec<T> = self.query_all(sql).await?;
         Ok(results.into_iter().next())
     }
 
-    async fn execute(&self, sql: Sql<'_>) -> Result<()> {
+    async fn execute<Q>(&self, sql: Q) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
         let conn = self.conn.lock().unwrap();
-        let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+        let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
             return Ok(());
         };
 
@@ -114,13 +120,16 @@ impl DatabaseExecutor for SqliteExecutor {
         Ok(())
     }
 
-    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
+    async fn execute_batch<Q>(&self, sqls: Vec<Q>) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn
             .transaction()
             .map_err(|e| Error::RustError(e.to_string()))?;
         for sql in sqls {
-            let Some((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
+            let Ok((sql_str, params)) = sql.build_params::<SqliteBackend>() else {
                 continue;
             };
             tx.execute(sql_str.as_ref(), params_from_iter(params))

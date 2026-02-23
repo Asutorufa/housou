@@ -1,85 +1,6 @@
 use crate::model::UserStatus;
-use serde_derive::{Deserialize, Serialize};
 
-macro_rules! is_pk_helper {
-    (@pk) => {
-        true
-    };
-}
-
-macro_rules! define_model {
-    ($(#[$struct_meta:meta])* $name:ident, $enum_name:ident, $update_enum:ident {
-        $( $(#[$field_meta:meta])* $field:ident : $ftype:ty $( [ $mode:ident ] )? ),* $(,)?
-    }) => {
-        #[derive(Debug, Serialize, Deserialize, Clone)]
-        $(#[$struct_meta])*
-        pub struct $name {
-            $( $(#[$field_meta])* pub $field : $ftype ),*
-        }
-
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-        #[allow(non_camel_case_types, dead_code)]
-        pub enum $enum_name {
-            $( $field ),*
-        }
-
-        impl $enum_name {
-            #[allow(dead_code)]
-            pub fn as_str(&self) -> &'static str {
-                match self {
-                    $( Self::$field => stringify!($field) ),*
-                }
-            }
-        }
-
-        #[allow(non_camel_case_types, dead_code)]
-        #[derive(Debug, Clone)]
-        pub enum $update_enum {
-             $( $field($ftype) ),*
-        }
-
-        impl crate::db::sql::FieldUpdate for $update_enum {
-            fn field(&self) -> &'static str {
-                match self {
-                    $( Self::$field(_) => stringify!($field) ),*
-                }
-            }
-            fn into_value(&self) -> crate::db::sql::DatabaseValue {
-                match self {
-                    $( Self::$field(v) => v.clone().into() ),*
-                }
-            }
-        }
-
-        impl crate::db::sql::FieldMeta for $update_enum {
-            fn is_primary_key(&self) -> bool {
-                match self {
-                    $( Self::$field(_) => {
-                        false $( || is_pk_helper!(@$mode) )?
-                    } ),*
-                }
-            }
-        }
-
-        impl crate::db::sql::ToParams for $update_enum {
-            fn add_params(&self, params: &mut Vec<crate::db::sql::DatabaseValue>) {
-                match self {
-                    $( Self::$field(v) => params.push(v.clone().into()) ),*
-                }
-            }
-        }
-
-        impl crate::db::sql::ToParams for Vec<$update_enum> {
-            fn add_params(&self, params: &mut Vec<crate::db::sql::DatabaseValue>) {
-                for u in self {
-                    u.add_params(params);
-                }
-            }
-        }
-    };
-}
-
-define_model!(User, UserField, UserUpdate {
+crate::define_model!(User, UserField, UserUpdate {
     id: i32 [pk],
     email: String,
     username: String,
@@ -95,7 +16,7 @@ define_model!(User, UserField, UserUpdate {
     created_at: i64,
 });
 
-define_model!(
+crate::define_model!(
     #[allow(dead_code)]
     Session,
     SessionField,
@@ -107,7 +28,7 @@ define_model!(
     }
 );
 
-define_model!(
+crate::define_model!(
     Passkey,
     PasskeyField,
     PasskeyUpdate {
@@ -121,7 +42,7 @@ define_model!(
     }
 );
 
-define_model!(
+crate::define_model!(
     PasskeyState,
     PasskeyStateField,
     PasskeyStateUpdate {
@@ -131,7 +52,7 @@ define_model!(
     }
 );
 
-define_model!(UserItem, UserItemField, UserItemUpdate {
+crate::define_model!(UserItem, UserItemField, UserItemUpdate {
     user_id: i32 [pk],
     title: String [pk],
     status: UserStatus,
@@ -140,7 +61,7 @@ define_model!(UserItem, UserItemField, UserItemUpdate {
     begin_at: Option<i64>,
 });
 
-define_model!(
+crate::define_model!(
     #[serde(rename_all = "camelCase")]
     UserItemSummary,
     UserItemSummaryField,
@@ -150,7 +71,7 @@ define_model!(
     }
 );
 
-define_model!(
+crate::define_model!(
     SchemaVersion,
     SchemaVersionField,
     SchemaVersionUpdate {

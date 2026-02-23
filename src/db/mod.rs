@@ -1,9 +1,10 @@
-use crate::db::sql::FieldUpdate;
+use crate::db::core::FieldUpdate;
 use crate::utils;
 use async_trait::async_trait;
 use serde::Deserialize;
 use worker::*;
 
+pub mod core;
 pub mod d1;
 pub mod models;
 pub mod passkey;
@@ -48,20 +49,7 @@ pub trait Database {
     ) -> Result<Vec<UserItem>>;
 }
 
-#[async_trait(?Send)]
-pub trait DatabaseExecutor {
-    async fn query_all<T>(&self, sql: Sql<'_>) -> Result<Vec<T>>
-    where
-        T: serde::de::DeserializeOwned;
-
-    async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
-    where
-        T: serde::de::DeserializeOwned;
-
-    async fn execute(&self, sql: Sql<'_>) -> Result<()>;
-
-    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()>;
-}
+pub use core::DatabaseExecutor;
 
 pub struct AppDatabase<E: DatabaseExecutor> {
     pub(crate) db: E,
@@ -72,7 +60,8 @@ struct TableColumnInfo {
     name: String,
 }
 
-pub use sql::{MigrationInfo, MigrationMeta, Sql};
+pub use core::{MigrationInfo, MigrationMeta};
+pub use sql::Sql;
 
 pub(crate) struct Migration {
     version: i32,

@@ -1,5 +1,5 @@
 use crate::db::DatabaseExecutor;
-use crate::db::sql::{DatabaseValue, QueryExt, Sql, SqlBackend};
+use crate::db::core::{DatabaseValue, QueryExt, SqlBackend};
 use async_trait::async_trait;
 use worker::*;
 
@@ -21,38 +21,46 @@ impl SqlBackend for WasmBackend {
 
 #[async_trait(?Send)]
 impl DatabaseExecutor for D1Database {
-    async fn query_all<T>(&self, sql: Sql<'_>) -> Result<Vec<T>>
+    async fn query_all<T, Q>(&self, sql: Q) -> worker::Result<Vec<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
-        let Some((sql_str, params)) = sql.build_params::<WasmBackend>() else {
+        let Ok((sql_str, params)) = sql.build_params::<WasmBackend>() else {
             return Ok(Vec::new());
         };
         self.prepare(sql_str).bind(&params)?.all().await?.results()
     }
 
-    async fn query_first<T>(&self, sql: Sql<'_>) -> Result<Option<T>>
+    async fn query_first<T, Q>(&self, sql: Q) -> worker::Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
+        Q: crate::db::core::Query + 'async_trait,
     {
-        let Some((sql_str, params)) = sql.build_params::<WasmBackend>() else {
+        let Ok((sql_str, params)) = sql.build_params::<WasmBackend>() else {
             return Ok(None);
         };
         self.prepare(sql_str).bind(&params)?.first(None).await
     }
 
-    async fn execute(&self, sql: Sql<'_>) -> Result<()> {
-        let Some((sql_str, params)) = sql.build_params::<WasmBackend>() else {
+    async fn execute<Q>(&self, sql: Q) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
+        let Ok((sql_str, params)) = sql.build_params::<WasmBackend>() else {
             return Ok(());
         };
         self.prepare(sql_str).bind(&params)?.run().await?;
         Ok(())
     }
 
-    async fn execute_batch(&self, sqls: Vec<Sql<'_>>) -> Result<()> {
+    async fn execute_batch<Q>(&self, sqls: Vec<Q>) -> worker::Result<()>
+    where
+        Q: crate::db::core::Query + 'async_trait,
+    {
         let mut statements = Vec::with_capacity(sqls.len());
         for sql in sqls {
-            let Some((sql_str, params)) = sql.build_params::<WasmBackend>() else {
+            let Ok((sql_str, params)) = sql.build_params::<WasmBackend>() else {
                 continue;
             };
             statements.push(self.prepare(sql_str).bind(&params)?);
