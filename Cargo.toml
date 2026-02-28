@@ -35,7 +35,7 @@ async-trait = { workspace = true }
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "17adf938c1d9831dc150a73d59bf2ec6b186d23c", default-features = false, features = [
     "async",
 ] }
-rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f3074c0", default-features = false }
+rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "f676e5cf443663a79c5b25a0f46fed9dee78b3e0", default-features = false }
 sha2 = "0.10.9"
 hmac = "0.12.1"
 hex = "0.4.3"
