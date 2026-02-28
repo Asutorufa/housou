@@ -7,12 +7,13 @@ export function useResponsiveColumns(
   const [columns, setColumns] = useState(defaultColumns);
 
   useEffect(() => {
+    // Sort breakpoints from largest to smallest
+    const sortedBreakpoints = Object.keys(breakpoints)
+      .map(Number)
+      .sort((a, b) => b - a);
+
     const updateColumns = () => {
       const width = window.innerWidth;
-      // Sort breakpoints from largest to smallest
-      const sortedBreakpoints = Object.keys(breakpoints)
-        .map(Number)
-        .sort((a, b) => b - a);
 
       let newColumns = defaultColumns;
       for (const breakpoint of sortedBreakpoints) {
