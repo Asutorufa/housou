@@ -203,6 +203,7 @@ export default function TabbedGrid({
                       {itemsInColumn.map((item) => (
                         <motion.div
                           key={item.title}
+                          layoutId={`card-wrapper-${item.title}`}
                           layout="position"
                           className="w-full"
                         >
