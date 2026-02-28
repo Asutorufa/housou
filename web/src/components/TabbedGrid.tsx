@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
+import { useResponsiveColumns } from "../hooks/useResponsiveColumns";
 import { glassPillClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
@@ -41,6 +42,12 @@ const containerVariants = {
       x: { type: "tween" as const, ease: "easeInOut" as const, duration: 0.5 },
     },
   }),
+};
+
+const COLUMNS_BREAKPOINTS = {
+  1280: 4, // xl
+  768: 3, // md
+  0: 2, // default
 };
 
 export default function TabbedGrid({
@@ -89,6 +96,8 @@ export default function TabbedGrid({
 
   const dayIndex = parseInt(activeTab);
 
+  const columns = useResponsiveColumns(COLUMNS_BREAKPOINTS, 2);
+
   const groupedItems = useMemo(() => {
     const groups: { item: DisplayAnimeItem; time: number }[][] = Array.from(
       { length: 8 },
@@ -114,6 +123,17 @@ export default function TabbedGrid({
   }, [items]);
 
   const dayItems = groupedItems[dayIndex];
+
+  const columnItems = useMemo(() => {
+    const result: (typeof dayItems)[] = Array.from(
+      { length: columns },
+      () => [],
+    );
+    dayItems.forEach((item, index) => {
+      result[index % columns].push(item);
+    });
+    return result;
+  }, [dayItems, columns]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -173,23 +193,24 @@ export default function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <div className="columns-2 gap-3 sm:gap-4 md:columns-3 lg:gap-6 xl:columns-4">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  {dayItems.map((item) => (
-                    <motion.div
-                      key={item.title}
-                      layout="position"
-                      className="mb-3 break-inside-avoid sm:mb-4 lg:mb-6"
-                    >
-                      <AnimeCard
-                        item={item}
-                        siteMeta={siteMeta}
-                        selectedSite={selectedSite}
-                        onOpenModal={onOpenModal}
-                      />
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
+              <div className="flex gap-3 sm:gap-4 lg:gap-6">
+                {columnItems.map((itemsInColumn, colIndex) => (
+                  <div
+                    key={colIndex}
+                    className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
+                  >
+                    {itemsInColumn.map((item) => (
+                      <div key={item.title} className="w-full">
+                        <AnimeCard
+                          item={item}
+                          siteMeta={siteMeta}
+                          selectedSite={selectedSite}
+                          onOpenModal={onOpenModal}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </div>
             ) : (
               <motion.div
