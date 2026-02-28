@@ -193,13 +193,13 @@ export default function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <div className="flex gap-3 sm:gap-4 lg:gap-6">
-                {columnItems.map((itemsInColumn, colIndex) => (
-                  <div
-                    key={colIndex}
-                    className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
-                  >
-                    <AnimatePresence mode="popLayout" initial={false}>
+              <AnimatePresence mode="popLayout" initial={false}>
+                <div className="flex gap-3 sm:gap-4 lg:gap-6">
+                  {columnItems.map((itemsInColumn, colIndex) => (
+                    <div
+                      key={colIndex}
+                      className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
+                    >
                       {itemsInColumn.map((item) => (
                         <motion.div
                           key={item.title}
@@ -215,10 +215,10 @@ export default function TabbedGrid({
                           />
                         </motion.div>
                       ))}
-                    </AnimatePresence>
-                  </div>
-                ))}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              </AnimatePresence>
             ) : (
               <motion.div
                 initial={{ opacity: 0 }}
