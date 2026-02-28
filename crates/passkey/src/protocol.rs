@@ -96,7 +96,7 @@ fn parse_auth_data(raw: &[u8]) -> Result<AuthData> {
 
 fn verify_rp_id_hash(hash: &[u8], config: &PasskeyConfig) -> Result<()> {
     let expected = Sha256::digest(config.rp_id.as_bytes());
-    if hash != expected.as_slice() {
+    if hash != expected.as_ref() as &[u8] {
         return Err(PasskeyError::RpIdHashMismatch);
     }
     Ok(())
@@ -149,11 +149,8 @@ fn verify_p256_signature(
         ));
     }
 
-    let encoded_point = EncodedPoint::from_affine_coordinates(
-        p256::FieldBytes::from_slice(x),
-        p256::FieldBytes::from_slice(y),
-        false,
-    );
+    let encoded_point =
+        EncodedPoint::from_affine_coordinates(x.as_slice().into(), y.as_slice().into(), false);
     let verifying_key = VerifyingKey::from_encoded_point(&encoded_point)
         .map_err(|e| PasskeyError::InternalError(format!("Invalid P-256 key: {e}")))?;
 
