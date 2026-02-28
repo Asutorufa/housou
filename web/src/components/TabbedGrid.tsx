@@ -46,8 +46,8 @@ const containerVariants = {
 
 const COLUMNS_BREAKPOINTS = {
   1280: 4, // xl
-  768: 3,  // md
-  0: 2,    // default
+  768: 3, // md
+  0: 2, // default
 };
 
 export default function TabbedGrid({
@@ -184,7 +184,10 @@ export default function TabbedGrid({
             {dayItems.length > 0 ? (
               <div className="flex gap-3 sm:gap-4 lg:gap-6">
                 {Array.from({ length: columns }).map((_, colIndex) => (
-                  <div key={colIndex} className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6">
+                  <div
+                    key={colIndex}
+                    className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
+                  >
                     <AnimatePresence mode="popLayout" initial={false}>
                       {dayItems
                         .filter((_, index) => index % columns === colIndex)
