@@ -193,32 +193,25 @@ export default function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <AnimatePresence mode="popLayout" initial={false}>
-                <div className="flex gap-3 sm:gap-4 lg:gap-6">
-                  {columnItems.map((itemsInColumn, colIndex) => (
-                    <div
-                      key={colIndex}
-                      className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
-                    >
-                      {itemsInColumn.map((item) => (
-                        <motion.div
-                          key={item.title}
-                          layoutId={`card-wrapper-${item.title}`}
-                          layout="position"
-                          className="w-full"
-                        >
-                          <AnimeCard
-                            item={item}
-                            siteMeta={siteMeta}
-                            selectedSite={selectedSite}
-                            onOpenModal={onOpenModal}
-                          />
-                        </motion.div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              </AnimatePresence>
+              <div className="flex gap-3 sm:gap-4 lg:gap-6">
+                {columnItems.map((itemsInColumn, colIndex) => (
+                  <div
+                    key={colIndex}
+                    className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
+                  >
+                    {itemsInColumn.map((item) => (
+                      <div key={item.title} className="w-full">
+                        <AnimeCard
+                          item={item}
+                          siteMeta={siteMeta}
+                          selectedSite={selectedSite}
+                          onOpenModal={onOpenModal}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             ) : (
               <motion.div
                 initial={{ opacity: 0 }}
