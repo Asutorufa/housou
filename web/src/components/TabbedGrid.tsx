@@ -124,6 +124,17 @@ export default function TabbedGrid({
 
   const dayItems = groupedItems[dayIndex];
 
+  const columnItems = useMemo(() => {
+    const result: (typeof dayItems)[] = Array.from(
+      { length: columns },
+      () => [],
+    );
+    dayItems.forEach((item, index) => {
+      result[index % columns].push(item);
+    });
+    return result;
+  }, [dayItems, columns]);
+
   return (
     <div className="flex flex-col gap-6">
       <div className=" flex justify-center px-6 pb-2">
@@ -183,28 +194,26 @@ export default function TabbedGrid({
           >
             {dayItems.length > 0 ? (
               <div className="flex gap-3 sm:gap-4 lg:gap-6">
-                {Array.from({ length: columns }).map((_, colIndex) => (
+                {columnItems.map((itemsInColumn, colIndex) => (
                   <div
                     key={colIndex}
                     className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
                   >
                     <AnimatePresence mode="popLayout" initial={false}>
-                      {dayItems
-                        .filter((_, index) => index % columns === colIndex)
-                        .map((item) => (
-                          <motion.div
-                            key={item.title}
-                            layout="position"
-                            className="w-full"
-                          >
-                            <AnimeCard
-                              item={item}
-                              siteMeta={siteMeta}
-                              selectedSite={selectedSite}
-                              onOpenModal={onOpenModal}
-                            />
-                          </motion.div>
-                        ))}
+                      {itemsInColumn.map((item) => (
+                        <motion.div
+                          key={item.title}
+                          layout="position"
+                          className="w-full"
+                        >
+                          <AnimeCard
+                            item={item}
+                            siteMeta={siteMeta}
+                            selectedSite={selectedSite}
+                            onOpenModal={onOpenModal}
+                          />
+                        </motion.div>
+                      ))}
                     </AnimatePresence>
                   </div>
                 ))}
