@@ -8,7 +8,9 @@ describe("validatePasswordComplexity", () => {
   });
 
   it("should throw if password is too short", () => {
-    expect(() => validatePasswordComplexity("P1s")).toThrow("パスワードは8文字以上である必要があります");
+    expect(() => validatePasswordComplexity("P1s")).toThrow(
+      "パスワードは8文字以上である必要があります",
+    );
   });
 
   it("should throw if missing uppercase", () => {
