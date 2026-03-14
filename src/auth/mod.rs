@@ -30,6 +30,7 @@ const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
 pub(crate) const EMAIL_IN_USE_ERR: &str = "Email already in use";
 pub(crate) const USERNAME_TAKEN_ERR: &str = "Username already taken";
+pub(crate) const INVALID_PASSWORD_ERR: &str = "Invalid password format";
 
 // Helper to get DB
 pub fn get_db(env: &Env) -> Result<AppDatabase<D1Database>> {
@@ -222,6 +223,10 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+pub fn is_valid_password_hash(hash: &str) -> bool {
+    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 pub async fn create_user_session<E: DatabaseExecutor>(
     db: &AppDatabase<E>,
     user_id: i32,
@@ -236,6 +241,10 @@ pub async fn create_user_session<E: DatabaseExecutor>(
 pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
+
+    if !is_valid_password_hash(&body.password) {
+        return Response::error(INVALID_PASSWORD_ERR, 400);
+    }
 
     if (db.get_user(UserUpdate::email(body.email.clone())).await?).is_some() {
         return Response::error(EMAIL_IN_USE_ERR, 400);
@@ -358,6 +367,10 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
 
     let db = get_db(&env)?;
 
+    if !is_valid_password_hash(&body.new_password) {
+        return Response::error(INVALID_PASSWORD_ERR, 400);
+    }
+
     // If user has a password (not GitHub-only), verify the old one
     if let Some(hash_str) = &user.password_hash {
         let old_password = body
@@ -420,6 +433,30 @@ pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_valid_password_hash() {
+        // Valid 64-character hex hash
+        let valid_hash = "a".repeat(64);
+        assert!(is_valid_password_hash(&valid_hash));
+
+        // Mixed case hex is also valid
+        let mixed_hash = "a1B2".repeat(16);
+        assert!(is_valid_password_hash(&mixed_hash));
+
+        // Too short
+        assert!(!is_valid_password_hash(&"a".repeat(63)));
+
+        // Too long
+        assert!(!is_valid_password_hash(&"a".repeat(65)));
+
+        // Non-hex character
+        let invalid_char_hash = "g".repeat(64);
+        assert!(!is_valid_password_hash(&invalid_char_hash));
+
+        // Empty string
+        assert!(!is_valid_password_hash(""));
+    }
 
     #[test]
     fn test_hash_and_verify() {

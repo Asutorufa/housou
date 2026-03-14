@@ -26,11 +26,6 @@ export default function SecurityTab() {
     setError(null);
     setSuccess(false);
 
-    if (newPassword.length < 8) {
-      setError("新しいパスワードは8文字以上である必要があります");
-      return;
-    }
-
     if (newPassword !== confirmNewPassword) {
       setError("新しいパスワードが一致しません");
       return;
