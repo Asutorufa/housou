@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2022-2025 Andriel Ferreira <https://github.com/AndrielFR>
+
+query($search: String, $page: Int = 1, $per_page: Int = 10) {
+    Page(page: $page, perPage: $per_page) {
+        pageInfo {
+            total
+            currentPage
+            lastPage
+        }
+        users(search: $search, sort: SEARCH_MATCH) {
+            id
+            name
+            about
+            avatar {
+                large
+                medium
+            }
+            bannerImage
+        }
+    }
+}

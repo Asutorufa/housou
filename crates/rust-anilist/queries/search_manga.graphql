@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2022-2025 Andriel Ferreira <https://github.com/AndrielFR>
+
+query($search: String, $page: Int = 1, $per_page: Int = 10) {
+    Page(page: $page, perPage: $per_page) {
+        pageInfo {
+            total
+            currentPage
+            lastPage
+        }
+        media(search: $search, type: MANGA, sort: POPULARITY_DESC) {
+            id
+            idMal
+            title {
+                romaji
+                english
+                native
+            }
+            format
+            status(version: 2)
+            description(asHtml: true)
+            coverImage {
+              extraLarge
+              large
+              medium
+              color
+            }
+            bannerImage
+            averageScore
+            meanScore
+            isAdult
+            siteUrl
+        }
+    }
+}
