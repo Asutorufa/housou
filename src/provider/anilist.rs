@@ -26,7 +26,11 @@ impl MetadataProvider for AnilistProvider {
                 match results.map(|v| v.into_iter().next()) {
                     Ok(Some(anime)) => anime,
                     Ok(None) => return Err(Error::RustError("AniList: Not Found".into())),
-                    Err(e) => return Err(Error::RustError(format!("AniList API error (search_anime): {e}"))),
+                    Err(e) => {
+                        return Err(Error::RustError(format!(
+                            "AniList API error (search_anime): {e}"
+                        )));
+                    }
                 }
             }
         };
