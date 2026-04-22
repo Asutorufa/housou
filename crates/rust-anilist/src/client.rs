@@ -360,7 +360,12 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn search_anime(&self, title: &str, page: u16, limit: u16) -> Result<Option<Vec<Anime>>> {
+    pub async fn search_anime(
+        &self,
+        title: &str,
+        page: u16,
+        limit: u16,
+    ) -> Result<Option<Vec<Anime>>> {
         let result = self
             .request(
                 MediaType::Anime,
@@ -374,12 +379,17 @@ impl Client {
 
             for media in medias.iter() {
                 animes.push(Anime {
-                    id: media["id"].as_i64().ok_or_else(|| Error::ApiError("Missing id".into()))?,
+                    id: media["id"]
+                        .as_i64()
+                        .ok_or_else(|| Error::ApiError("Missing id".into()))?,
                     id_mal: media["idMal"].as_i64(),
                     title: Title::deserialize(&media["title"])?,
                     format: Format::deserialize(&media["format"])?,
                     status: Status::deserialize(&media["status"])?,
-                    description: media["description"].as_str().unwrap_or_default().to_string(),
+                    description: media["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
                     cover: Cover::deserialize(&media["coverImage"])?,
                     banner: media["bannerImage"].as_str().map(String::from),
                     average_score: media["averageScore"].as_u64().map(|x| x as u8),
@@ -419,7 +429,12 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn search_manga(&self, title: &str, page: u16, limit: u16) -> Result<Option<Vec<Manga>>> {
+    pub async fn search_manga(
+        &self,
+        title: &str,
+        page: u16,
+        limit: u16,
+    ) -> Result<Option<Vec<Manga>>> {
         let result = self
             .request(
                 MediaType::Manga,
@@ -433,12 +448,17 @@ impl Client {
 
             for media in medias.iter() {
                 mangas.push(Manga {
-                    id: media["id"].as_i64().ok_or_else(|| Error::ApiError("Missing id".into()))?,
+                    id: media["id"]
+                        .as_i64()
+                        .ok_or_else(|| Error::ApiError("Missing id".into()))?,
                     id_mal: media["idMal"].as_i64(),
                     title: Title::deserialize(&media["title"])?,
                     format: Format::deserialize(&media["format"])?,
                     status: Status::deserialize(&media["status"])?,
-                    description: media["description"].as_str().unwrap_or_default().to_string(),
+                    description: media["description"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
                     cover: Cover::deserialize(&media["coverImage"])?,
                     banner: media["bannerImage"].as_str().map(String::from),
                     average_score: media["averageScore"].as_u64().map(|x| x as u8),
@@ -478,7 +498,12 @@ impl Client {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn search_user(&self, name: &str, page: u16, limit: u16) -> Result<Option<Vec<User>>> {
+    pub async fn search_user(
+        &self,
+        name: &str,
+        page: u16,
+        limit: u16,
+    ) -> Result<Option<Vec<User>>> {
         let result = self
             .request(
                 MediaType::User,
@@ -492,8 +517,14 @@ impl Client {
 
             for user in users.iter() {
                 vec.push(User {
-                    id: user["id"].as_i64().ok_or_else(|| Error::ApiError("Missing id".into()))? as i32,
-                    name: user["name"].as_str().ok_or_else(|| Error::ApiError("Missing name".into()))?.to_string(),
+                    id: user["id"]
+                        .as_i64()
+                        .ok_or_else(|| Error::ApiError("Missing id".into()))?
+                        as i32,
+                    name: user["name"]
+                        .as_str()
+                        .ok_or_else(|| Error::ApiError("Missing name".into()))?
+                        .to_string(),
                     about: user["about"].as_str().map(String::from),
                     avatar: Image::deserialize(&user["avatar"]).ok(),
                     banner: user["bannerImage"].as_str().map(String::from),
@@ -540,9 +571,12 @@ impl Client {
             body = body.bearer_auth(token);
         }
 
-        let response = body.send().await
+        let response = body
+            .send()
+            .await
             .map_err(|e| Error::ApiError(e.to_string()))?
-            .text().await
+            .text()
+            .await
             .map_err(|e| Error::ApiError(e.to_string()))?;
         let result = serde_json::from_str::<serde_json::Value>(&response)?;
 

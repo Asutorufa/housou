@@ -182,7 +182,9 @@ pub struct AiringSchedule {
     pub episode: u32,
 }
 
-fn deserialize_studios<'de, D>(deserializer: D) -> std::result::Result<Option<Vec<Studio>>, D::Error>
+fn deserialize_studios<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<Vec<Studio>>, D::Error>
 where
     D: Deserializer<'de>,
 {

@@ -22,10 +22,9 @@ impl MetadataProvider for AnilistProvider {
                     .map_err(|e| Error::RustError(format!("AniList API error (get_anime): {e}")))?
             }
             super::LookupQuery::ByTitle { title, .. } => {
-                let results = client
-                    .search_anime(title, 1, 1)
-                    .await
-                    .map_err(|e| Error::RustError(format!("AniList API error (search_anime): {e}")))?;
+                let results = client.search_anime(title, 1, 1).await.map_err(|e| {
+                    Error::RustError(format!("AniList API error (search_anime): {e}"))
+                })?;
                 match results.and_then(|v| v.into_iter().next()) {
                     Some(anime) => anime,
                     None => return Err(Error::RustError("AniList: Not Found".into())),
