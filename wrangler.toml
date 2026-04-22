@@ -9,7 +9,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 rustup target add wasm32-unknown-unknown && \
 npm install --prefix web && \
 npm run build --prefix web && \
-cargo install -q worker-build && \
+cargo install -q worker-build@^0.7 && \
 worker-build --release"""
 
 [assets]
@@ -30,7 +30,7 @@ database_id = "c04e350d-f778-42e6-b0a6-156c5eb56a46"
 [env.dev]
 
 [env.dev.build]
-command = "cargo install -q worker-build && worker-build --release --features dev"
+command = "cargo install -q worker-build@^0.7 && worker-build --release --features dev"
 
 [[env.dev.d1_databases]]
 binding = "DB"
@@ -48,7 +48,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
 rustup target add wasm32-unknown-unknown && \
 npm install --prefix web && \
 npm run build --prefix web && \
-cargo install -q worker-build && \
+cargo install -q worker-build@^0.7 && \
 worker-build --release"""
 
 [[env.production.d1_databases]]
