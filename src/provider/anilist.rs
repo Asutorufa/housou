@@ -23,9 +23,14 @@ impl MetadataProvider for AnilistProvider {
             }
             super::LookupQuery::ByTitle { title, .. } => {
                 let results = client.search_anime(title, 1, 1).await;
-                match results.and_then(|v| v.into_iter().next()) {
-                    Some(anime) => anime,
-                    None => return Err(Error::RustError("AniList: Not Found".into())),
+                match results.map(|v| v.into_iter().next()) {
+                    Ok(Some(anime)) => anime,
+                    Ok(None) => return Err(Error::RustError("AniList: Not Found".into())),
+                    Err(e) => {
+                        return Err(Error::RustError(format!(
+                            "AniList API error (search_anime): {e}"
+                        )));
+                    }
                 }
             }
         };
