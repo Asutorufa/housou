@@ -25,6 +25,7 @@ export default function PasskeyTab() {
   }, [listPasskeys]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPasskeys();
   }, [loadPasskeys]);
 
