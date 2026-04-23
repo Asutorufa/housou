@@ -21,6 +21,7 @@ export function useSmartMetadata(
 
     // If we have initial metadata and it matches the current item, use it
     if (initialMetadata) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMetadata(initialMetadata);
       setLoading(false);
       return;

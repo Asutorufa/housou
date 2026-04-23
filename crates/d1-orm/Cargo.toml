@@ -19,7 +19,7 @@ js-sys = { workspace = true, optional = true }
 
 # Sqlite backend
 rusqlite = { workspace = true, optional = true }
-hex = { version = "0.4", optional = true }
+hex = { version = "0.4.3", optional = true }
 
 [features]
 default = []
