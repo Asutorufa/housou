@@ -27,17 +27,17 @@ regex = "1.12.3"
 js-sys = { workspace = true }
 futures = "0.3.32"
 argon2 = "0.5"
-rand_core = "0.10"
-uuid = { version = "1.8", features = ["v4", "fast-rng", "js", "serde"] }
+rand_core = "0.10.1"
+uuid = { version = "1.23.1", features = ["v4", "fast-rng", "js", "serde"] }
 cookie = "0.18"
-getrandom = { version = "0.4", features = ["wasm_js"] }
+getrandom = { version = "0.4.2", features = ["wasm_js"] }
 async-trait = { workspace = true }
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "17adf938c1d9831dc150a73d59bf2ec6b186d23c", default-features = false, features = [
     "async",
 ] }
 rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "3529c886f47250e8e7419e8c6e1a4a4de4bc681c", default-features = false }
-sha2 = "0.10.9"
-hmac = "0.12.1"
+sha2 = "0.11.0"
+hmac = "0.13.0"
 hex = "0.4.3"
 serde_repr = "0.1.20"
 serde_urlencoded = "0.7.1"
@@ -58,11 +58,11 @@ members = ["crates/passkey", "crates/d1-orm"]
 
 [workspace.dependencies]
 js-sys = "0.3.88"
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.39", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 async-trait = "0.1"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.52.1", features = ["full"] }
 worker = "0.8.1"
 
 [dev-dependencies]

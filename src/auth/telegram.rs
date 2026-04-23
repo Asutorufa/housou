@@ -3,7 +3,7 @@ use crate::auth::{
     SESSION_DURATION_DAYS, UserResponse, create_session_cookie, get_auth, get_db, is_secure,
 };
 use crate::db::{Database, UserUpdate};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -206,7 +206,7 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
 mod tests {
     use super::*;
     use hex;
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     // Helper to compute hash manually for testing

@@ -13,13 +13,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = { workspace = true }
 base64 = "0.22"
-coset = "0.4"
+coset = "0.4.2"
 ciborium = "0.2"
 p256 = { version = "0.13", features = ["ecdsa", "std"] }
-sha2 = "0.10"
-uuid = { version = "1.8", features = ["v4", "serde"] }
-getrandom = "0.4"
-rand_core = "0.10"
+sha2 = "0.11"
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
+getrandom = "0.4.2"
+rand_core = "0.10.1"
 
 [features]
 default = []
@@ -29,7 +29,7 @@ wasm = ["getrandom/wasm_js"]
 
 [dev-dependencies]
 tokio = { workspace = true }
-axum = "0.8"
+axum = "0.8.9"
 tower-http = { version = "0.6", features = ["cors"] }
 serde_json = { workspace = true }
 
