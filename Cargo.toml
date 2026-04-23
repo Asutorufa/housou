@@ -28,7 +28,7 @@ js-sys = { workspace = true }
 futures = "0.3.32"
 argon2 = "0.5"
 rand_core = "0.10.1"
-uuid = { version = "1.23.1", features = ["v4", "fast-rng", "js", "serde"] }
+uuid = { version = "1.23.1", features = ["v4", "rng", "js", "serde"] }
 cookie = "0.18"
 getrandom = { version = "0.4.2", features = ["wasm_js"] }
 async-trait = { workspace = true }
