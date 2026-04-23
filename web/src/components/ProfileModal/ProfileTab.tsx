@@ -30,9 +30,7 @@ export default function ProfileTab({
     if (user) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setUsername(user.username);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEmail(user.email);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAvatarUrl(user.avatar_url || "");
     }
   }, [user]);

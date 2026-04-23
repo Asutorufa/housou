@@ -23,7 +23,6 @@ export function useSmartMetadata(
     if (initialMetadata) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setMetadata(initialMetadata);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
