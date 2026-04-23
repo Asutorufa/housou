@@ -1,6 +1,6 @@
 [package]
 name = "d1-orm"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "A lightweight ORM/SQL builder for Cloudflare D1 and SQLite"
 repository = "https://github.com/Asutorufa/housou/tree/master/crates/d1-orm"
