@@ -1,33 +1,21 @@
 import { Check, KeyRound, Loader2, Pencil, X } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR, { useSWRConfig } from "swr";
 import { type PasskeySummary, useAuth } from "../../contexts/AuthContext";
+import { fetcher } from "../../utils/fetcher";
 
 export default function PasskeyTab() {
-  const { registerPasskey, listPasskeys, deletePasskey, renamePasskey } =
-    useAuth();
-  const [passkeys, setPasskeys] = useState<PasskeySummary[]>([]);
+  const { registerPasskey, deletePasskey, renamePasskey } = useAuth();
+  const { mutate } = useSWRConfig();
+  const { data: passkeys = [], isLoading: isListLoading } = useSWR<
+    PasskeySummary[]
+  >("/api/auth/passkey", fetcher);
+
   const [loading, setLoading] = useState(false);
-  const [isListLoading, setIsListLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-
-  const loadPasskeys = useCallback(async () => {
-    try {
-      const list = await listPasskeys();
-      setPasskeys(list);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsListLoading(false);
-    }
-  }, [listPasskeys]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadPasskeys();
-  }, [loadPasskeys]);
 
   const getDeviceName = () => {
     const ua = navigator.userAgent;
@@ -53,7 +41,7 @@ export default function PasskeyTab() {
     setError(null);
     try {
       await registerPasskey(getDeviceName());
-      await loadPasskeys();
+      await mutate("/api/auth/passkey");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add passkey");
     } finally {
@@ -83,7 +71,7 @@ export default function PasskeyTab() {
     try {
       await renamePasskey(id, editName);
       setEditingId(null);
-      await loadPasskeys();
+      await mutate("/api/auth/passkey");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rename passkey");
     }
@@ -93,7 +81,7 @@ export default function PasskeyTab() {
     if (!confirm("このパスキーを削除してもよろしいですか？")) return;
     try {
       await deletePasskey(id);
-      await loadPasskeys();
+      await mutate("/api/auth/passkey");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete passkey");
     }
