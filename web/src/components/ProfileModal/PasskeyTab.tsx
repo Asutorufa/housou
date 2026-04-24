@@ -1,16 +1,17 @@
 import { Check, KeyRound, Loader2, Pencil, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import useSWR, { useSWRConfig } from "swr";
+import useSWR from "swr";
 import { type PasskeySummary, useAuth } from "../../contexts/AuthContext";
 import { fetcher } from "../../utils/fetcher";
 
 export default function PasskeyTab() {
   const { registerPasskey, deletePasskey, renamePasskey } = useAuth();
-  const { mutate } = useSWRConfig();
-  const { data: passkeys = [], isLoading: isListLoading } = useSWR<
-    PasskeySummary[]
-  >("/api/auth/passkey", fetcher);
+  const {
+    data: passkeys = [],
+    isLoading: isListLoading,
+    mutate,
+  } = useSWR<PasskeySummary[]>("/api/auth/passkey", fetcher);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export default function PasskeyTab() {
     setError(null);
     try {
       await registerPasskey(getDeviceName());
-      await mutate("/api/auth/passkey");
+      await mutate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add passkey");
     } finally {
@@ -71,7 +72,7 @@ export default function PasskeyTab() {
     try {
       await renamePasskey(id, editName);
       setEditingId(null);
-      await mutate("/api/auth/passkey");
+      await mutate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rename passkey");
     }
@@ -81,7 +82,7 @@ export default function PasskeyTab() {
     if (!confirm("このパスキーを削除してもよろしいですか？")) return;
     try {
       await deletePasskey(id);
-      await mutate("/api/auth/passkey");
+      await mutate();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete passkey");
     }
