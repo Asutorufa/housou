@@ -13,6 +13,13 @@ export function useSmartMetadata(
     useState<UnifiedMetadata | null>(null);
   const [loading, setLoading] = useState(!initialMetadata && enabled);
 
+  const [prevItem, setPrevItem] = useState(item);
+  if (item !== prevItem) {
+    setPrevItem(item);
+    setFetchedMetadata(null);
+    setLoading(!initialMetadata && enabled);
+  }
+
   const metadata = initialMetadata || fetchedMetadata;
 
   useEffect(() => {
