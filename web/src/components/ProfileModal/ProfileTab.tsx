@@ -1,20 +1,21 @@
 import { useEffect, useState } from "react";
 import { formInputClassName } from "../../styles/uiClasses";
+import type { User } from "../../types";
 
 export default function ProfileTab({
   user,
   updateProfile,
 }: {
-  user: { username: string; email: string; avatar_url?: string } | undefined;
+  user: User;
   updateProfile: (data: {
     username: string;
     email: string;
     avatar_url: string;
   }) => Promise<unknown>;
 }) {
-  const [username, setUsername] = useState(user?.username || "");
-  const [email, setEmail] = useState(user?.email || "");
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
+  const [username, setUsername] = useState(user.username);
+  const [email, setEmail] = useState(user.email);
+  const [avatarUrl, setAvatarUrl] = useState(user.avatar_url || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -25,15 +26,6 @@ export default function ProfileTab({
       return () => clearTimeout(timer);
     }
   }, [success]);
-
-  useEffect(() => {
-    if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setUsername(user.username);
-      setEmail(user.email);
-      setAvatarUrl(user.avatar_url || "");
-    }
-  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

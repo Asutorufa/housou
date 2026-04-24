@@ -9,25 +9,26 @@ export function useSmartMetadata(
   enabled: boolean = true,
 ) {
   const { fetchMetadata } = useMetadata();
-  const [metadata, setMetadata] = useState<UnifiedMetadata | null>(
-    initialMetadata,
-  );
+  const [fetchedMetadata, setFetchedMetadata] =
+    useState<UnifiedMetadata | null>(null);
   const [loading, setLoading] = useState(!initialMetadata && enabled);
 
-  useEffect(() => {
-    if (!enabled) {
-      return;
-    }
+  const [prevItem, setPrevItem] = useState(item);
+  if (item !== prevItem) {
+    setPrevItem(item);
+    setFetchedMetadata(null);
+    setLoading(!initialMetadata && enabled);
+  }
 
-    // If we have initial metadata and it matches the current item, use it
-    if (initialMetadata) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMetadata(initialMetadata);
-      setLoading(false);
+  const metadata = initialMetadata || fetchedMetadata;
+
+  useEffect(() => {
+    if (!enabled || initialMetadata) {
       return;
     }
 
     let isMounted = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
     async function load() {
@@ -55,7 +56,7 @@ export function useSmartMetadata(
         });
 
         if (isMounted) {
-          setMetadata(data || null);
+          setFetchedMetadata(data || null);
         }
       } catch (err) {
         if (isDev()) {
