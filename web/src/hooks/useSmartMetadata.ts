@@ -40,7 +40,8 @@ export function useSmartMetadata(
   } | null>(null);
 
   const metadata =
-    initialMetadata || (fetchedResult?.key === requestKey ? fetchedResult.metadata : null);
+    initialMetadata ||
+    (fetchedResult?.key === requestKey ? fetchedResult.metadata : null);
   const loading = requestKey !== null && fetchedResult?.key !== requestKey;
 
   useEffect(() => {
