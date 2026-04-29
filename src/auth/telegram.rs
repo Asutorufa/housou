@@ -21,27 +21,39 @@ pub struct TelegramAuthData {
     pub hash: String,
 }
 
-fn verify_telegram_hash_internal(data: &TelegramAuthData, bot_token: &str) -> Result<()> {
-    // Construct data-check-string
+fn build_data_check_string(data: &TelegramAuthData) -> String {
+    let id_str = data.id.to_string();
+    let auth_date_str = data.auth_date.to_string();
+
     let mut params = BTreeMap::new();
-    params.insert("id", data.id.to_string());
-    params.insert("first_name", data.first_name.clone());
+    params.insert("id", id_str.as_str());
+    params.insert("first_name", data.first_name.as_str());
     if let Some(ln) = &data.last_name {
-        params.insert("last_name", ln.clone());
+        params.insert("last_name", ln.as_str());
     }
     if let Some(un) = &data.username {
-        params.insert("username", un.clone());
+        params.insert("username", un.as_str());
     }
     if let Some(pu) = &data.photo_url {
-        params.insert("photo_url", pu.clone());
+        params.insert("photo_url", pu.as_str());
     }
-    params.insert("auth_date", data.auth_date.to_string());
+    params.insert("auth_date", auth_date_str.as_str());
 
-    let data_check_string = params
-        .iter()
-        .map(|(k, v)| format!("{}={}", k, v))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut data_check_string = String::with_capacity(256);
+    for (i, (k, v)) in params.iter().enumerate() {
+        if i > 0 {
+            data_check_string.push('\n');
+        }
+        data_check_string.push_str(k);
+        data_check_string.push('=');
+        data_check_string.push_str(v);
+    }
+    data_check_string
+}
+
+fn verify_telegram_hash_internal(data: &TelegramAuthData, bot_token: &str) -> Result<()> {
+    // Construct data-check-string
+    let data_check_string = build_data_check_string(data);
 
     // Compute secret key: SHA256(bot_token)
     let mut hasher = Sha256::new();
@@ -211,25 +223,7 @@ mod tests {
 
     // Helper to compute hash manually for testing
     fn compute_hash(data: &TelegramAuthData, bot_token: &str) -> String {
-        let mut params = BTreeMap::new();
-        params.insert("id", data.id.to_string());
-        params.insert("first_name", data.first_name.clone());
-        if let Some(ln) = &data.last_name {
-            params.insert("last_name", ln.clone());
-        }
-        if let Some(un) = &data.username {
-            params.insert("username", un.clone());
-        }
-        if let Some(pu) = &data.photo_url {
-            params.insert("photo_url", pu.clone());
-        }
-        params.insert("auth_date", data.auth_date.to_string());
-
-        let data_check_string = params
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let data_check_string = build_data_check_string(data);
 
         let mut hasher = Sha256::new();
         hasher.update(bot_token.as_bytes());
