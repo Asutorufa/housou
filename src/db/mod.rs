@@ -122,7 +122,11 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
             "Add comments",
             vec![Sql::CreateCommentsTable, Sql::CreateCommentsTitleIndex],
         ),
-        Migration::new(8, "Add score to comments", vec![Sql::AddCommentsScoreColumn]),
+        Migration::new(
+            8,
+            "Add score to comments",
+            vec![Sql::AddCommentsScoreColumn],
+        ),
     ]
 }
 
