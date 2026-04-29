@@ -369,6 +369,10 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
 }
 
 pub async fn handle_list_reviews(req: Request, env: Env) -> Result<Response> {
+    if env.d1("DB").is_err() {
+        return Response::from_json(&Vec::<db::ItemReviewWithUser>::new());
+    }
+
     let current_user_id = auth::get_auth(&req, &env).await?.map(|(u, _)| u.id);
     let url = req.url()?;
     let query_str = url.query().unwrap_or("");
@@ -392,6 +396,10 @@ pub async fn handle_list_reviews(req: Request, env: Env) -> Result<Response> {
 }
 
 pub async fn handle_create_review(mut req: Request, env: Env) -> Result<Response> {
+    if env.d1("DB").is_err() {
+        return Response::error("Service Unavailable", 503);
+    }
+
     let (user, _) = match auth::get_auth(&req, &env).await? {
         Some(u) => u,
         None => return Response::error("Unauthorized", 401),
@@ -409,6 +417,10 @@ pub async fn handle_create_review(mut req: Request, env: Env) -> Result<Response
 }
 
 pub async fn handle_delete_review(mut req: Request, env: Env) -> Result<Response> {
+    if env.d1("DB").is_err() {
+        return Response::error("Service Unavailable", 503);
+    }
+
     let (user, _) = match auth::get_auth(&req, &env).await? {
         Some(u) => u,
         None => return Response::error("Unauthorized", 401),
