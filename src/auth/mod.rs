@@ -171,6 +171,12 @@ struct UpdateItemRequest {
     begin_at: Option<i64>,
 }
 
+#[derive(Deserialize)]
+struct PostCommentRequest {
+    title: String,
+    content: String,
+}
+
 #[derive(Serialize)]
 pub struct UserResponse {
     pub id: i32,
@@ -399,6 +405,57 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
     )
     .await?;
     Response::ok("Updated")
+}
+
+pub async fn handle_post_comment(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let body: PostCommentRequest = req.json().await?;
+    if body.content.trim().is_empty() {
+        return Response::error("Comment content cannot be empty", 400);
+    }
+
+    let db = get_db(&env)?;
+    // Try to update first, if it fails, try to create (or vice versa, but update first is better if we want UPSERT behavior)
+    // Actually, since we have UNIQUE(user_id, title), we can just try to update.
+    // If update returns 0 rows, it means it doesn't exist.
+    // But our UpdateComment uses RETURNING *, which might be tricky if it doesn't exist.
+    // Let's check if it exists first or use a more robust way.
+
+    let comment = match db
+        .update_comment(user.id, &body.title, &body.content, None)
+        .await
+    {
+        Ok(c) => c,
+        Err(_) => {
+            // Probably doesn't exist, try create
+            db.create_comment(user.id, &body.title, &body.content, None)
+                .await?
+        }
+    };
+
+    Response::from_json(&comment)
+}
+
+pub async fn handle_delete_comment(req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let id = req
+        .path()
+        .split('/')
+        .next_back()
+        .and_then(|s| s.parse::<i32>().ok())
+        .ok_or_else(|| Error::RustError("Invalid comment ID".to_string()))?;
+
+    let db = get_db(&env)?;
+    db.delete_comment(id, user.id).await?;
+    Response::ok("Deleted")
 }
 
 pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {

@@ -107,16 +107,9 @@ async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Re
     let url = req.url()?;
 
     if req.method() == Method::Get {
-        // Skip caching for auth routes and items when auth is enabled (user specific data)
-        // Actually, we should check auth cookie presence before skipping cache, or make items endpoint handle caching carefully.
-        // For simplicity: skip caching items endpoint if auth cookie is present or if we want to be safe.
-        // But the router handles caching internally for items? No, router returns Response.
-        // The main block handles caching.
+        let skip_shared_cache = should_skip_shared_cache(url.path());
 
-        let is_auth_route =
-            url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
-
-        if is_auth_route {
+        if skip_shared_cache {
             router(req, env.clone(), ctx).await
         } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
             // Use cached response, clone to make it mutable for adding security headers
@@ -125,8 +118,11 @@ async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Re
             // Generate new response
             let mut fresh_resp = router(req, env.clone(), ctx).await?;
 
-            // Cache successful GET responses (except auth)
-            if url.path().starts_with("/api") && !is_auth_route && fresh_resp.status_code() == 200 {
+            // Cache successful GET responses unless they may vary by viewer.
+            if url.path().starts_with("/api")
+                && !skip_shared_cache
+                && fresh_resp.status_code() == 200
+            {
                 if !fresh_resp.headers().has("Cache-Control")? {
                     fresh_resp = fresh_resp.add_header(
                         "Cache-Control",
@@ -140,6 +136,12 @@ async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Re
     } else {
         router(req, env.clone(), ctx).await
     }
+}
+
+fn should_skip_shared_cache(path: &str) -> bool {
+    path.starts_with("/api/auth")
+        || path.starts_with("/api/user")
+        || path.starts_with("/api/comments")
 }
 
 async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
@@ -166,6 +168,9 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
 
     if auth_enabled {
         router = router
+            .get_async("/api/comments", |req, ctx| async move {
+                handlers::handle_get_comments(req, ctx.env).await
+            })
             .get_async("/api/user/status", |req, ctx| async move {
                 handlers::handle_user_status(req, ctx.env).await
             })
@@ -231,7 +236,15 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
             })
             .patch_async("/api/auth/passkey", |req, ctx| async move {
                 auth::passkey::handle_rename(req, ctx.env).await
-            });
+            })
+            .post_async("/api/comments", |req, ctx| async move {
+                auth::handle_post_comment(req, ctx.env).await
+            })
+            .delete_async("/api/comments/:id", |req, ctx| async move {
+                auth::handle_delete_comment(req, ctx.env).await
+            })
+            .options("/api/comments", |_, _| Response::empty())
+            .options("/api/comments/*path", |_, _| Response::empty());
     }
 
     // Handle Options for CORS on auth routes
@@ -304,5 +317,15 @@ mod tests {
             setter.headers.get("Access-Control-Allow-Origin"),
             Some(&origin.to_string())
         );
+    }
+
+    #[test]
+    fn test_should_skip_shared_cache() {
+        assert!(should_skip_shared_cache("/api/auth/me"));
+        assert!(should_skip_shared_cache("/api/user/status"));
+        assert!(should_skip_shared_cache("/api/comments"));
+        assert!(should_skip_shared_cache("/api/comments?title=test"));
+        assert!(!should_skip_shared_cache("/api/items"));
+        assert!(!should_skip_shared_cache("/api/metadata"));
     }
 }

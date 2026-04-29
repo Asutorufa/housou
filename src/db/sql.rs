@@ -87,6 +87,23 @@ d1_orm::define_sql! {
     CreateUserItemsV2BeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
     @index("idx_user_items_v2_user_id_begin_at")
     CreateUserItemsV2UserIdBeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
+    @table("comments")
+    CreateCommentsTable => "CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            title TEXT,
+            content TEXT,
+            created_at INTEGER,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            UNIQUE(user_id, title)
+        );",
+    @index("idx_comments_title")
+    CreateCommentsTitleIndex => "CREATE INDEX IF NOT EXISTS idx_comments_title ON comments(title);",
+    @column("comments", "score")
+    AddCommentsScoreColumn => "ALTER TABLE comments ADD COLUMN score INTEGER;",
+    @column("comments", "updated_at")
+    AddCommentsUpdatedAtColumn => "ALTER TABLE comments ADD COLUMN updated_at INTEGER;",
+    BackfillCommentsUpdatedAt => "UPDATE comments SET updated_at = created_at WHERE updated_at IS NULL;",
 
     // Users
     CreateUser {
@@ -191,4 +208,55 @@ d1_orm::define_sql! {
     DeletePasskeyState {
         id: &'a str,
     } => "DELETE FROM passkey_states WHERE id = ?",
+
+    // Comments
+    CreateComment {
+        user_id: i32,
+        title: &'a str,
+        content: &'a str,
+        score: Option<i32>,
+        created_at: i64,
+        updated_at: i64,
+    } => "INSERT INTO comments (user_id, title, content, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
+    GetCommentsWithUser {
+        title: &'a str,
+        viewer_id: i32,
+        limit: i32,
+        offset: i32,
+    } => "SELECT
+            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
+            COALESCE(c.score, ui.score) as score
+          FROM comments c
+          INNER JOIN users u ON c.user_id = u.id
+          LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
+          WHERE c.title = ?
+          ORDER BY CASE WHEN c.user_id = ? THEN 0 ELSE 1 END, c.updated_at DESC, c.created_at DESC
+          LIMIT ? OFFSET ?",
+    GetCommentsWithUserGuest {
+        title: &'a str,
+        limit: i32,
+        offset: i32,
+    } => "SELECT
+            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
+            COALESCE(c.score, ui.score) as score
+          FROM comments c
+          INNER JOIN users u ON c.user_id = u.id
+          LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
+          WHERE c.title = ?
+          ORDER BY c.updated_at DESC, c.created_at DESC
+          LIMIT ? OFFSET ?",
+    GetCommentsCount {
+        title: &'a str,
+    } => "SELECT COUNT(*) as count FROM comments WHERE title = ?",
+    DeleteComment {
+        id: i32,
+        user_id: i32,
+    } => "DELETE FROM comments WHERE id = ? AND user_id = ?",
+    UpdateComment {
+        content: &'a str,
+        score: Option<i32>,
+        updated_at: i64,
+        user_id: i32,
+        title: &'a str,
+    } => "UPDATE comments SET content = ?, score = ?, updated_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
 }

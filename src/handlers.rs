@@ -30,6 +30,19 @@ struct MetadataQuery {
     begin: Option<String>,
 }
 
+#[derive(serde_derive::Deserialize)]
+struct CommentsQuery {
+    title: String,
+    limit: Option<i32>,
+    offset: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct CommentsResponse {
+    pub comments: Vec<db::CommentWithUser>,
+    pub total: i32,
+}
+
 #[derive(Serialize)]
 pub struct Attribution {
     pub tmdb: TmdbAttribution,
@@ -48,6 +61,10 @@ fn normalize_season_query(season: Option<&str>) -> std::result::Result<Option<&s
         Some("Winter") | Some("Spring") | Some("Summer") | Some("Autumn") => Ok(season),
         Some(_) => Err("Bad Request: invalid 'season' parameter"),
     }
+}
+
+fn clamp_comments_limit(limit: Option<i32>) -> i32 {
+    limit.unwrap_or(10).clamp(1, 50)
 }
 
 async fn fetch_site_meta() -> Result<SiteMeta> {
@@ -190,6 +207,29 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
             Response::error("Internal Server Error", 500)
         }
     }
+}
+
+pub async fn handle_get_comments(req: Request, env: Env) -> Result<Response> {
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: CommentsQuery = match serde_urlencoded::from_str(query_str) {
+        Ok(q) => q,
+        Err(_) => return Response::error("Bad Request: 'title' is required", 400),
+    };
+
+    let limit = clamp_comments_limit(query.limit);
+    let offset = query.offset.unwrap_or(0);
+
+    let db = auth::get_db(&env)?;
+    let viewer_id = auth::get_auth_with_db(&req, &db).await?.map(|(u, _)| u.id);
+
+    let comments = db
+        .get_comments(&query.title, viewer_id, limit, offset)
+        .await?;
+    let total = db.get_comments_count(&query.title).await?;
+
+    Response::from_json(&CommentsResponse { comments, total })?
+        .add_header("Cache-Control", "private, no-store")
 }
 
 pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Result<Response> {
@@ -351,7 +391,7 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
 
 #[cfg(test)]
 mod tests {
-    use super::{FaviconFetcher, fetch_favicon_core, normalize_season_query};
+    use super::{FaviconFetcher, clamp_comments_limit, fetch_favicon_core, normalize_season_query};
     use std::collections::HashMap;
     use std::future::Future;
     use std::pin::Pin;
@@ -406,6 +446,17 @@ mod tests {
                 case
             );
         }
+    }
+
+    #[test]
+    fn test_clamp_comments_limit() {
+        assert_eq!(clamp_comments_limit(None), 10);
+        assert_eq!(clamp_comments_limit(Some(-1)), 1);
+        assert_eq!(clamp_comments_limit(Some(0)), 1);
+        assert_eq!(clamp_comments_limit(Some(1)), 1);
+        assert_eq!(clamp_comments_limit(Some(25)), 25);
+        assert_eq!(clamp_comments_limit(Some(50)), 50);
+        assert_eq!(clamp_comments_limit(Some(999)), 50);
     }
 
     struct DelayedResult<T> {

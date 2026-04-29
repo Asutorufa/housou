@@ -13,6 +13,7 @@ import CustomSelect from "../CustomSelect";
 import Skeleton from "../Skeleton";
 import AnimeCover from "./AnimeCover";
 import CastSection from "./CastSection";
+import CommentSection from "./CommentSection";
 import EpisodeList from "./EpisodeList";
 import ExternalLinks from "./ExternalLinks";
 import InfoBadges from "./InfoBadges";
@@ -27,12 +28,13 @@ interface DetailsModalProps {
   anime: { title: string; info: UnifiedMetadata | null } | null;
   items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
+  authEnabled: boolean;
   onUpdate?: () => void;
 }
 
 export default function DetailsModal(props: DetailsModalProps) {
   const { isOpen, onClose, anime } = props;
-  const { items, siteMeta, onUpdate } = props;
+  const { items, siteMeta, authEnabled, onUpdate } = props;
   const { title } = anime || { title: "" };
 
   return (
@@ -71,6 +73,7 @@ export default function DetailsModal(props: DetailsModalProps) {
                 anime={anime}
                 items={items}
                 siteMeta={siteMeta}
+                authEnabled={authEnabled}
                 onUpdate={onUpdate}
               />
             </Dialog.Content>
@@ -86,6 +89,7 @@ function DetailsModalContent({
   anime,
   items,
   siteMeta,
+  authEnabled,
   onUpdate,
   ...radixProps
 }: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
@@ -336,6 +340,9 @@ function DetailsModalContent({
                   <CastSection characters={info?.characters} />
                   <StaffSection staff={info?.staff} />
                 </div>
+
+                {/* Comments Section */}
+                {authEnabled && <CommentSection title={title} />}
               </>
             )}
           </motion.div>
