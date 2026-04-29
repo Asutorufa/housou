@@ -9,43 +9,50 @@ export function useSmartMetadata(
   enabled: boolean = true,
 ) {
   const { fetchMetadata } = useMetadata();
-  const [fetchedMetadata, setFetchedMetadata] =
-    useState<UnifiedMetadata | null>(null);
-  const [loading, setLoading] = useState(!initialMetadata && enabled);
+  const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
+  const malSite = item.sites?.find((s) => s.site === "mal");
+  const anilistSite = item.sites?.find(
+    (s) => s.site === "aniList" || s.site === "anilist",
+  );
 
-  const [prevItem, setPrevItem] = useState(item);
-  if (item !== prevItem) {
-    setPrevItem(item);
-    setFetchedMetadata(null);
-    setLoading(!initialMetadata && enabled);
+  let year: number | undefined;
+  if (item.begin) {
+    const parsedYear = parseInt(item.begin.substring(0, 4));
+    if (!isNaN(parsedYear)) {
+      year = parsedYear;
+    }
   }
 
-  const metadata = initialMetadata || fetchedMetadata;
+  const requestKey =
+    enabled && !initialMetadata
+      ? JSON.stringify({
+          title: item.title,
+          tmdb_id: tmdbSite?.id,
+          mal_id: malSite?.id,
+          anilist_id: anilistSite?.id,
+          year,
+        })
+      : null;
+
+  const [fetchedResult, setFetchedResult] = useState<{
+    key: string;
+    metadata: UnifiedMetadata | null;
+  } | null>(null);
+
+  const metadata =
+    initialMetadata || (fetchedResult?.key === requestKey ? fetchedResult.metadata : null);
+  const loading = requestKey !== null && fetchedResult?.key !== requestKey;
 
   useEffect(() => {
-    if (!enabled || initialMetadata) {
+    if (!requestKey || fetchedResult?.key === requestKey) {
       return;
     }
 
+    const currentRequestKey = requestKey;
     let isMounted = true;
-    setLoading(true);
 
     async function load() {
       try {
-        const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
-        const malSite = item.sites?.find((s) => s.site === "mal");
-        const anilistSite = item.sites?.find(
-          (s) => s.site === "aniList" || s.site === "anilist",
-        );
-
-        let year: number | undefined;
-        if (item.begin) {
-          const parsedYear = parseInt(item.begin.substring(0, 4));
-          if (!isNaN(parsedYear)) {
-            year = parsedYear;
-          }
-        }
-
         const data = await fetchMetadata({
           title: item.title,
           tmdb_id: tmdbSite?.id,
@@ -55,15 +62,20 @@ export function useSmartMetadata(
         });
 
         if (isMounted) {
-          setFetchedMetadata(data || null);
+          setFetchedResult({
+            key: currentRequestKey,
+            metadata: data || null,
+          });
         }
       } catch (err) {
         if (isDev()) {
           console.error(`Metadata error for ${item.title}:`, err);
         }
-      } finally {
         if (isMounted) {
-          setLoading(false);
+          setFetchedResult({
+            key: currentRequestKey,
+            metadata: null,
+          });
         }
       }
     }
@@ -73,7 +85,16 @@ export function useSmartMetadata(
     return () => {
       isMounted = false;
     };
-  }, [item, initialMetadata, fetchMetadata, enabled]);
+  }, [
+    requestKey,
+    fetchedResult?.key,
+    fetchMetadata,
+    item.title,
+    tmdbSite?.id,
+    malSite?.id,
+    anilistSite?.id,
+    year,
+  ]);
 
   return { metadata, loading };
 }

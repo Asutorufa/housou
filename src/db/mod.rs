@@ -322,9 +322,14 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     }
 
     async fn get_comments_count(&self, title: &str) -> Result<i32> {
+        #[derive(serde::Deserialize)]
+        struct CountResult {
+            count: i32,
+        }
+
         let sql = Sql::GetCommentsCount { title };
-        let res: Option<SchemaVersion> = self.query_first(sql).await?;
-        Ok(res.and_then(|r| r.version).unwrap_or(0))
+        let res: Option<CountResult> = self.query_first(sql).await?;
+        Ok(res.map(|r| r.count).unwrap_or(0))
     }
 
     async fn create_comment(

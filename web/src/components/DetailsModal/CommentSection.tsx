@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWRInfinite from "swr/infinite";
 import { useAuth } from "../../contexts/AuthContext";
 import { focusRingClassName } from "../../styles/uiClasses";
@@ -26,7 +26,13 @@ function formatCommentTime(timestamp: number) {
 
 export default function CommentSection({ title }: CommentSectionProps) {
   const { loggedIn, user } = useAuth();
-  const [newComment, setNewComment] = useState("");
+  const [draftComment, setDraftComment] = useState<{
+    title: string;
+    value: string;
+  }>({
+    title,
+    value: "",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -51,15 +57,28 @@ export default function CommentSection({ title }: CommentSectionProps) {
 
   // Check if current user already has a comment
   const userComment = comments.find((c) => c.userId === user?.id);
+  const newComment = draftComment.title === title ? draftComment.value : "";
 
-  useEffect(() => {
-    if (userComment && !isEditing) {
-      setNewComment(userComment.content);
-    } else if (!userComment) {
-      setNewComment("");
-      setIsEditing(false);
-    }
-  }, [userComment, isEditing]);
+  const updateDraftComment = (value: string) => {
+    setDraftComment({ title, value });
+  };
+
+  const resetDraftComment = () => {
+    setDraftComment({ title, value: "" });
+  };
+
+  const startEditing = () => {
+    setDraftComment({
+      title,
+      value: userComment?.content ?? "",
+    });
+    setIsEditing(true);
+  };
+
+  const stopEditing = () => {
+    resetDraftComment();
+    setIsEditing(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +93,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
       });
 
       if (resp.ok) {
-        setIsEditing(false);
+        stopEditing();
         mutate();
       }
     } finally {
@@ -87,6 +106,8 @@ export default function CommentSection({ title }: CommentSectionProps) {
 
     const resp = await fetch(`/api/comments/${id}`, { method: "DELETE" });
     if (resp.ok) {
+      resetDraftComment();
+      setIsEditing(false);
       mutate();
     }
   };
@@ -128,7 +149,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
               {userComment && (
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
+                  onClick={stopEditing}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
                 >
                   <X size={14} />
@@ -137,7 +158,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
             </div>
             <textarea
               value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
+              onChange={(e) => updateDraftComment(e.target.value)}
               placeholder="感想や評価を共有しましょう..."
               className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900/50 dark:text-white dark:focus:border-blue-400"
               rows={3}
@@ -169,7 +190,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
               </span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setIsEditing(true)}
+                  onClick={startEditing}
                   className="text-gray-400 hover:text-blue-500"
                   title="編集"
                 >

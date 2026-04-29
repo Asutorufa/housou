@@ -247,7 +247,7 @@ d1_orm::define_sql! {
           LIMIT ? OFFSET ?",
     GetCommentsCount {
         title: &'a str,
-    } => "SELECT COUNT(*) as version FROM comments WHERE title = ?",
+    } => "SELECT COUNT(*) as count FROM comments WHERE title = ?",
     DeleteComment {
         id: i32,
         user_id: i32,
