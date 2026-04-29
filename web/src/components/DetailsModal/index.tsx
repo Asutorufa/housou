@@ -28,12 +28,13 @@ interface DetailsModalProps {
   anime: { title: string; info: UnifiedMetadata | null } | null;
   items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
+  authEnabled: boolean;
   onUpdate?: () => void;
 }
 
 export default function DetailsModal(props: DetailsModalProps) {
   const { isOpen, onClose, anime } = props;
-  const { items, siteMeta, onUpdate } = props;
+  const { items, siteMeta, authEnabled, onUpdate } = props;
   const { title } = anime || { title: "" };
 
   return (
@@ -72,6 +73,7 @@ export default function DetailsModal(props: DetailsModalProps) {
                 anime={anime}
                 items={items}
                 siteMeta={siteMeta}
+                authEnabled={authEnabled}
                 onUpdate={onUpdate}
               />
             </Dialog.Content>
@@ -87,6 +89,7 @@ function DetailsModalContent({
   anime,
   items,
   siteMeta,
+  authEnabled,
   onUpdate,
   ...radixProps
 }: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
@@ -339,7 +342,7 @@ function DetailsModalContent({
                 </div>
 
                 {/* Comments Section */}
-                <CommentSection title={title} />
+                {authEnabled && <CommentSection title={title} />}
               </>
             )}
           </motion.div>

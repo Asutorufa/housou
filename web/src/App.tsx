@@ -136,6 +136,7 @@ export default function App() {
         anime={selectedAnime}
         items={items}
         siteMeta={config?.site_meta}
+        authEnabled={!!config?.auth_enabled}
         onUpdate={() => mutateStatuses()}
       />
 

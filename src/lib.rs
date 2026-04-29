@@ -164,13 +164,13 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
         })
         .get_async("/api/favicon", |req, ctx| async move {
             handlers::handle_favicon(req, ctx.env).await
-        })
-        .get_async("/api/comments", |req, ctx| async move {
-            handlers::handle_get_comments(req, ctx.env).await
         });
 
     if auth_enabled {
         router = router
+            .get_async("/api/comments", |req, ctx| async move {
+                handlers::handle_get_comments(req, ctx.env).await
+            })
             .get_async("/api/user/status", |req, ctx| async move {
                 handlers::handle_user_status(req, ctx.env).await
             })
@@ -242,14 +242,14 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
             })
             .delete_async("/api/comments/:id", |req, ctx| async move {
                 auth::handle_delete_comment(req, ctx.env).await
-            });
+            })
+            .options("/api/comments", |_, _| Response::empty())
+            .options("/api/comments/*path", |_, _| Response::empty());
     }
 
     // Handle Options for CORS on auth routes
     router = router
         .options("/api/metadata", |_, _| Response::empty())
-        .options("/api/comments", |_, _| Response::empty())
-        .options("/api/comments/*path", |_, _| Response::empty())
         .options("/api/user/*path", |_, _| Response::empty())
         .options("/api/auth/*path", |_, _| Response::empty());
 

@@ -78,6 +78,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnime}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -102,6 +103,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnime}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -122,6 +124,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnime}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -149,6 +152,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnimeWithBr}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -178,6 +182,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnimeWithLink}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -209,6 +214,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnimeWithLink}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
@@ -239,6 +245,7 @@ describe("DetailsModal XSS Prevention", () => {
         anime={mockAnimeWithLink}
         items={mockItems}
         siteMeta={mockSiteMeta}
+        authEnabled={true}
       />,
     );
 
