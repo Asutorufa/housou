@@ -13,6 +13,7 @@ import CustomSelect from "../CustomSelect";
 import Skeleton from "../Skeleton";
 import AnimeCover from "./AnimeCover";
 import CastSection from "./CastSection";
+import CommentSection from "./CommentSection";
 import EpisodeList from "./EpisodeList";
 import ExternalLinks from "./ExternalLinks";
 import InfoBadges from "./InfoBadges";
@@ -336,6 +337,9 @@ function DetailsModalContent({
                   <CastSection characters={info?.characters} />
                   <StaffSection staff={info?.staff} />
                 </div>
+
+                {/* Comments Section */}
+                <CommentSection title={title} />
               </>
             )}
           </motion.div>

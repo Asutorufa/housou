@@ -185,3 +185,18 @@ export interface MetadataRequest {
   title?: string;
   year?: number;
 }
+
+export interface CommentWithUser {
+  id: number;
+  userId: number;
+  username: string;
+  avatarUrl?: string;
+  content: string;
+  score?: number;
+  createdAt: number;
+}
+
+export interface PaginatedComments {
+  comments: CommentWithUser[];
+  total: number;
+}

@@ -30,6 +30,19 @@ struct MetadataQuery {
     begin: Option<String>,
 }
 
+#[derive(serde_derive::Deserialize)]
+struct CommentsQuery {
+    title: String,
+    limit: Option<i32>,
+    offset: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct CommentsResponse {
+    pub comments: Vec<db::CommentWithUser>,
+    pub total: i32,
+}
+
 #[derive(Serialize)]
 pub struct Attribution {
     pub tmdb: TmdbAttribution,
@@ -190,6 +203,28 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
             Response::error("Internal Server Error", 500)
         }
     }
+}
+
+pub async fn handle_get_comments(req: Request, env: Env) -> Result<Response> {
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: CommentsQuery = match serde_urlencoded::from_str(query_str) {
+        Ok(q) => q,
+        Err(_) => return Response::error("Bad Request: 'title' is required", 400),
+    };
+
+    let limit = query.limit.unwrap_or(10).min(50);
+    let offset = query.offset.unwrap_or(0);
+
+    let db = auth::get_db(&env)?;
+    let viewer_id = auth::get_auth_with_db(&req, &db)
+        .await?
+        .map(|(u, _)| u.id);
+
+    let comments = db.get_comments(&query.title, viewer_id, limit, offset).await?;
+    let total = db.get_comments_count(&query.title).await?;
+
+    Response::from_json(&CommentsResponse { comments, total })
 }
 
 pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Result<Response> {

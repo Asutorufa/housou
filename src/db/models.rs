@@ -85,3 +85,28 @@ d1_orm::define_model!(
         version: Option<i32>,
     }
 );
+
+d1_orm::define_model!(
+    #[serde(rename_all = "camelCase")]
+    Comment,
+    CommentField,
+    CommentUpdate {
+        id: i32 [pk],
+        user_id: i32,
+        title: String,
+        content: String,
+        created_at: i64,
+    }
+);
+
+#[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentWithUser {
+    pub id: i32,
+    pub user_id: i32,
+    pub username: String,
+    pub avatar_url: Option<String>,
+    pub content: String,
+    pub score: Option<i32>,
+    pub created_at: i64,
+}

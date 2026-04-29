@@ -162,6 +162,9 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
         })
         .get_async("/api/favicon", |req, ctx| async move {
             handlers::handle_favicon(req, ctx.env).await
+        })
+        .get_async("/api/comments", |req, ctx| async move {
+            handlers::handle_get_comments(req, ctx.env).await
         });
 
     if auth_enabled {
@@ -231,6 +234,12 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
             })
             .patch_async("/api/auth/passkey", |req, ctx| async move {
                 auth::passkey::handle_rename(req, ctx.env).await
+            })
+            .post_async("/api/comments", |req, ctx| async move {
+                auth::handle_post_comment(req, ctx.env).await
+            })
+            .delete_async("/api/comments/:id", |req, ctx| async move {
+                auth::handle_delete_comment(req, ctx.env).await
             });
     }
 
