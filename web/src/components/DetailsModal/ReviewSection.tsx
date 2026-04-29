@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import type { User } from "../../types";
 
@@ -28,29 +29,27 @@ export default function ReviewSection({ title }: { title: string }) {
   const [score, setScore] = useState<string>("");
   const myReview = reviews.find((r) => r.userId === user?.id);
 
-  const load = async (p: number) => {
-    if (!title) return;
-    const res = await apiFetch(
-      `/api/reviews?title=${encodeURIComponent(title)}&page=${p}&page_size=${PAGE_SIZE}`,
-    );
-    const data = (await res.json()) as ReviewItem[];
-    setReviews(data);
-  };
-
-  useEffect(() => {
-    setPage(1);
-    void load(1);
-  }, [title]);
+  const load = useCallback(
+    async (p: number) => {
+      if (!title) return;
+      const res = await apiFetch(
+        `/api/reviews?title=${encodeURIComponent(title)}&page=${p}&page_size=${PAGE_SIZE}`,
+      );
+      const data = (await res.json()) as ReviewItem[];
+      setReviews(data);
+    },
+    [apiFetch, title],
+  );
 
   useEffect(() => {
     void load(page);
-  }, [page]);
+  }, [load, page]);
 
   useEffect(() => {
     if (!myReview) return;
     setComment(myReview.comment);
     setScore(typeof myReview.score === "number" ? String(myReview.score) : "");
-  }, [myReview?.id]);
+  }, [myReview]);
 
   const submit = async () => {
     if (!comment.trim()) return;
@@ -89,7 +88,9 @@ export default function ReviewSection({ title }: { title: string }) {
       </h4>
       {loggedIn && (
         <div className="mb-4 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-          <div className="mb-2 text-xs text-gray-500">{user?.username} さんのコメント</div>
+          <div className="mb-2 text-xs text-gray-500">
+            {user?.username} さんのコメント
+          </div>
           <textarea
             className="mb-2 w-full rounded-md border p-2 text-sm"
             rows={3}
@@ -104,11 +105,17 @@ export default function ReviewSection({ title }: { title: string }) {
               className="w-24 rounded-md border p-1 text-sm"
               placeholder="スコア（任意）"
             />
-            <button className="rounded-md bg-blue-600 px-3 py-1 text-white" onClick={submit}>
+            <button
+              className="rounded-md bg-blue-600 px-3 py-1 text-white"
+              onClick={submit}
+            >
               {myReview ? "更新" : "投稿"}
             </button>
             {myReview && (
-              <button className="rounded-md bg-red-600 px-3 py-1 text-white" onClick={remove}>
+              <button
+                className="rounded-md bg-red-600 px-3 py-1 text-white"
+                onClick={remove}
+              >
                 削除
               </button>
             )}
@@ -118,7 +125,10 @@ export default function ReviewSection({ title }: { title: string }) {
 
       <div className="space-y-3">
         {reviews.map((r) => (
-          <div key={r.id} className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+          <div
+            key={r.id}
+            className="rounded-xl border border-gray-200 p-3 dark:border-gray-700"
+          >
             <div className="mb-1 flex items-center gap-2">
               <img
                 src={r.avatarUrl || "https://placehold.co/32x32"}
@@ -126,9 +136,15 @@ export default function ReviewSection({ title }: { title: string }) {
                 alt={r.username}
               />
               <span className="text-sm font-semibold">{r.username}</span>
-              {typeof r.score === "number" && <span className="text-xs text-amber-600">スコア: {r.score}</span>}
+              {typeof r.score === "number" && (
+                <span className="text-xs text-amber-600">
+                  スコア: {r.score}
+                </span>
+              )}
             </div>
-            <p className="text-sm text-gray-700 dark:text-gray-200">{r.comment}</p>
+            <p className="text-sm text-gray-700 dark:text-gray-200">
+              {r.comment}
+            </p>
           </div>
         ))}
       </div>
