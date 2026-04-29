@@ -490,36 +490,28 @@ mod tests {
         assert_eq!(values, vec!["abc", "def"]);
     }
 
+    fn request_with_cookie(cookie_header: &str) -> Request {
+        let mut headers = Headers::new();
+        headers.set("Cookie", cookie_header).unwrap();
+        let mut init = RequestInit::new();
+        init.with_headers(headers);
+        Request::new_with_init("http://localhost", &init).unwrap()
+    }
+
     #[test]
     fn test_get_cookie_values() {
         // Test with single matching cookie
-        let mut headers = Headers::new();
-        headers.set("Cookie", "housou_session=abc").unwrap();
-        let mut init = RequestInit::new();
-        init.with_headers(headers);
-        let req = Request::new_with_init("http://localhost", &init).unwrap();
+        let req = request_with_cookie("housou_session=abc");
         let values = get_cookie_values(&req, "housou_session");
         assert_eq!(values, vec!["abc"]);
 
         // Test with multiple matching cookies
-        let mut headers = Headers::new();
-        headers
-            .set("Cookie", "housou_session=abc; housou_session=def")
-            .unwrap();
-        let mut init = RequestInit::new();
-        init.with_headers(headers);
-        let req = Request::new_with_init("http://localhost", &init).unwrap();
+        let req = request_with_cookie("housou_session=abc; housou_session=def");
         let values = get_cookie_values(&req, "housou_session");
         assert_eq!(values, vec!["abc", "def"]);
 
         // Test with multiple cookies (matching and non-matching)
-        let mut headers = Headers::new();
-        headers
-            .set("Cookie", "housou_session=abc; oauth_state=xyz; other=123")
-            .unwrap();
-        let mut init = RequestInit::new();
-        init.with_headers(headers);
-        let req = Request::new_with_init("http://localhost", &init).unwrap();
+        let req = request_with_cookie("housou_session=abc; oauth_state=xyz; other=123");
         let values = get_cookie_values(&req, "housou_session");
         assert_eq!(values, vec!["abc"]);
         let values = get_cookie_values(&req, "oauth_state");
@@ -539,13 +531,7 @@ mod tests {
 
     #[test]
     fn test_get_cookie_values_malformed() {
-        let mut headers = Headers::new();
-        headers
-            .set("Cookie", "housou_session=abc; invalid_cookie; housou_session=def")
-            .unwrap();
-        let mut init = RequestInit::new();
-        init.with_headers(headers);
-        let req = Request::new_with_init("http://localhost", &init).unwrap();
+        let req = request_with_cookie("housou_session=abc; invalid_cookie; housou_session=def");
         let values = get_cookie_values(&req, "housou_session");
         assert_eq!(values, vec!["abc", "def"]);
     }
