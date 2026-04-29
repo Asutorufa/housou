@@ -114,7 +114,9 @@ async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Re
         // The main block handles caching.
 
         let is_auth_route =
-            url.path().starts_with("/api/auth") || url.path().starts_with("/api/user");
+            url.path().starts_with("/api/auth")
+                || url.path().starts_with("/api/user")
+                || url.path().starts_with("/api/reviews");
 
         if is_auth_route {
             router(req, env.clone(), ctx).await
