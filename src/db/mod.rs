@@ -43,6 +43,22 @@ pub trait Database {
         start_ts: i64,
         end_ts: i64,
     ) -> Result<Vec<UserItem>>;
+
+    async fn create_item_review(
+        &self,
+        title: &str,
+        user_id: i32,
+        score: Option<i32>,
+        comment: &str,
+    ) -> Result<()>;
+    async fn get_item_reviews_by_title(
+        &self,
+        title: &str,
+        current_user_id: Option<i32>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ItemReviewWithUser>>;
+    async fn delete_item_review(&self, user_id: i32, title: &str) -> Result<()>;
 }
 
 pub struct AppDatabase<E: DatabaseExecutor> {
@@ -92,6 +108,15 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
             6,
             "Add composite index",
             vec![Sql::CreateUserItemsV2UserIdBeginAtIndex],
+        ),
+        Migration::new(
+            7,
+            "Add item reviews",
+            vec![
+                Sql::CreateItemReviewsTable,
+                Sql::CreateItemReviewsTitleCreatedAtIndex,
+                Sql::CreateItemReviewsUserTitleUniqueIndex,
+            ],
         ),
     ]
 }
@@ -252,6 +277,46 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             end_ts,
         };
         self.query_all(sql).await
+    }
+
+    async fn create_item_review(
+        &self,
+        title: &str,
+        user_id: i32,
+        score: Option<i32>,
+        comment: &str,
+    ) -> Result<()> {
+        let now = utils::now_utc_ms();
+        let sql = Sql::UpsertItemReview {
+            title,
+            user_id,
+            score,
+            comment,
+            created_at: now,
+            updated_at: now,
+        };
+        self.execute(sql).await
+    }
+
+    async fn get_item_reviews_by_title(
+        &self,
+        title: &str,
+        current_user_id: Option<i32>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<ItemReviewWithUser>> {
+        let sql = Sql::GetItemReviewsByTitleOrdered {
+            title,
+            current_user_id: current_user_id.unwrap_or(-1),
+            limit,
+            offset,
+        };
+        self.query_all(sql).await
+    }
+
+    async fn delete_item_review(&self, user_id: i32, title: &str) -> Result<()> {
+        let sql = Sql::DeleteItemReviewByUserAndTitle { user_id, title };
+        self.execute(sql).await
     }
 }
 

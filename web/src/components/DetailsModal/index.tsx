@@ -20,6 +20,7 @@ import MultilingualTitles from "./MultilingualTitles";
 import StaffSection from "./StaffSection";
 import StudioSection from "./StudioSection";
 import VideoSection from "./VideoSection";
+import ReviewSection from "./ReviewSection";
 
 interface DetailsModalProps {
   isOpen: boolean;
@@ -329,6 +330,8 @@ function DetailsModalContent({
 
                 {/* Episodes List */}
                 <EpisodeList episodes={info?.episodesList} />
+
+                <ReviewSection title={title} />
 
                 {/* Studio & Cast */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">

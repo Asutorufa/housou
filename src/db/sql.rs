@@ -87,6 +87,21 @@ d1_orm::define_sql! {
     CreateUserItemsV2BeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_begin_at ON user_items_v2(begin_at);",
     @index("idx_user_items_v2_user_id_begin_at")
     CreateUserItemsV2UserIdBeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_user_items_v2_user_id_begin_at ON user_items_v2(user_id, begin_at);",
+    @table("item_reviews")
+    CreateItemReviewsTable => "CREATE TABLE IF NOT EXISTS item_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            score INTEGER,
+            comment TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );",
+    @index("idx_item_reviews_title_created_at")
+    CreateItemReviewsTitleCreatedAtIndex => "CREATE INDEX IF NOT EXISTS idx_item_reviews_title_created_at ON item_reviews(title, created_at DESC);",
+    @index("idx_item_reviews_user_title")
+    CreateItemReviewsUserTitleUniqueIndex => "CREATE UNIQUE INDEX IF NOT EXISTS idx_item_reviews_user_title ON item_reviews(user_id, title);",
 
     // Users
     CreateUser {
@@ -152,6 +167,34 @@ d1_orm::define_sql! {
     } => "SELECT * FROM user_items_v2
              WHERE user_id = ? AND status != 0
              AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))",
+
+    // Item Reviews
+    UpsertItemReview {
+        title: &'a str,
+        user_id: i32,
+        score: Option<i32>,
+        comment: &'a str,
+        created_at: i64,
+        updated_at: i64,
+    } => "INSERT INTO item_reviews (title, user_id, score, comment, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(user_id, title)
+          DO UPDATE SET score = excluded.score, comment = excluded.comment, updated_at = excluded.updated_at",
+    GetItemReviewsByTitleOrdered {
+        title: &'a str,
+        current_user_id: i32,
+        limit: i64,
+        offset: i64,
+    } => "SELECT r.id, r.title, r.user_id, r.score, r.comment, r.created_at, r.updated_at, u.username, u.avatar_url
+            FROM item_reviews r
+            INNER JOIN users u ON u.id = r.user_id
+            WHERE r.title = ?
+            ORDER BY CASE WHEN r.user_id = ? THEN 0 ELSE 1 END, r.created_at DESC
+            LIMIT ? OFFSET ?",
+    DeleteItemReviewByUserAndTitle {
+        user_id: i32,
+        title: &'a str,
+    } => "DELETE FROM item_reviews WHERE user_id = ? AND title = ?",
 
     // Passkeys
     CreatePasskey {

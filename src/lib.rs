@@ -162,6 +162,9 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
         })
         .get_async("/api/favicon", |req, ctx| async move {
             handlers::handle_favicon(req, ctx.env).await
+        })
+        .get_async("/api/reviews", |req, ctx| async move {
+            handlers::handle_list_reviews(req, ctx.env).await
         });
 
     if auth_enabled {
@@ -210,6 +213,12 @@ async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
             })
             .post_async("/api/user/item", |req, ctx| async move {
                 auth::handle_update_item(req, ctx.env).await
+            })
+            .post_async("/api/user/review", |req, ctx| async move {
+                handlers::handle_create_review(req, ctx.env).await
+            })
+            .delete_async("/api/user/review", |req, ctx| async move {
+                handlers::handle_delete_review(req, ctx.env).await
             })
             .post_async("/api/auth/passkey/register/start", |req, ctx| async move {
                 auth::passkey::handle_register_start(req, ctx.env).await

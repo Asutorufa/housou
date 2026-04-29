@@ -68,6 +68,33 @@ d1_orm::define_model!(UserItem, UserItemField, UserItemUpdate {
     begin_at: Option<i64>,
 });
 
+d1_orm::define_model!(ItemReview, ItemReviewField, ItemReviewUpdate {
+    id: i32 [pk],
+    title: String,
+    user_id: i32,
+    score: Option<i32>,
+    comment: String,
+    created_at: i64,
+    updated_at: i64,
+});
+
+d1_orm::define_model!(
+    #[serde(rename_all = "camelCase")]
+    ItemReviewWithUser,
+    ItemReviewWithUserField,
+    ItemReviewWithUserUpdate {
+        id: i32,
+        title: String,
+        user_id: i32,
+        score: Option<i32>,
+        comment: String,
+        created_at: i64,
+        updated_at: i64,
+        username: String,
+        avatar_url: Option<String>,
+    }
+);
+
 d1_orm::define_model!(
     #[serde(rename_all = "camelCase")]
     UserItemSummary,

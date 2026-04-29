@@ -258,6 +258,25 @@ struct FaviconQuery {
     domain: String,
 }
 
+#[derive(serde_derive::Deserialize)]
+struct ReviewListQuery {
+    title: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+#[derive(serde_derive::Deserialize)]
+struct CreateReviewRequest {
+    title: String,
+    comment: String,
+    score: Option<i32>,
+}
+
+#[derive(serde_derive::Deserialize)]
+struct DeleteReviewRequest {
+    title: String,
+}
+
 #[async_trait::async_trait(?Send)]
 pub trait FaviconFetcher {
     async fn fetch(&self, url: &str) -> Result<Option<(Vec<u8>, String)>>;
@@ -347,6 +366,62 @@ pub async fn handle_favicon(req: Request, _env: Env) -> Result<Response> {
         "Cache-Control",
         &format!("public, max-age={}", config::CACHE_TTL_FAVICON_404),
     )
+}
+
+pub async fn handle_list_reviews(req: Request, env: Env) -> Result<Response> {
+    let current_user_id = auth::get_auth(&req, &env).await?.map(|(u, _)| u.id);
+    let url = req.url()?;
+    let query_str = url.query().unwrap_or("");
+    let query: ReviewListQuery = match serde_urlencoded::from_str(query_str) {
+        Ok(v) => v,
+        Err(_) => return Response::error("Bad Request: invalid query", 400),
+    };
+    let title = match query.title {
+        Some(t) if !t.is_empty() => t,
+        _ => return Response::error("Bad Request: 'title' parameter is required", 400),
+    };
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 50);
+    let offset = (page - 1) * page_size;
+
+    let db = auth::get_db(&env)?;
+    let reviews = db
+        .get_item_reviews_by_title(&title, current_user_id, page_size, offset)
+        .await?;
+    Response::from_json(&reviews)
+}
+
+pub async fn handle_create_review(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match auth::get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let body: CreateReviewRequest = req.json().await?;
+    if body.title.trim().is_empty() || body.comment.trim().is_empty() {
+        return Response::error("Bad Request: title/comment cannot be empty", 400);
+    }
+
+    let db = auth::get_db(&env)?;
+    db.create_item_review(&body.title, user.id, body.score, &body.comment)
+        .await?;
+    Response::ok("Created")
+}
+
+pub async fn handle_delete_review(mut req: Request, env: Env) -> Result<Response> {
+    let (user, _) = match auth::get_auth(&req, &env).await? {
+        Some(u) => u,
+        None => return Response::error("Unauthorized", 401),
+    };
+
+    let body: DeleteReviewRequest = req.json().await?;
+    if body.title.trim().is_empty() {
+        return Response::error("Bad Request: title cannot be empty", 400);
+    }
+
+    let db = auth::get_db(&env)?;
+    db.delete_item_review(user.id, &body.title).await?;
+    Response::ok("Deleted")
 }
 
 #[cfg(test)]
