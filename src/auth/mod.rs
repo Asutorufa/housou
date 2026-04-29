@@ -129,14 +129,21 @@ pub(crate) fn clear_oauth_action_cookie(secure: bool) -> String {
     build_cookie(OAUTH_ACTION_COOKIE_NAME, "", 0, 0, secure)
 }
 
-pub(crate) fn get_base_url(env: &Env) -> String {
-    env.var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string())
+pub(crate) fn get_base_url(env: &Env) -> Result<String> {
+    match env.var("BASE_URL") {
+        Ok(s) => Ok(s.to_string()),
+        Err(e) => {
+            if cfg!(feature = "dev") {
+                Ok("http://localhost:8787".to_string())
+            } else {
+                Err(e)
+            }
+        }
+    }
 }
 
-pub fn is_secure(env: &Env) -> bool {
-    get_base_url(env).starts_with("https")
+pub fn is_secure(env: &Env) -> Result<bool> {
+    Ok(get_base_url(env)?.starts_with("https"))
 }
 
 #[derive(Deserialize)]
@@ -260,7 +267,7 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
         )
         .await?;
 
-    let session_cookie = create_user_session(&db, user.id, is_secure(&env)).await?;
+    let session_cookie = create_user_session(&db, user.id, is_secure(&env)?).await?;
     Response::from_json(&UserResponse::from(user))?.add_header("Set-Cookie", &session_cookie)
 }
 
@@ -283,7 +290,7 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
         return Response::error("Invalid credentials", 401);
     }
 
-    let session_cookie = create_user_session(&db, user.id, is_secure(&env)).await?;
+    let session_cookie = create_user_session(&db, user.id, is_secure(&env)?).await?;
     Response::from_json(&UserResponse::from(user))?.add_header("Set-Cookie", &session_cookie)
 }
 
@@ -292,7 +299,7 @@ pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
         let db = get_db(&env)?;
         db.delete_session(&token).await?;
     }
-    let secure = is_secure(&env);
+    let secure = is_secure(&env)?;
     Response::ok("Logged out")?.add_header("Set-Cookie", &clear_session_cookie(secure))
 }
 

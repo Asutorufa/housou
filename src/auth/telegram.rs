@@ -135,7 +135,7 @@ pub async fn handle_telegram_login(mut req: Request, env: Env) -> Result<Respons
     let expires_at = crate::utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
     db.create_session(user.id, &token, expires_at).await?;
 
-    let secure = is_secure(&env);
+    let secure = is_secure(&env)?;
     Response::from_json(&UserResponse::from(user))?
         .add_header("Set-Cookie", &create_session_cookie(&token, secure))
 }
