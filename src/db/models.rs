@@ -95,6 +95,7 @@ d1_orm::define_model!(
         user_id: i32,
         title: String,
         content: String,
+        score: Option<i32>,
         created_at: i64,
     }
 );

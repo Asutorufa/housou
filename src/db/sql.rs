@@ -99,6 +99,8 @@ d1_orm::define_sql! {
         );",
     @index("idx_comments_title")
     CreateCommentsTitleIndex => "CREATE INDEX IF NOT EXISTS idx_comments_title ON comments(title);",
+    @column("comments", "score")
+    AddCommentsScoreColumn => "ALTER TABLE comments ADD COLUMN score INTEGER;",
 
     // Users
     CreateUser {
@@ -209,8 +211,9 @@ d1_orm::define_sql! {
         user_id: i32,
         title: &'a str,
         content: &'a str,
+        score: Option<i32>,
         created_at: i64,
-    } => "INSERT INTO comments (user_id, title, content, created_at) VALUES (?, ?, ?, ?) RETURNING id, user_id as userId, title, content, created_at as createdAt",
+    } => "INSERT INTO comments (user_id, title, content, score, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, created_at as createdAt",
     GetCommentsWithUser {
         title: &'a str,
         viewer_id: i32,
@@ -218,7 +221,7 @@ d1_orm::define_sql! {
         offset: i32,
     } => "SELECT
             c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt,
-            ui.score
+            COALESCE(c.score, ui.score) as score
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
           LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
@@ -231,7 +234,7 @@ d1_orm::define_sql! {
         offset: i32,
     } => "SELECT
             c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt,
-            ui.score
+            COALESCE(c.score, ui.score) as score
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
           LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
@@ -247,8 +250,9 @@ d1_orm::define_sql! {
     } => "DELETE FROM comments WHERE id = ? AND user_id = ?",
     UpdateComment {
         content: &'a str,
+        score: Option<i32>,
         updated_at: i64,
         user_id: i32,
         title: &'a str,
-    } => "UPDATE comments SET content = ?, created_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, created_at as createdAt",
+    } => "UPDATE comments SET content = ?, score = ?, created_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, created_at as createdAt",
 }

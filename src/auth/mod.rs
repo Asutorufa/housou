@@ -425,11 +425,15 @@ pub async fn handle_post_comment(mut req: Request, env: Env) -> Result<Response>
     // But our UpdateComment uses RETURNING *, which might be tricky if it doesn't exist.
     // Let's check if it exists first or use a more robust way.
 
-    let comment = match db.update_comment(user.id, &body.title, &body.content).await {
+    let comment = match db
+        .update_comment(user.id, &body.title, &body.content, None)
+        .await
+    {
         Ok(c) => c,
         Err(_) => {
             // Probably doesn't exist, try create
-            db.create_comment(user.id, &body.title, &body.content).await?
+            db.create_comment(user.id, &body.title, &body.content, None)
+                .await?
         }
     };
 

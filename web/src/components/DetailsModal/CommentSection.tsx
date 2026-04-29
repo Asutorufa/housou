@@ -62,7 +62,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("确定要删除这条评论吗？")) return;
+    if (!confirm("コメントを削除しますか？")) return;
 
     const resp = await fetch(`/api/comments/${id}`, { method: "DELETE" });
     if (resp.ok) {
@@ -75,7 +75,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
       <div className="flex items-center gap-2">
         <MessageSquare className="text-blue-500" size={20} />
         <h3 className="text-lg font-black text-gray-900 dark:text-white">
-          评论 ({total})
+          コメント ({total})
         </h3>
       </div>
 
@@ -85,7 +85,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
           <form onSubmit={handleSubmit} className="space-y-3">
             <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-500 uppercase">
-                    {userComment ? "编辑评论" : "发表评论"}
+                    {userComment ? "コメントを編集" : "新しいコメント"}
                 </span>
                 {userComment && (
                     <button
@@ -100,7 +100,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
             <textarea
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
-              placeholder="分享你的感悟或评价..."
+              placeholder="感想や評価を共有しましょう..."
               className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900/50 dark:text-white dark:focus:border-blue-400"
               rows={3}
             />
@@ -111,7 +111,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
                 className={`flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2 text-sm font-bold text-white transition-all hover:bg-blue-700 disabled:opacity-50 ${focusRingClassName}`}
               >
                 <Send size={16} />
-                {isSubmitting ? "发送中..." : userComment ? "更新" : "发布"}
+                {isSubmitting ? "送信中..." : userComment ? "更新する" : "投稿する"}
               </button>
             </div>
           </form>
@@ -119,20 +119,20 @@ export default function CommentSection({ title }: CommentSectionProps) {
             <div className="rounded-2xl border border-blue-100 bg-blue-50/30 p-4 dark:border-blue-900/30 dark:bg-blue-900/10">
                 <div className="mb-2 flex items-center justify-between">
                     <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase">
-                        你的评论
+                        あなたのコメント
                     </span>
                     <div className="flex gap-2">
                         <button
                             onClick={() => setIsEditing(true)}
                             className="text-gray-400 hover:text-blue-500"
-                            title="编辑"
+                            title="編集"
                         >
                             <Edit2 size={14} />
                         </button>
                         <button
                             onClick={() => handleDelete(userComment.id)}
                             className="text-gray-400 hover:text-red-500"
-                            title="删除"
+                            title="削除"
                         >
                             <Trash2 size={14} />
                         </button>
@@ -145,7 +145,7 @@ export default function CommentSection({ title }: CommentSectionProps) {
         )
       ) : (
         <div className="rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-500 dark:bg-gray-900/50">
-          请先登录后发表评论。
+          コメントを投稿するにはログインが必要です。
         </div>
       )}
 
@@ -198,13 +198,13 @@ export default function CommentSection({ title }: CommentSectionProps) {
             disabled={isValidating}
             className="w-full rounded-xl border border-gray-200 py-3 text-sm font-bold text-gray-500 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-900/50"
           >
-            {isValidating ? "加载中..." : "加载更多"}
+            {isValidating ? "読み込み中..." : "さらに読み込む"}
           </button>
         )}
 
         {!isValidating && comments.length === 0 && (
           <div className="py-8 text-center text-sm text-gray-400">
-            暂无评论。
+            まだコメントはありません。
           </div>
         )}
       </div>

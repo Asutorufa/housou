@@ -52,8 +52,20 @@ pub trait Database {
         offset: i32,
     ) -> Result<Vec<CommentWithUser>>;
     async fn get_comments_count(&self, title: &str) -> Result<i32>;
-    async fn create_comment(&self, user_id: i32, title: &str, content: &str) -> Result<Comment>;
-    async fn update_comment(&self, user_id: i32, title: &str, content: &str) -> Result<Comment>;
+    async fn create_comment(
+        &self,
+        user_id: i32,
+        title: &str,
+        content: &str,
+        score: Option<i32>,
+    ) -> Result<Comment>;
+    async fn update_comment(
+        &self,
+        user_id: i32,
+        title: &str,
+        content: &str,
+        score: Option<i32>,
+    ) -> Result<Comment>;
     async fn delete_comment(&self, id: i32, user_id: i32) -> Result<()>;
 }
 
@@ -110,6 +122,7 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
             "Add comments",
             vec![Sql::CreateCommentsTable, Sql::CreateCommentsTitleIndex],
         ),
+        Migration::new(8, "Add score to comments", vec![Sql::AddCommentsScoreColumn]),
     ]
 }
 
@@ -302,12 +315,19 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         Ok(res.and_then(|r| r.version).unwrap_or(0))
     }
 
-    async fn create_comment(&self, user_id: i32, title: &str, content: &str) -> Result<Comment> {
+    async fn create_comment(
+        &self,
+        user_id: i32,
+        title: &str,
+        content: &str,
+        score: Option<i32>,
+    ) -> Result<Comment> {
         let created_at = utils::now_utc_ms();
         let sql = Sql::CreateComment {
             user_id,
             title,
             content,
+            score,
             created_at,
         };
         self.query_first(sql)
@@ -315,13 +335,20 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             .ok_or_else(|| Error::RustError("Failed to create comment".to_string()))
     }
 
-    async fn update_comment(&self, user_id: i32, title: &str, content: &str) -> Result<Comment> {
+    async fn update_comment(
+        &self,
+        user_id: i32,
+        title: &str,
+        content: &str,
+        score: Option<i32>,
+    ) -> Result<Comment> {
         let updated_at = utils::now_utc_ms();
         let sql = Sql::UpdateComment {
+            content,
+            score,
+            updated_at,
             user_id,
             title,
-            content,
-            updated_at,
         };
         self.query_first(sql)
             .await?
@@ -447,17 +474,23 @@ mod tests {
         assert_eq!(items[0].title, "Anime Title");
 
         // Comments
-        let comment = db.create_comment(user.id, "Anime Title", "Great show!").await?;
+        let comment = db
+            .create_comment(user.id, "Anime Title", "Great show!", Some(8))
+            .await?;
         assert_eq!(comment.content, "Great show!");
         assert_eq!(comment.user_id, user.id);
+        assert_eq!(comment.score, Some(8));
 
         let comments = db.get_comments("Anime Title", Some(user.id), 10, 0).await?;
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].content, "Great show!");
         assert_eq!(comments[0].username, "extendeduser");
 
-        let updated_comment = db.update_comment(user.id, "Anime Title", "Masterpiece!").await?;
+        let updated_comment = db
+            .update_comment(user.id, "Anime Title", "Masterpiece!", Some(10))
+            .await?;
         assert_eq!(updated_comment.content, "Masterpiece!");
+        assert_eq!(updated_comment.score, Some(10));
 
         let count = db.get_comments_count("Anime Title").await?;
         assert_eq!(count, 1);

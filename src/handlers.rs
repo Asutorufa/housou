@@ -217,11 +217,11 @@ pub async fn handle_get_comments(req: Request, env: Env) -> Result<Response> {
     let offset = query.offset.unwrap_or(0);
 
     let db = auth::get_db(&env)?;
-    let viewer_id = auth::get_auth_with_db(&req, &db)
-        .await?
-        .map(|(u, _)| u.id);
+    let viewer_id = auth::get_auth_with_db(&req, &db).await?.map(|(u, _)| u.id);
 
-    let comments = db.get_comments(&query.title, viewer_id, limit, offset).await?;
+    let comments = db
+        .get_comments(&query.title, viewer_id, limit, offset)
+        .await?;
     let total = db.get_comments_count(&query.title).await?;
 
     Response::from_json(&CommentsResponse { comments, total })
