@@ -449,7 +449,7 @@ pub async fn handle_delete_comment(req: Request, env: Env) -> Result<Response> {
     let id = req
         .path()
         .split('/')
-        .last()
+        .next_back()
         .and_then(|s| s.parse::<i32>().ok())
         .ok_or_else(|| Error::RustError("Invalid comment ID".to_string()))?;
 

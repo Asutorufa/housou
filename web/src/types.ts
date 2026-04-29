@@ -194,6 +194,7 @@ export interface CommentWithUser {
   content: string;
   score?: number;
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface PaginatedComments {

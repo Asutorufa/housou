@@ -127,6 +127,14 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
             "Add score to comments",
             vec![Sql::AddCommentsScoreColumn],
         ),
+        Migration::new(
+            9,
+            "Add updated_at to comments",
+            vec![
+                Sql::AddCommentsUpdatedAtColumn,
+                Sql::BackfillCommentsUpdatedAt,
+            ],
+        ),
     ]
 }
 
@@ -333,6 +341,7 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             content,
             score,
             created_at,
+            updated_at: created_at,
         };
         self.query_first(sql)
             .await?
@@ -484,17 +493,21 @@ mod tests {
         assert_eq!(comment.content, "Great show!");
         assert_eq!(comment.user_id, user.id);
         assert_eq!(comment.score, Some(8));
+        assert_eq!(comment.created_at, comment.updated_at);
 
         let comments = db.get_comments("Anime Title", Some(user.id), 10, 0).await?;
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].content, "Great show!");
         assert_eq!(comments[0].username, "extendeduser");
+        assert_eq!(comments[0].updated_at, comment.updated_at);
 
         let updated_comment = db
             .update_comment(user.id, "Anime Title", "Masterpiece!", Some(10))
             .await?;
         assert_eq!(updated_comment.content, "Masterpiece!");
         assert_eq!(updated_comment.score, Some(10));
+        assert_eq!(updated_comment.created_at, comment.created_at);
+        assert!(updated_comment.updated_at >= comment.updated_at);
 
         let count = db.get_comments_count("Anime Title").await?;
         assert_eq!(count, 1);

@@ -101,6 +101,9 @@ d1_orm::define_sql! {
     CreateCommentsTitleIndex => "CREATE INDEX IF NOT EXISTS idx_comments_title ON comments(title);",
     @column("comments", "score")
     AddCommentsScoreColumn => "ALTER TABLE comments ADD COLUMN score INTEGER;",
+    @column("comments", "updated_at")
+    AddCommentsUpdatedAtColumn => "ALTER TABLE comments ADD COLUMN updated_at INTEGER;",
+    BackfillCommentsUpdatedAt => "UPDATE comments SET updated_at = created_at WHERE updated_at IS NULL;",
 
     // Users
     CreateUser {
@@ -213,33 +216,34 @@ d1_orm::define_sql! {
         content: &'a str,
         score: Option<i32>,
         created_at: i64,
-    } => "INSERT INTO comments (user_id, title, content, score, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, created_at as createdAt",
+        updated_at: i64,
+    } => "INSERT INTO comments (user_id, title, content, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
     GetCommentsWithUser {
         title: &'a str,
         viewer_id: i32,
         limit: i32,
         offset: i32,
     } => "SELECT
-            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt,
+            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
             COALESCE(c.score, ui.score) as score
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
           LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
           WHERE c.title = ?
-          ORDER BY CASE WHEN c.user_id = ? THEN 0 ELSE 1 END, c.created_at DESC
+          ORDER BY CASE WHEN c.user_id = ? THEN 0 ELSE 1 END, c.updated_at DESC, c.created_at DESC
           LIMIT ? OFFSET ?",
     GetCommentsWithUserGuest {
         title: &'a str,
         limit: i32,
         offset: i32,
     } => "SELECT
-            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt,
+            c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
             COALESCE(c.score, ui.score) as score
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
           LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
           WHERE c.title = ?
-          ORDER BY c.created_at DESC
+          ORDER BY c.updated_at DESC, c.created_at DESC
           LIMIT ? OFFSET ?",
     GetCommentsCount {
         title: &'a str,
@@ -254,5 +258,5 @@ d1_orm::define_sql! {
         updated_at: i64,
         user_id: i32,
         title: &'a str,
-    } => "UPDATE comments SET content = ?, score = ?, created_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, created_at as createdAt",
+    } => "UPDATE comments SET content = ?, score = ?, updated_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
 }

@@ -97,6 +97,7 @@ d1_orm::define_model!(
         content: String,
         score: Option<i32>,
         created_at: i64,
+        updated_at: i64,
     }
 );
 
@@ -110,4 +111,5 @@ pub struct CommentWithUser {
     pub content: String,
     pub score: Option<i32>,
     pub created_at: i64,
+    pub updated_at: i64,
 }
