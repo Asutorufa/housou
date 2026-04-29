@@ -30,7 +30,6 @@ const OAUTH_STATE_DURATION_MINUTES: i64 = 5;
 
 pub(crate) const EMAIL_IN_USE_ERR: &str = "Email already in use";
 pub(crate) const USERNAME_TAKEN_ERR: &str = "Username already taken";
-pub(crate) const INVALID_PASSWORD_ERR: &str = "Invalid password format";
 
 // Helper to get DB
 pub fn get_db(env: &Env) -> Result<AppDatabase<D1Database>> {
@@ -223,8 +222,23 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
-pub fn is_valid_password_hash(hash: &str) -> bool {
-    hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit())
+pub fn validate_password_complexity(password: &str) -> std::result::Result<(), String> {
+    if password.len() < 8 {
+        return Err("Password must be at least 8 characters long".to_string());
+    }
+
+    let has_uppercase = password.chars().any(|c| c.is_uppercase());
+    let has_lowercase = password.chars().any(|c| c.is_lowercase());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+
+    if !has_uppercase || !has_lowercase || !has_digit {
+        return Err(
+            "Password must contain at least one uppercase letter, one lowercase letter, and one digit"
+                .to_string(),
+        );
+    }
+
+    Ok(())
 }
 
 pub async fn create_user_session<E: DatabaseExecutor>(
@@ -242,8 +256,8 @@ pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
 
-    if !is_valid_password_hash(&body.password) {
-        return Response::error(INVALID_PASSWORD_ERR, 400);
+    if let Err(e) = validate_password_complexity(&body.password) {
+        return Response::error(e, 400);
     }
 
     if (db.get_user(UserUpdate::email(body.email.clone())).await?).is_some() {
@@ -367,8 +381,8 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
 
     let db = get_db(&env)?;
 
-    if !is_valid_password_hash(&body.new_password) {
-        return Response::error(INVALID_PASSWORD_ERR, 400);
+    if let Err(e) = validate_password_complexity(&body.new_password) {
+        return Response::error(e, 400);
     }
 
     // If user has a password (not GitHub-only), verify the old one
@@ -435,27 +449,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_valid_password_hash() {
-        // Valid 64-character hex hash
-        let valid_hash = "a".repeat(64);
-        assert!(is_valid_password_hash(&valid_hash));
-
-        // Mixed case hex is also valid
-        let mixed_hash = "a1B2".repeat(16);
-        assert!(is_valid_password_hash(&mixed_hash));
+    fn test_validate_password_complexity() {
+        // Valid password
+        assert!(validate_password_complexity("Pass1234").is_ok());
+        assert!(validate_password_complexity("Strong!Pass0").is_ok());
 
         // Too short
-        assert!(!is_valid_password_hash(&"a".repeat(63)));
+        assert!(validate_password_complexity("P1s").is_err());
 
-        // Too long
-        assert!(!is_valid_password_hash(&"a".repeat(65)));
+        // Missing uppercase
+        assert!(validate_password_complexity("pass1234").is_err());
 
-        // Non-hex character
-        let invalid_char_hash = "g".repeat(64);
-        assert!(!is_valid_password_hash(&invalid_char_hash));
+        // Missing lowercase
+        assert!(validate_password_complexity("PASS1234").is_err());
+
+        // Missing digit
+        assert!(validate_password_complexity("Password").is_err());
 
         // Empty string
-        assert!(!is_valid_password_hash(""));
+        assert!(validate_password_complexity("").is_err());
     }
 
     #[test]
