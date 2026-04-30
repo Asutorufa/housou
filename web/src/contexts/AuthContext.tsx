@@ -5,7 +5,7 @@ import {
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import useSWR from "swr";
 import type { LoginData, RegisterData, TelegramAuthData, User } from "../types";
-import { hashPassword } from "../utils/authUtils";
+import { validatePasswordComplexity } from "../utils/authUtils";
 import { fetcher } from "../utils/fetcher";
 
 export interface PasskeySummary {
@@ -81,11 +81,10 @@ export function AuthProvider({
 
   const login = useCallback(
     async (data: LoginData) => {
-      const hashedPassword = await hashPassword(data.password);
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, password: hashedPassword }),
+        body: JSON.stringify(data),
       });
       const user = await handleResponse(res, "Login failed");
       mutate(user, false);
@@ -95,11 +94,11 @@ export function AuthProvider({
 
   const register = useCallback(
     async (data: RegisterData) => {
-      const hashedPassword = await hashPassword(data.password);
+      validatePasswordComplexity(data.password);
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, password: hashedPassword }),
+        body: JSON.stringify(data),
       });
       const user = await handleResponse(res, "Registration failed");
       mutate(user, false);
@@ -139,18 +138,12 @@ export function AuthProvider({
 
   const changePassword = useCallback(
     async (data: { old_password?: string; new_password: string }) => {
-      const hashedOld = data.old_password
-        ? await hashPassword(data.old_password)
-        : undefined;
-      const hashedNew = await hashPassword(data.new_password);
+      validatePasswordComplexity(data.new_password);
 
       const res = await apiFetch("/api/auth/password", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          old_password: hashedOld,
-          new_password: hashedNew,
-        }),
+        body: JSON.stringify(data),
       });
 
       await handleResponse(res, "Password update failed");
