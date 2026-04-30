@@ -174,9 +174,10 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
                     utils::season::get_season_timestamp_range(year, normalized_season)
                         .map_err(Error::RustError)?;
 
-                db.get_user_items_by_range(user.id, start_ts, end_ts).await
+                db.get_comment_items_by_range(user.id, start_ts, end_ts)
+                    .await
             } else {
-                db.get_user_items_all(user.id).await
+                db.get_comment_items_all(user.id).await
             };
 
             match user_items {
@@ -189,7 +190,6 @@ pub async fn handle_user_status(req: Request, env: Env) -> Result<Response> {
                                     item.title,
                                     db::UserItemSummary {
                                         status: item.status,
-                                        score: item.score,
                                     },
                                 )
                             })

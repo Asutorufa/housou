@@ -112,14 +112,26 @@ export default function AuthModal({
                     </Tabs.Trigger>
                   </Tabs.List>
 
-                  <form onSubmit={handleSubmit} className="space-y-4">
+                  <form
+                    onSubmit={handleSubmit}
+                    className="space-y-4"
+                    autoComplete="on"
+                  >
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor={`${activeTab}-email`}
+                        className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         メールアドレス
                       </label>
                       <input
+                        id={`${activeTab}-email`}
+                        name="email"
                         type="email"
                         required
+                        autoComplete={
+                          activeTab === "login" ? "username" : "email"
+                        }
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className={formInputClassName}
@@ -129,12 +141,18 @@ export default function AuthModal({
 
                     {activeTab === "register" && (
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="register-username"
+                          className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           ユーザー名
                         </label>
                         <input
+                          id="register-username"
+                          name="username"
                           type="text"
                           required
+                          autoComplete="username"
                           value={username}
                           onChange={(e) => setUsername(e.target.value)}
                           className={formInputClassName}
@@ -144,13 +162,23 @@ export default function AuthModal({
                     )}
 
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <label
+                        htmlFor={`${activeTab}-password`}
+                        className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >
                         パスワード
                       </label>
                       <div className="relative">
                         <input
+                          id={`${activeTab}-password`}
+                          name="password"
                           type={showPassword ? "text" : "password"}
                           required
+                          autoComplete={
+                            activeTab === "login"
+                              ? "current-password"
+                              : "new-password"
+                          }
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           className={`${formInputClassName} pr-10`}
@@ -172,12 +200,18 @@ export default function AuthModal({
 
                     {activeTab === "register" && (
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label
+                          htmlFor="register-confirm-password"
+                          className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
                           パスワード確認
                         </label>
                         <input
+                          id="register-confirm-password"
+                          name="confirmPassword"
                           type={showPassword ? "text" : "password"}
                           required
+                          autoComplete="new-password"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           className={formInputClassName}

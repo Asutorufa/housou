@@ -5,7 +5,6 @@ import type { UserStatus } from "../types";
 interface UseAnimeStatusProps {
   title: string;
   initialStatus?: UserStatus;
-  initialScore?: number;
   beginAt?: string;
   onUpdate?: () => void;
 }
@@ -13,24 +12,24 @@ interface UseAnimeStatusProps {
 export function useAnimeStatus({
   title,
   initialStatus,
-  initialScore,
   beginAt,
   onUpdate,
 }: UseAnimeStatusProps) {
   const { apiFetch } = useAuth();
-  const [localStatus, setLocalStatus] = useState<UserStatus | null>(null);
+  const [optimisticStatus, setOptimisticStatus] = useState<UserStatus | null>(
+    null,
+  );
 
-  // Determine effective status: local state > initial status > default (0)
-  const currentStatus = localStatus ?? initialStatus ?? 0;
+  const currentStatus = optimisticStatus ?? initialStatus ?? 0;
 
-  const updateStatus = async (statusString: string) => {
-    if (!title) return;
+  const persistItem = async (
+    nextStatus: UserStatus,
+    errorLabel: string,
+  ): Promise<boolean> => {
+    if (!title) return false;
 
-    const status = parseInt(statusString) as UserStatus;
-    const previousStatus = localStatus;
-
-    // Optimistic update
-    setLocalStatus(status);
+    const previousStatus = optimisticStatus;
+    setOptimisticStatus(nextStatus);
 
     // Convert ISO date string to Unix timestamp (milliseconds)
     const beginAtTs = beginAt ? new Date(beginAt).getTime() : undefined;
@@ -41,18 +40,24 @@ export function useAnimeStatus({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          status,
-          score: initialScore,
+          status: nextStatus,
           begin_at: beginAtTs,
         }),
       });
       // Optionally notify parent to refresh list
       onUpdate?.();
+      return true;
     } catch (err) {
-      console.error("Failed to update status", err);
+      console.error(`Failed to ${errorLabel}`, err);
       // Revert on error
-      setLocalStatus(previousStatus);
+      setOptimisticStatus(previousStatus);
+      return false;
     }
+  };
+
+  const updateStatus = async (statusString: string): Promise<boolean> => {
+    const status = parseInt(statusString) as UserStatus;
+    return persistItem(status, "update status");
   };
 
   return {

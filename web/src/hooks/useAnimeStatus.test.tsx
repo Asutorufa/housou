@@ -29,7 +29,10 @@ describe("useAnimeStatus", () => {
 
   it("should initialize with provided initialStatus", () => {
     const { result } = renderHook(() =>
-      useAnimeStatus({ title: "Test Anime", initialStatus: 2 }),
+      useAnimeStatus({
+        title: "Test Anime",
+        initialStatus: 2,
+      }),
     );
     expect(result.current.currentStatus).toBe(2);
   });
@@ -41,7 +44,6 @@ describe("useAnimeStatus", () => {
       useAnimeStatus({
         title: "Test Anime",
         initialStatus: 1,
-        initialScore: 8,
         onUpdate,
       }),
     );
@@ -59,7 +61,7 @@ describe("useAnimeStatus", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/api/user/item", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Test Anime", status: 2, score: 8 }),
+      body: JSON.stringify({ title: "Test Anime", status: 2 }),
     });
 
     // Check onUpdate callback

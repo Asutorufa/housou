@@ -85,7 +85,6 @@ export function useAnimeData() {
         return {
           ...item,
           userStatus: summary.status,
-          userScore: summary.score ?? undefined,
         };
       }
       return item;

@@ -1,5 +1,5 @@
 use crate::ResponseExt;
-use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserItemUpdate, UserUpdate};
+use crate::db::{AppDatabase, Comment, Database, DatabaseExecutor, User, UserUpdate};
 use crate::model::UserStatus;
 use crate::utils;
 use argon2::{
@@ -7,7 +7,7 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use cookie::{Cookie, SameSite, time::Duration};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de};
 use std::sync::OnceLock;
 use uuid::Uuid;
 use worker::*;
@@ -167,14 +167,118 @@ struct ChangePasswordRequest {
 struct UpdateItemRequest {
     title: String,
     status: UserStatus,
-    score: Option<i32>,
     begin_at: Option<i64>,
+}
+
+fn validate_comment_score(score: Option<i32>) -> std::result::Result<Option<i32>, &'static str> {
+    match score {
+        Some(score) if !(1..=100).contains(&score) => {
+            Err("Bad Request: score must be between 1 and 100")
+        }
+        _ => Ok(score),
+    }
 }
 
 #[derive(Deserialize)]
 struct PostCommentRequest {
     title: String,
+    content: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_comment_score_patch")]
+    score: ScorePatch,
+}
+
+#[derive(Clone, Copy, Default)]
+enum ScorePatch {
+    #[default]
+    Missing,
+    Set(Option<i32>),
+}
+
+struct CommentPatch {
+    title: String,
+    content: Option<String>,
+    score: Option<Option<i32>>,
+}
+
+fn deserialize_comment_score_patch<'de, D>(
+    deserializer: D,
+) -> std::result::Result<ScorePatch, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let score = Option::<i32>::deserialize(deserializer)?;
+    validate_comment_score(score)
+        .map(ScorePatch::Set)
+        .map_err(de::Error::custom)
+}
+
+fn parse_comment_patch(
+    body: PostCommentRequest,
+) -> std::result::Result<CommentPatch, &'static str> {
+    let score = match body.score {
+        ScorePatch::Missing => None,
+        ScorePatch::Set(score) => Some(score),
+    };
+
+    if body.content.is_none() && score.is_none() {
+        return Err("Bad Request: content or score is required");
+    }
+
+    Ok(CommentPatch {
+        title: body.title,
+        content: body.content,
+        score,
+    })
+}
+
+fn is_empty_comment_record(content: &str, score: Option<i32>, status: UserStatus) -> bool {
+    content.trim().is_empty() && score.is_none() && status == UserStatus::Unregistered
+}
+
+struct CommentRecordInput {
+    title: String,
     content: String,
+    score: Option<i32>,
+    status: UserStatus,
+    begin_at: Option<i64>,
+}
+
+async fn save_comment_record<E: DatabaseExecutor>(
+    db: &AppDatabase<E>,
+    user_id: i32,
+    input: CommentRecordInput,
+    existing: Option<Comment>,
+) -> Result<Option<Comment>> {
+    if is_empty_comment_record(&input.content, input.score, input.status) {
+        if let Some(existing) = existing {
+            db.delete_comment(existing.id, user_id).await?;
+        }
+        return Ok(None);
+    }
+
+    let comment = if existing.is_some() {
+        db.update_comment(
+            user_id,
+            &input.title,
+            &input.content,
+            input.score,
+            input.status,
+            input.begin_at,
+        )
+        .await?
+    } else {
+        db.create_comment(
+            user_id,
+            &input.title,
+            &input.content,
+            input.score,
+            input.status,
+            input.begin_at,
+        )
+        .await?
+    };
+
+    Ok(Some(comment))
 }
 
 #[derive(Serialize)]
@@ -392,16 +496,30 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
 
     let body: UpdateItemRequest = req.json().await?;
     let db = get_db(&env)?;
+    let existing = db
+        .get_comment_by_user_and_title(user.id, &body.title)
+        .await?;
 
-    db.update_user_item(
+    let next_content = existing
+        .as_ref()
+        .map(|c| c.content.clone())
+        .unwrap_or_default();
+    let next_score = existing.as_ref().and_then(|c| c.score);
+    let next_begin_at = body
+        .begin_at
+        .or_else(|| existing.as_ref().and_then(|c| c.begin_at));
+
+    save_comment_record(
+        &db,
         user.id,
-        &body.title,
-        vec![
-            UserItemUpdate::status(body.status),
-            UserItemUpdate::score(body.score),
-            UserItemUpdate::begin_at(body.begin_at),
-            UserItemUpdate::updated_at(utils::now_utc_ms()),
-        ],
+        CommentRecordInput {
+            title: body.title,
+            content: next_content,
+            score: next_score,
+            status: body.status,
+            begin_at: next_begin_at,
+        },
+        existing,
     )
     .await?;
     Response::ok("Updated")
@@ -414,30 +532,56 @@ pub async fn handle_post_comment(mut req: Request, env: Env) -> Result<Response>
     };
 
     let body: PostCommentRequest = req.json().await?;
-    if body.content.trim().is_empty() {
+    let patch = match parse_comment_patch(body) {
+        Ok(patch) => patch,
+        Err(msg) => return Response::error(msg, 400),
+    };
+
+    if patch
+        .content
+        .as_ref()
+        .is_some_and(|content| content.trim().is_empty() && patch.score.is_none())
+    {
         return Response::error("Comment content cannot be empty", 400);
     }
 
     let db = get_db(&env)?;
-    // Try to update first, if it fails, try to create (or vice versa, but update first is better if we want UPSERT behavior)
-    // Actually, since we have UNIQUE(user_id, title), we can just try to update.
-    // If update returns 0 rows, it means it doesn't exist.
-    // But our UpdateComment uses RETURNING *, which might be tricky if it doesn't exist.
-    // Let's check if it exists first or use a more robust way.
 
-    let comment = match db
-        .update_comment(user.id, &body.title, &body.content, None)
-        .await
+    let existing = db
+        .get_comment_by_user_and_title(user.id, &patch.title)
+        .await?;
+    let next_content = patch.content.unwrap_or_else(|| {
+        existing
+            .as_ref()
+            .map(|c| c.content.clone())
+            .unwrap_or_default()
+    });
+    let next_score = patch
+        .score
+        .unwrap_or_else(|| existing.as_ref().and_then(|c| c.score));
+    let next_status = existing
+        .as_ref()
+        .map(|c| c.status)
+        .unwrap_or(UserStatus::Unregistered);
+    let next_begin_at = existing.as_ref().and_then(|c| c.begin_at);
+
+    match save_comment_record(
+        &db,
+        user.id,
+        CommentRecordInput {
+            title: patch.title,
+            content: next_content,
+            score: next_score,
+            status: next_status,
+            begin_at: next_begin_at,
+        },
+        existing,
+    )
+    .await?
     {
-        Ok(c) => c,
-        Err(_) => {
-            // Probably doesn't exist, try create
-            db.create_comment(user.id, &body.title, &body.content, None)
-                .await?
-        }
-    };
-
-    Response::from_json(&comment)
+        Some(comment) => Response::from_json(&comment),
+        None => Response::ok("Deleted"),
+    }
 }
 
 pub async fn handle_delete_comment(req: Request, env: Env) -> Result<Response> {
@@ -454,7 +598,23 @@ pub async fn handle_delete_comment(req: Request, env: Env) -> Result<Response> {
         .ok_or_else(|| Error::RustError("Invalid comment ID".to_string()))?;
 
     let db = get_db(&env)?;
-    db.delete_comment(id, user.id).await?;
+    let existing = db.get_comment_by_id_for_user(id, user.id).await?;
+    if let Some(existing) = existing {
+        let title = existing.title.clone();
+        save_comment_record(
+            &db,
+            user.id,
+            CommentRecordInput {
+                title,
+                content: String::new(),
+                score: existing.score,
+                status: existing.status,
+                begin_at: existing.begin_at,
+            },
+            Some(existing),
+        )
+        .await?;
+    }
     Response::ok("Deleted")
 }
 
@@ -547,14 +707,16 @@ mod tests {
         assert_eq!(values, vec!["abc", "def"]);
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn request_with_cookie(cookie_header: &str) -> Request {
-        let mut headers = Headers::new();
+        let headers = Headers::new();
         headers.set("Cookie", cookie_header).unwrap();
         let mut init = RequestInit::new();
         init.with_headers(headers);
         Request::new_with_init("http://localhost", &init).unwrap()
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[test]
     fn test_get_cookie_values() {
         // Test with single matching cookie
@@ -579,6 +741,7 @@ mod tests {
         assert!(values.is_empty());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[test]
     fn test_get_cookie_values_no_header() {
         let req = Request::new("http://localhost", Method::Get).unwrap();
@@ -586,10 +749,21 @@ mod tests {
         assert!(values.is_empty());
     }
 
+    #[cfg(target_arch = "wasm32")]
     #[test]
     fn test_get_cookie_values_malformed() {
         let req = request_with_cookie("housou_session=abc; invalid_cookie; housou_session=def");
         let values = get_cookie_values(&req, "housou_session");
         assert_eq!(values, vec!["abc", "def"]);
+    }
+
+    #[test]
+    fn test_validate_comment_score() {
+        assert_eq!(validate_comment_score(None).unwrap(), None);
+        assert_eq!(validate_comment_score(Some(1)).unwrap(), Some(1));
+        assert_eq!(validate_comment_score(Some(100)).unwrap(), Some(100));
+        assert!(validate_comment_score(Some(0)).is_err());
+        assert!(validate_comment_score(Some(-1)).is_err());
+        assert!(validate_comment_score(Some(101)).is_err());
     }
 }

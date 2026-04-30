@@ -38,12 +38,10 @@ export const USER_STATUS_LABELS: Record<UserStatus, string> = {
 
 export interface UserItemSummary {
   status: UserStatus;
-  score: number | null;
 }
 
 export interface DisplayAnimeItem extends AnimeItem {
   userStatus?: UserStatus;
-  userScore?: number;
 }
 
 export interface SiteMetaItem {
@@ -192,7 +190,9 @@ export interface CommentWithUser {
   username: string;
   avatarUrl?: string;
   content: string;
-  score?: number;
+  score?: number | null;
+  status: UserStatus;
+  beginAt?: number | null;
   createdAt: number;
   updatedAt: number;
 }

@@ -59,24 +59,19 @@ d1_orm::define_model!(
     }
 );
 
-d1_orm::define_model!(UserItem, UserItemField, UserItemUpdate {
-    user_id: i32 [pk],
-    title: String [pk],
-    status: UserStatus,
-    score: Option<i32>,
-    updated_at: i64,
-    begin_at: Option<i64>,
-});
-
 d1_orm::define_model!(
     #[serde(rename_all = "camelCase")]
     UserItemSummary,
     UserItemSummaryField,
-    UserItemSummaryUpdate {
-        status: UserStatus,
-        score: Option<i32>,
-    }
+    UserItemSummaryUpdate { status: UserStatus }
 );
+
+#[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct CommentItem {
+    pub title: String,
+    pub status: UserStatus,
+    pub begin_at: Option<i64>,
+}
 
 d1_orm::define_model!(
     SchemaVersion,
@@ -96,6 +91,8 @@ d1_orm::define_model!(
         title: String,
         content: String,
         score: Option<i32>,
+        status: UserStatus,
+        begin_at: Option<i64>,
         created_at: i64,
         updated_at: i64,
     }
@@ -110,6 +107,8 @@ pub struct CommentWithUser {
     pub avatar_url: Option<String>,
     pub content: String,
     pub score: Option<i32>,
+    pub status: UserStatus,
+    pub begin_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }

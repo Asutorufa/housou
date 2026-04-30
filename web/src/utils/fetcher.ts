@@ -8,8 +8,8 @@ export class ApiError extends Error {
   }
 }
 
-export const fetcher = async (url: string) => {
-  const res = await fetch(url);
+export const fetcher = async (url: string, init?: RequestInit) => {
+  const res = await fetch(url, init);
   if (res.status === 401) {
     const error = new ApiError("Unauthorized", 401);
     throw error;

@@ -1,4 +1,4 @@
-use d1_orm::{FieldUpdate, MigrationInfo, UpsertConfig, build_update_sql, build_upsert_sql};
+use d1_orm::{FieldUpdate, MigrationInfo, build_update_sql};
 use std::borrow::Cow;
 
 d1_orm::define_sql! {
@@ -104,6 +104,19 @@ d1_orm::define_sql! {
     @column("comments", "updated_at")
     AddCommentsUpdatedAtColumn => "ALTER TABLE comments ADD COLUMN updated_at INTEGER;",
     BackfillCommentsUpdatedAt => "UPDATE comments SET updated_at = created_at WHERE updated_at IS NULL;",
+    @column("comments", "status")
+    AddCommentsStatusColumn => "ALTER TABLE comments ADD COLUMN status INTEGER DEFAULT 0;",
+    @column("comments", "begin_at")
+    AddCommentsBeginAtColumn => "ALTER TABLE comments ADD COLUMN begin_at INTEGER;",
+    MigrateUserItemsToComments => "INSERT INTO comments (user_id, title, content, score, status, begin_at, created_at, updated_at)
+        SELECT user_id, title, '', score, status, begin_at, COALESCE(updated_at, 0), COALESCE(updated_at, 0)
+        FROM user_items_v2
+        WHERE status != 0 OR score IS NOT NULL
+        ON CONFLICT(user_id, title) DO UPDATE SET
+            score = COALESCE(comments.score, excluded.score),
+            status = excluded.status,
+            begin_at = COALESCE(excluded.begin_at, comments.begin_at),
+            updated_at = MAX(comments.updated_at, excluded.updated_at);",
 
     // Users
     CreateUser {
@@ -140,33 +153,15 @@ d1_orm::define_sql! {
         token: &'a str,
     } => "DELETE FROM sessions WHERE token = ?",
 
-    // User Items
-    UpdateUserItem {
+    // Comment-backed User Items
+    GetCommentItemsAll {
         user_id: i32,
-        title: &'a str,
-        updates: Vec<crate::db::models::UserItemUpdate> [skip_primary_key],
-    } => {
-        let config = UpsertConfig {
-            table: "user_items_v2",
-            primary_keys: &["user_id", "title"],
-            custom_conflict_resolution: Some(&|field| {
-                if field == "begin_at" {
-                    Some("begin_at = COALESCE(excluded.begin_at, user_items_v2.begin_at)")
-                } else {
-                    None
-                }
-            }),
-        };
-        build_upsert_sql(&config, updates)
-    },
-    GetUserItemsAll {
-        user_id: i32,
-    } => "SELECT * FROM user_items_v2 WHERE user_id = ? AND status != 0",
-    GetUserItemsByRange {
+    } => "SELECT title, status, begin_at FROM comments WHERE user_id = ? AND status != 0",
+    GetCommentItemsByRange {
         user_id: i32,
         start_ts: i64,
         end_ts: i64,
-    } => "SELECT * FROM user_items_v2
+    } => "SELECT title, status, begin_at FROM comments
              WHERE user_id = ? AND status != 0
              AND (begin_at IS NULL OR (begin_at >= ? AND begin_at <= ?))",
 
@@ -215,9 +210,11 @@ d1_orm::define_sql! {
         title: &'a str,
         content: &'a str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
         created_at: i64,
         updated_at: i64,
-    } => "INSERT INTO comments (user_id, title, content, score, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
+    } => "INSERT INTO comments (user_id, title, content, score, status, begin_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, user_id as userId, title, content, score, status, begin_at as beginAt, created_at as createdAt, updated_at as updatedAt",
     GetCommentsWithUser {
         title: &'a str,
         viewer_id: i32,
@@ -225,10 +222,9 @@ d1_orm::define_sql! {
         offset: i32,
     } => "SELECT
             c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
-            COALESCE(c.score, ui.score) as score
+            c.score as score, c.status as status, c.begin_at as beginAt
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
-          LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
           WHERE c.title = ?
           ORDER BY CASE WHEN c.user_id = ? THEN 0 ELSE 1 END, c.updated_at DESC, c.created_at DESC
           LIMIT ? OFFSET ?",
@@ -238,16 +234,23 @@ d1_orm::define_sql! {
         offset: i32,
     } => "SELECT
             c.id, c.user_id as userId, u.username, u.avatar_url as avatarUrl, c.content, c.created_at as createdAt, c.updated_at as updatedAt,
-            COALESCE(c.score, ui.score) as score
+            c.score as score, c.status as status, c.begin_at as beginAt
           FROM comments c
           INNER JOIN users u ON c.user_id = u.id
-          LEFT JOIN user_items_v2 ui ON c.user_id = ui.user_id AND c.title = ui.title
           WHERE c.title = ?
           ORDER BY c.updated_at DESC, c.created_at DESC
           LIMIT ? OFFSET ?",
     GetCommentsCount {
         title: &'a str,
     } => "SELECT COUNT(*) as count FROM comments WHERE title = ?",
+    GetCommentByUserAndTitle {
+        user_id: i32,
+        title: &'a str,
+    } => "SELECT id, user_id as userId, title, content, score, status, begin_at as beginAt, created_at as createdAt, updated_at as updatedAt FROM comments WHERE user_id = ? AND title = ?",
+    GetCommentByIdForUser {
+        id: i32,
+        user_id: i32,
+    } => "SELECT id, user_id as userId, title, content, score, status, begin_at as beginAt, created_at as createdAt, updated_at as updatedAt FROM comments WHERE id = ? AND user_id = ?",
     DeleteComment {
         id: i32,
         user_id: i32,
@@ -255,8 +258,10 @@ d1_orm::define_sql! {
     UpdateComment {
         content: &'a str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
         updated_at: i64,
         user_id: i32,
         title: &'a str,
-    } => "UPDATE comments SET content = ?, score = ?, updated_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, created_at as createdAt, updated_at as updatedAt",
+    } => "UPDATE comments SET content = ?, score = ?, status = ?, begin_at = ?, updated_at = ? WHERE user_id = ? AND title = ? RETURNING id, user_id as userId, title, content, score, status, begin_at as beginAt, created_at as createdAt, updated_at as updatedAt",
 }

@@ -30,19 +30,13 @@ pub trait Database {
     async fn get_user_by_session_token(&self, filter: SessionUpdate) -> Result<Option<User>>;
     async fn delete_session(&self, token: &str) -> Result<()>;
 
-    async fn update_user_item(
-        &self,
-        user_id: i32,
-        title: &str,
-        updates: Vec<UserItemUpdate>,
-    ) -> Result<()>;
-    async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>>;
-    async fn get_user_items_by_range(
+    async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>>;
+    async fn get_comment_items_by_range(
         &self,
         user_id: i32,
         start_ts: i64,
         end_ts: i64,
-    ) -> Result<Vec<UserItem>>;
+    ) -> Result<Vec<CommentItem>>;
 
     async fn get_comments(
         &self,
@@ -51,6 +45,12 @@ pub trait Database {
         limit: i32,
         offset: i32,
     ) -> Result<Vec<CommentWithUser>>;
+    async fn get_comment_by_user_and_title(
+        &self,
+        user_id: i32,
+        title: &str,
+    ) -> Result<Option<Comment>>;
+    async fn get_comment_by_id_for_user(&self, id: i32, user_id: i32) -> Result<Option<Comment>>;
     async fn get_comments_count(&self, title: &str) -> Result<i32>;
     async fn create_comment(
         &self,
@@ -58,6 +58,8 @@ pub trait Database {
         title: &str,
         content: &str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
     ) -> Result<Comment>;
     async fn update_comment(
         &self,
@@ -65,6 +67,8 @@ pub trait Database {
         title: &str,
         content: &str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
     ) -> Result<Comment>;
     async fn delete_comment(&self, id: i32, user_id: i32) -> Result<()>;
 }
@@ -133,6 +137,15 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
             vec![
                 Sql::AddCommentsUpdatedAtColumn,
                 Sql::BackfillCommentsUpdatedAt,
+            ],
+        ),
+        Migration::new(
+            10,
+            "Move user item status into comments",
+            vec![
+                Sql::AddCommentsStatusColumn,
+                Sql::AddCommentsBeginAtColumn,
+                Sql::MigrateUserItemsToComments,
             ],
         ),
     ]
@@ -259,36 +272,18 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         self.execute(sql).await
     }
 
-    async fn update_user_item(
-        &self,
-        user_id: i32,
-        title: &str,
-        updates: Vec<crate::db::models::UserItemUpdate>,
-    ) -> Result<()> {
-        if !Self::has_effective_updates(&updates, &["user_id", "title"]) {
-            return Ok(());
-        }
-        let sql = Sql::UpdateUserItem {
-            user_id,
-            title,
-            updates,
-        };
-
-        self.execute(sql).await
-    }
-
-    async fn get_user_items_all(&self, user_id: i32) -> Result<Vec<UserItem>> {
-        let sql = Sql::GetUserItemsAll { user_id };
+    async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>> {
+        let sql = Sql::GetCommentItemsAll { user_id };
         self.query_all(sql).await
     }
 
-    async fn get_user_items_by_range(
+    async fn get_comment_items_by_range(
         &self,
         user_id: i32,
         start_ts: i64,
         end_ts: i64,
-    ) -> Result<Vec<UserItem>> {
-        let sql = Sql::GetUserItemsByRange {
+    ) -> Result<Vec<CommentItem>> {
+        let sql = Sql::GetCommentItemsByRange {
             user_id,
             start_ts,
             end_ts,
@@ -321,6 +316,20 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         }
     }
 
+    async fn get_comment_by_user_and_title(
+        &self,
+        user_id: i32,
+        title: &str,
+    ) -> Result<Option<Comment>> {
+        let sql = Sql::GetCommentByUserAndTitle { user_id, title };
+        self.query_first(sql).await
+    }
+
+    async fn get_comment_by_id_for_user(&self, id: i32, user_id: i32) -> Result<Option<Comment>> {
+        let sql = Sql::GetCommentByIdForUser { id, user_id };
+        self.query_first(sql).await
+    }
+
     async fn get_comments_count(&self, title: &str) -> Result<i32> {
         #[derive(serde::Deserialize)]
         struct CountResult {
@@ -338,6 +347,8 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         title: &str,
         content: &str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
     ) -> Result<Comment> {
         let created_at = utils::now_utc_ms();
         let sql = Sql::CreateComment {
@@ -345,6 +356,8 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
             title,
             content,
             score,
+            status,
+            begin_at,
             created_at,
             updated_at: created_at,
         };
@@ -359,11 +372,15 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         title: &str,
         content: &str,
         score: Option<i32>,
+        status: crate::model::UserStatus,
+        begin_at: Option<i64>,
     ) -> Result<Comment> {
         let updated_at = utils::now_utc_ms();
         let sql = Sql::UpdateComment {
             content,
             score,
+            status,
+            begin_at,
             updated_at,
             user_id,
             title,
@@ -472,45 +489,44 @@ mod tests {
             .expect("Session not found");
         assert_eq!(auth_user.id, user.id);
 
-        // Update item
-        db.update_user_item(
-            user.id,
-            "Anime Title",
-            vec![
-                UserItemUpdate::status(crate::model::UserStatus::Completed),
-                UserItemUpdate::score(Some(10)),
-                UserItemUpdate::updated_at(crate::utils::now_utc_ms()),
-            ],
-        )
-        .await
-        .map_err(|e| Error::RustError(e.to_string()))?;
-        let items = db
-            .get_user_items_all(user.id)
-            .await
-            .map_err(|e| Error::RustError(e.to_string()))?;
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title, "Anime Title");
-
         // Comments
         let comment = db
-            .create_comment(user.id, "Anime Title", "Great show!", Some(8))
+            .create_comment(
+                user.id,
+                "Anime Title",
+                "Great show!",
+                Some(8),
+                crate::model::UserStatus::Completed,
+                None,
+            )
             .await?;
         assert_eq!(comment.content, "Great show!");
         assert_eq!(comment.user_id, user.id);
         assert_eq!(comment.score, Some(8));
+        assert_eq!(comment.status, crate::model::UserStatus::Completed);
         assert_eq!(comment.created_at, comment.updated_at);
 
         let comments = db.get_comments("Anime Title", Some(user.id), 10, 0).await?;
         assert_eq!(comments.len(), 1);
         assert_eq!(comments[0].content, "Great show!");
         assert_eq!(comments[0].username, "extendeduser");
+        assert_eq!(comments[0].status, crate::model::UserStatus::Completed);
         assert_eq!(comments[0].updated_at, comment.updated_at);
 
         let updated_comment = db
-            .update_comment(user.id, "Anime Title", "Masterpiece!", Some(10))
+            .update_comment(
+                user.id,
+                "Anime Title",
+                "Masterpiece!",
+                Some(10),
+                crate::model::UserStatus::Watching,
+                Some(1_700_000_000_000),
+            )
             .await?;
         assert_eq!(updated_comment.content, "Masterpiece!");
         assert_eq!(updated_comment.score, Some(10));
+        assert_eq!(updated_comment.status, crate::model::UserStatus::Watching);
+        assert_eq!(updated_comment.begin_at, Some(1_700_000_000_000));
         assert_eq!(updated_comment.created_at, comment.created_at);
         assert!(updated_comment.updated_at >= comment.updated_at);
 
@@ -548,7 +564,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn test_update_user_item_no_effective_fields_is_noop() -> Result<()> {
+    async fn test_comment_score_is_returned_from_comments_table() -> Result<()> {
         let executor =
             SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
         let db = AppDatabase::new(executor);
@@ -556,8 +572,8 @@ mod tests {
 
         let user = db
             .create_user(
-                "item-noop@example.com",
-                "item_noop",
+                "score-only@example.com",
+                "score_only",
                 Some("hash"),
                 None,
                 None,
@@ -565,18 +581,81 @@ mod tests {
             )
             .await?;
 
-        db.update_user_item(
+        db.create_comment(
             user.id,
-            "Noop Title",
-            vec![
-                UserItemUpdate::user_id(user.id),
-                UserItemUpdate::title("Noop Title".to_string()),
-            ],
+            "Score Only Title",
+            "",
+            Some(87),
+            crate::model::UserStatus::Unregistered,
+            None,
         )
         .await?;
 
-        let items = db.get_user_items_all(user.id).await?;
-        assert!(items.is_empty());
+        let comments = db.get_comments("Score Only Title", None, 10, 0).await?;
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].score, Some(87));
+        assert_eq!(comments[0].content, "");
+
+        let comment = db
+            .get_comment_by_user_and_title(user.id, "Score Only Title")
+            .await?
+            .expect("score-only comment should exist");
+        assert_eq!(comment.score, Some(87));
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_migrates_user_item_status_into_comments() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        let old_migrations: Vec<_> = get_migrations().into_iter().take(9).collect();
+        d1_orm::migrate(
+            &db.db,
+            old_migrations,
+            Some("schema_migrations"),
+            None::<fn(&str)>,
+        )
+        .await
+        .map_err(|e| Error::RustError(e.to_string()))?;
+
+        let user = db
+            .create_user(
+                "migrate-status@example.com",
+                "migrate_status",
+                Some("hash"),
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        db.execute(Sql::AdHoc {
+            info: MigrationInfo::Table("user_items_v2"),
+            sql: std::borrow::Cow::Owned(format!(
+                "INSERT INTO user_items_v2 (user_id, title, status, score, updated_at, begin_at) VALUES ({}, 'Migrated Title', 1, NULL, 1700000000123, 1700000000000);",
+                user.id
+            )),
+        })
+        .await?;
+
+        db.migrate().await?;
+
+        let comment = db
+            .get_comment_by_user_and_title(user.id, "Migrated Title")
+            .await?
+            .expect("user item should be migrated into comments");
+        assert_eq!(comment.content, "");
+        assert_eq!(comment.status, crate::model::UserStatus::Watching);
+        assert_eq!(comment.begin_at, Some(1_700_000_000_000));
+
+        let items = db.get_comment_items_all(user.id).await?;
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].title, "Migrated Title");
+        assert_eq!(items[0].status, crate::model::UserStatus::Watching);
+
         Ok(())
     }
 

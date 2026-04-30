@@ -190,7 +190,6 @@ export const handlers = [
     return HttpResponse.json({
       "Test Anime 1": {
         status: 1, // Watching
-        score: 8,
       },
     });
   }),

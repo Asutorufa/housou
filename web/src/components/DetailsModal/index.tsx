@@ -111,7 +111,6 @@ function DetailsModalContent({
   const { currentStatus, updateStatus } = useAnimeStatus({
     title,
     initialStatus: originalItem?.userStatus,
-    initialScore: originalItem?.userScore,
     beginAt: originalItem?.begin,
     onUpdate,
   });
@@ -340,9 +339,10 @@ function DetailsModalContent({
                   <CastSection characters={info?.characters} />
                   <StaffSection staff={info?.staff} />
                 </div>
-
                 {/* Comments Section */}
-                {authEnabled && <CommentSection title={title} />}
+                {authEnabled && (
+                  <CommentSection title={title} viewerStatus={currentStatus} />
+                )}
               </>
             )}
           </motion.div>
