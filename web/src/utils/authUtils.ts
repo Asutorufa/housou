@@ -14,3 +14,20 @@ export async function hashPassword(password: string): Promise<string> {
   const hash = blake3(data);
   return bytesToHex(hash);
 }
+
+// Password complexity validation
+export function validatePasswordComplexity(password: string): void {
+  if (password.length < 8) {
+    throw new Error("パスワードは8文字以上である必要があります");
+  }
+
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasLowercase = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+
+  if (!hasUppercase || !hasLowercase || !hasDigit) {
+    throw new Error(
+      "パスワードには、大文字、小文字、数字をそれぞれ1文字以上含める必要があります",
+    );
+  }
+}

@@ -43,9 +43,6 @@ export default function AuthModal({
       if (activeTab === "login") {
         await login({ email, password });
       } else {
-        if (password.length < 8) {
-          throw new Error("パスワードは8文字以上である必要があります");
-        }
         if (password !== confirmPassword) {
           throw new Error("パスワードが一致しません");
         }
