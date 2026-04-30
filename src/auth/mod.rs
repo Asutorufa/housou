@@ -766,4 +766,24 @@ mod tests {
         assert!(validate_comment_score(Some(-1)).is_err());
         assert!(validate_comment_score(Some(101)).is_err());
     }
+
+    #[test]
+    fn test_user_response_includes_auth_capability_fields() {
+        let user = User {
+            id: 7,
+            email: "user@example.com".to_string(),
+            username: "tester".to_string(),
+            avatar_url: Some("https://example.com/avatar.png".to_string()),
+            password_hash: Some("hash".to_string()),
+            github_id: Some("gh_1".to_string()),
+            telegram_id: Some("tg_1".to_string()),
+            created_at: 123,
+        };
+
+        let value = serde_json::to_value(UserResponse::from(user)).unwrap();
+        assert_eq!(value["has_password"], true);
+        assert_eq!(value["github_id"], "gh_1");
+        assert_eq!(value["telegram_id"], "tg_1");
+        assert!(value.get("password_hash").is_none());
+    }
 }

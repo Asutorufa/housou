@@ -112,15 +112,8 @@ pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response>
         .await?
         .ok_or_else(|| Error::RustError("User not found".into()))?;
 
-    // Create session
-    let token = uuid::Uuid::new_v4().to_string();
-    let expires_at =
-        crate::utils::now_utc_ms() + (auth::SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-    db.create_session(user.id, &token, expires_at).await?;
-
-    let secure = auth::is_secure(&env);
-    Response::from_json(&user)?
-        .add_header("Set-Cookie", &auth::create_session_cookie(&token, secure))
+    let session_cookie = auth::create_user_session(&db, user.id, auth::is_secure(&env)).await?;
+    Response::from_json(&auth::UserResponse::from(user))?.add_header("Set-Cookie", &session_cookie)
 }
 
 #[derive(serde::Serialize)]

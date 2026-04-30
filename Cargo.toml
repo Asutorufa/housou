@@ -8,7 +8,6 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-send = ["passkey-server/send"]
 dev = []                       # Use local data.json instead of fetching from GitHub
 
 

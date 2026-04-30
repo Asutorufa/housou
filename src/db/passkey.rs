@@ -35,8 +35,7 @@ pub(crate) fn db_err(e: impl std::fmt::Display) -> PasskeyError {
     PasskeyError::DatabaseError(e.to_string())
 }
 
-#[cfg_attr(not(feature = "send"), async_trait(?Send))]
-#[cfg_attr(feature = "send", async_trait)]
+#[async_trait(?Send)]
 impl<E: DatabaseExecutor> PasskeyStore for AppDatabase<E> {
     async fn create_passkey(
         &self,

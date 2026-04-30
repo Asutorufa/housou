@@ -76,13 +76,12 @@ impl ResponseExt for Response {
 pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
     // Migration Logic (Lazy)
     if let Ok(d1) = env.d1("DB")
-        && MIGRATION_DONE
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_ok()
+        && try_claim_migration()
     {
         let db = db::AppDatabase::new(d1);
         // We log migration errors but do not block the whole app.
         if let Err(e) = db.migrate().await {
+            mark_migration_failed_for_retry();
             console_error!("Migration failed: {}", e);
         }
     }
@@ -102,8 +101,17 @@ pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
     resp.add_security_headers()?.add_cors(&env)
 }
 
+fn try_claim_migration() -> bool {
+    MIGRATION_DONE
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn mark_migration_failed_for_retry() {
+    MIGRATION_DONE.store(false, Ordering::Release);
+}
+
 async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Response> {
-    let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
     let url = req.url()?;
 
     if req.method() == Method::Get {
@@ -111,27 +119,30 @@ async fn handle_request_logic(req: Request, env: Env, ctx: Context) -> Result<Re
 
         if skip_shared_cache {
             router(req, env.clone(), ctx).await
-        } else if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
-            // Use cached response, clone to make it mutable for adding security headers
-            cached_resp.cloned()
         } else {
-            // Generate new response
-            let mut fresh_resp = router(req, env.clone(), ctx).await?;
+            let cache = Cache::open(format!("housou-cache-{}", config::CACHE_VERSION)).await;
+            if let Ok(Some(mut cached_resp)) = cache.get(url.as_str(), true).await {
+                // Use cached response, clone to make it mutable for adding security headers
+                cached_resp.cloned()
+            } else {
+                // Generate new response
+                let mut fresh_resp = router(req, env.clone(), ctx).await?;
 
-            // Cache successful GET responses unless they may vary by viewer.
-            if url.path().starts_with("/api")
-                && !skip_shared_cache
-                && fresh_resp.status_code() == 200
-            {
-                if !fresh_resp.headers().has("Cache-Control")? {
-                    fresh_resp = fresh_resp.add_header(
-                        "Cache-Control",
-                        &format!("public, max-age={}", config::CACHE_TTL_API),
-                    )?;
+                // Cache successful GET responses unless they may vary by viewer.
+                if url.path().starts_with("/api")
+                    && !skip_shared_cache
+                    && fresh_resp.status_code() == 200
+                {
+                    if !fresh_resp.headers().has("Cache-Control")? {
+                        fresh_resp = fresh_resp.add_header(
+                            "Cache-Control",
+                            &format!("public, max-age={}", config::CACHE_TTL_API),
+                        )?;
+                    }
+                    let _ = cache.put(url.as_str(), fresh_resp.cloned()?).await;
                 }
-                let _ = cache.put(url.as_str(), fresh_resp.cloned()?).await;
+                Ok(fresh_resp)
             }
-            Ok(fresh_resp)
         }
     } else {
         router(req, env.clone(), ctx).await
@@ -327,5 +338,18 @@ mod tests {
         assert!(should_skip_shared_cache("/api/comments?title=test"));
         assert!(!should_skip_shared_cache("/api/items"));
         assert!(!should_skip_shared_cache("/api/metadata"));
+    }
+
+    #[test]
+    fn test_migration_claim_can_retry_after_failure() {
+        MIGRATION_DONE.store(false, Ordering::Release);
+
+        assert!(try_claim_migration());
+        assert!(!try_claim_migration());
+
+        mark_migration_failed_for_retry();
+        assert!(try_claim_migration());
+
+        MIGRATION_DONE.store(false, Ordering::Release);
     }
 }

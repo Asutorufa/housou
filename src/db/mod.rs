@@ -148,6 +148,14 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
                 Sql::MigrateUserItemsToComments,
             ],
         ),
+        Migration::new(
+            11,
+            "Add comments query indexes",
+            vec![
+                Sql::CreateCommentsUserStatusBeginAtIndex,
+                Sql::CreateCommentsTitleUpdatedAtIndex,
+            ],
+        ),
     ]
 }
 
@@ -693,6 +701,32 @@ mod tests {
         assert!(!tables.is_empty());
         assert_eq!(tables[0].name, "users");
 
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_comment_query_indexes_are_migrated() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        db.migrate().await?;
+
+        let user_status_indexes: Vec<TableColumnInfo> = db
+            .query_all(Sql::CheckIndexExists {
+                name: "idx_comments_user_status_begin_at",
+            })
+            .await?;
+        assert!(!user_status_indexes.is_empty());
+
+        let title_updated_indexes: Vec<TableColumnInfo> = db
+            .query_all(Sql::CheckIndexExists {
+                name: "idx_comments_title_updated_at",
+            })
+            .await?;
+        assert!(!title_updated_indexes.is_empty());
+
+        db.migrate().await?;
         Ok(())
     }
 }

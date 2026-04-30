@@ -93,17 +93,13 @@ pub async fn fetch_metadata(
         year: req.year,
     };
 
-    let (unified, ttl) = fetch_metadata_from_providers(args, &ctx.env).await?;
+    let (unified, provider_ttl) = fetch_metadata_from_providers(args, &ctx.env).await?;
+    let ttl = metadata_ttl(&unified, provider_ttl);
 
     // 3. Cache Result
     let mut resp = Response::from_json(&unified)?;
-    resp.headers_mut().set(
-        "Cache-Control",
-        &format!(
-            "public, max-age={}",
-            ttl.unwrap_or(crate::config::CACHE_TTL_ONGOING)
-        ),
-    )?;
+    resp.headers_mut()
+        .set("Cache-Control", &format!("public, max-age={ttl}"))?;
 
     // Don't block the response for cache write. Use waitUntil.
     ctx.data.wait_until(async move {
@@ -188,15 +184,19 @@ fn create_response(
     _env: &Env,
     ttl_override: Option<i32>,
 ) -> Result<Response> {
-    let ttl = if let Some(t) = ttl_override {
-        t
-    } else if unified.is_finished {
-        crate::config::CACHE_TTL_FINISHED
-    } else {
-        crate::config::CACHE_TTL_ONGOING
-    };
+    let ttl = metadata_ttl(unified, ttl_override);
 
     Response::from_json(unified)?.add_header("Cache-Control", &format!("public, max-age={ttl}"))
+}
+
+fn metadata_ttl(unified: &model::UnifiedMetadata, provider_ttl: Option<i32>) -> i32 {
+    provider_ttl.unwrap_or({
+        if unified.is_finished {
+            crate::config::CACHE_TTL_FINISHED
+        } else {
+            crate::config::CACHE_TTL_ONGOING
+        }
+    })
 }
 
 #[cfg(test)]
@@ -219,5 +219,39 @@ mod tests {
         assert_eq!(key1, key2);
         assert!(key1.starts_with("https://example.com/api/metadata?"));
         assert!(!key1.contains("request_id"));
+    }
+
+    #[test]
+    fn test_metadata_ttl_uses_provider_override() {
+        let unified = model::UnifiedMetadata {
+            is_finished: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            metadata_ttl(&unified, Some(crate::config::CACHE_TTL_JIKAN)),
+            crate::config::CACHE_TTL_JIKAN
+        );
+    }
+
+    #[test]
+    fn test_metadata_ttl_uses_finish_state_without_override() {
+        let finished = model::UnifiedMetadata {
+            is_finished: true,
+            ..Default::default()
+        };
+        let ongoing = model::UnifiedMetadata {
+            is_finished: false,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            metadata_ttl(&finished, None),
+            crate::config::CACHE_TTL_FINISHED
+        );
+        assert_eq!(
+            metadata_ttl(&ongoing, None),
+            crate::config::CACHE_TTL_ONGOING
+        );
     }
 }

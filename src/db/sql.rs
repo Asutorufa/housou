@@ -99,6 +99,10 @@ d1_orm::define_sql! {
         );",
     @index("idx_comments_title")
     CreateCommentsTitleIndex => "CREATE INDEX IF NOT EXISTS idx_comments_title ON comments(title);",
+    @index("idx_comments_user_status_begin_at")
+    CreateCommentsUserStatusBeginAtIndex => "CREATE INDEX IF NOT EXISTS idx_comments_user_status_begin_at ON comments(user_id, status, begin_at);",
+    @index("idx_comments_title_updated_at")
+    CreateCommentsTitleUpdatedAtIndex => "CREATE INDEX IF NOT EXISTS idx_comments_title_updated_at ON comments(title, updated_at DESC);",
     @column("comments", "score")
     AddCommentsScoreColumn => "ALTER TABLE comments ADD COLUMN score INTEGER;",
     @column("comments", "updated_at")

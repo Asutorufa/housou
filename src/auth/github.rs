@@ -1,7 +1,7 @@
 use crate::auth::{
-    EMAIL_IN_USE_ERR, SESSION_DURATION_DAYS, USERNAME_TAKEN_ERR, clear_oauth_action_cookie,
-    clear_oauth_state_cookie, create_oauth_action_cookie, create_oauth_state_cookie,
-    create_session_cookie, get_auth, get_base_url, get_cookie_values, get_db, verify_oauth_state,
+    EMAIL_IN_USE_ERR, USERNAME_TAKEN_ERR, clear_oauth_action_cookie, clear_oauth_state_cookie,
+    create_oauth_action_cookie, create_oauth_state_cookie, create_user_session, get_auth,
+    get_base_url, get_cookie_values, get_db, verify_oauth_state,
 };
 use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserUpdate};
 use serde::Deserialize;
@@ -277,15 +277,10 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
                 }
             };
 
-            // Create session
-            let token = Uuid::new_v4().to_string();
-            let expires_at =
-                crate::utils::now_utc_ms() + (SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000);
-            db.create_session(user.id, &token, expires_at).await?;
+            let session_cookie = create_user_session(&db, user.id, secure).await?;
 
             let mut resp = Response::redirect(Url::parse(&base_url)?)?;
-            resp.headers_mut()
-                .append("Set-Cookie", &create_session_cookie(&token, secure))?;
+            resp.headers_mut().append("Set-Cookie", &session_cookie)?;
             resp.headers_mut()
                 .append("Set-Cookie", &clear_oauth_state_cookie(secure))?;
             resp.headers_mut()
