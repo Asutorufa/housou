@@ -25,7 +25,7 @@ console_error_panic_hook = "0.1.7"
 regex = "1.12.3"
 js-sys = { workspace = true }
 futures = "0.3.32"
-argon2 = "0.5"
+argon2 = "0.6"
 rand_core = "0.10.1"
 uuid = { version = "1.23.1", features = ["v4", "rng", "js", "serde"] }
 cookie = "0.18"
@@ -57,7 +57,7 @@ members = ["crates/passkey", "crates/d1-orm"]
 
 [workspace.dependencies]
 js-sys = "0.3.88"
-rusqlite = { version = "0.39", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 async-trait = "0.1"
