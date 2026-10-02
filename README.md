@@ -17,6 +17,7 @@ Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bang
 - 🌙 **Modern Design**: Responsive UI with automatic dark mode and smooth animations.
 - 🔑 **Secure Auth**: Support for GitHub OAuth and Passkeys (WebAuthn).
 - 🔗 **Link Previews**: Existing `?anime=...` links include server-rendered Open Graph and Twitter Card metadata for Telegram and other sharing clients, with an anime title and cover when available. Previews use Japanese TMDb synopses or Japanese fallback text.
+- 📖 **Instant View Preparation**: Anime links also include a readable Japanese HTML article. A [Telegram Instant View template and setup guide](docs/telegram-instant-view.md) are included; registering and publishing the template is a separate step.
 
 ## Screenshots
 

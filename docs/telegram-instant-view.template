@@ -1,0 +1,12 @@
+# Paste these rules into Telegram's Instant View editor for the deployed domain.
+# Only successfully resolved anime detail pages qualify. Homepage and lookup
+# failures deliberately have no Instant View.
+~version: "2.1"
+
+?exists: //article[@id="anime-article" and @data-instant-view="true"]/div[@id="anime-body"]
+title: //article[@id="anime-article"]/h1
+cover: //article[@id="anime-article"]/figure[@id="anime-cover"]
+body: //article[@id="anime-article"]/div[@id="anime-body"]
+site_name: //meta[@property="og:site_name"]/@content
+description: //meta[@property="og:description"]/@content
+image_url: //meta[@property="og:image"]/@content

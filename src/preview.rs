@@ -8,6 +8,8 @@ use worker::*;
 use crate::model::{MetadataSource, UnifiedMetadata};
 use crate::provider::{self, MetadataRequest};
 
+mod article;
+
 const SITE_NAME: &str = "放送";
 const SITE_DESCRIPTION: &str =
     "毎週のアニメ放送スケジュール、作品情報、配信サービスを確認できます。";
@@ -88,14 +90,29 @@ fn anime_title(url: &url::Url) -> Option<String> {
 }
 
 fn plain_description(description: &str) -> String {
-    let without_tags = HTML_TAG.replace_all(description, " ");
-    let decoded = html_escape::decode_html_entities(&without_tags);
-    let text = decoded.split_whitespace().collect::<Vec<_>>().join(" ");
+    let text = plain_text(description);
     let mut shortened: String = text.chars().take(240).collect();
     if text.chars().count() > 240 {
         shortened.push('…');
     }
     shortened
+}
+
+fn plain_text(text: &str) -> String {
+    let without_tags = HTML_TAG.replace_all(text, " ");
+    let decoded = html_escape::decode_html_entities(&without_tags);
+    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn japanese_synopsis(metadata: &UnifiedMetadata) -> Option<&str> {
+    // TMDb is queried in ja-JP; AniList and Jikan provide English synopses.
+    matches!(metadata.source, MetadataSource::Tmdb(_))
+        .then_some(metadata.description.as_deref())
+        .flatten()
+}
+
+fn escape_html(value: &str) -> String {
+    html_escape::encode_double_quoted_attribute(value).into_owned()
 }
 
 fn cover_url(metadata: &UnifiedMetadata) -> Option<&str> {
@@ -122,10 +139,7 @@ fn inject_preview(
         |title| format!("{title} - {SITE_NAME}"),
     );
     let description = metadata
-        // TMDb is queried in ja-JP. AniList and Jikan synopses are in English,
-        // so use Japanese page copy while still showing their covers.
-        .filter(|metadata| matches!(metadata.source, MetadataSource::Tmdb(_)))
-        .and_then(|metadata| metadata.description.as_deref())
+        .and_then(japanese_synopsis)
         .map(plain_description)
         .filter(|description| !description.is_empty())
         .unwrap_or_else(|| {
@@ -139,13 +153,17 @@ fn inject_preview(
     let image = metadata.and_then(cover_url);
 
     // Escape both text and attribute values, including user-provided anime names.
-    let escape = |value: &str| html_escape::encode_double_quoted_attribute(value).into_owned();
-    let title = escape(&title);
-    let description = escape(&description);
-    let page_url = escape(url.as_str());
+    let title = escape_html(&title);
+    let description = escape_html(&description);
+    let page_url = escape_html(url.as_str());
+    let page_type = if anime.is_some() {
+        "article"
+    } else {
+        "website"
+    };
     let mut tags = format!(
         "<meta name=\"description\" content=\"{description}\">\n\
-         <meta property=\"og:type\" content=\"website\">\n\
+         <meta property=\"og:type\" content=\"{page_type}\">\n\
          <meta property=\"og:site_name\" content=\"{SITE_NAME}\">\n\
          <meta property=\"og:locale\" content=\"ja_JP\">\n\
          <meta property=\"og:title\" content=\"{title}\">\n\
@@ -155,7 +173,7 @@ fn inject_preview(
          <meta name=\"twitter:description\" content=\"{description}\">\n"
     );
     if let Some(image) = image {
-        let image = escape(image);
+        let image = escape_html(image);
         tags.push_str(&format!(
             "<meta property=\"og:image\" content=\"{image}\">\n\
              <meta property=\"og:image:alt\" content=\"{title}\">\n\
@@ -166,8 +184,19 @@ fn inject_preview(
         tags.push_str("<meta name=\"twitter:card\" content=\"summary\">\n");
     }
 
-    html.replacen("<title>放送</title>", &format!("<title>{title}</title>"), 1)
-        .replacen("</head>", &format!("{tags}</head>"), 1)
+    let mut html = html
+        .replacen("<title>放送</title>", &format!("<title>{title}</title>"), 1)
+        .replacen("</head>", &format!("{tags}</head>"), 1);
+    if let Some(anime) = anime {
+        // createRoot replaces this visible fallback when React mounts.
+        let article = article::render(anime, url, metadata);
+        html = html.replacen(
+            "<div id=\"root\"></div>",
+            &format!("<div id=\"root\">{article}</div>"),
+            1,
+        );
+    }
+    html
 }
 
 #[cfg(test)]
@@ -201,7 +230,8 @@ mod tests {
         assert!(html.contains("property=\"og:image\" content=\"https://example.com/large.jpg\""));
         assert!(html.contains("summary_large_image"));
         assert!(html.contains("?day=1&amp;anime="));
-        assert!(html.contains("<div id=\"root\"></div>"));
+        assert!(html.contains("<div id=\"root\"><article id=\"anime-article\""));
+        assert!(html.contains("data-instant-view=\"true\""));
         assert!(html.contains("src=\"/src/main.tsx\""));
         assert_eq!(html.matches("<title>").count(), 1);
     }
@@ -249,6 +279,9 @@ mod tests {
             let html = inject_preview(SHELL, &url, None, None);
             assert!(html.contains("<title>放送</title>"));
             assert!(html.contains(SITE_DESCRIPTION));
+            assert!(html.contains("<div id=\"root\"></div>"));
+            assert!(!html.contains("id=\"anime-article\""));
+            assert!(html.contains("property=\"og:type\" content=\"website\""));
         }
     }
 

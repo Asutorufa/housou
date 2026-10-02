@@ -21,6 +21,62 @@
   scrollbar-gutter: stable;
 }
 
+/* Visible server-rendered detail page; React replaces it when the app mounts. */
+#anime-article {
+  max-width: 52rem;
+  margin: 2rem auto;
+  padding: 1.5rem;
+  color: #111827;
+  background: #fff;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+
+#anime-article h1 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+#anime-article h2 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+#anime-article h3 {
+  margin-top: 1rem;
+  font-weight: 700;
+}
+
+#anime-cover {
+  margin: 1.5rem 0;
+}
+
+#anime-cover img {
+  max-width: 100%;
+  width: 16rem;
+  height: auto;
+  border-radius: 0.75rem;
+}
+
+#anime-article ul {
+  padding-left: 1.5rem;
+  list-style: disc;
+}
+
+#anime-article a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+#anime-article a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
 /* Global Scrollbar */
 ::-webkit-scrollbar {
   width: 12px;
