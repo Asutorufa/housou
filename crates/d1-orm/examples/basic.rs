@@ -7,7 +7,7 @@ define_model!(
     User,
     UserField,
     UserUpdate {
-        id: i32 [pk],
+        id: i32[pk],
         username: String,
         email: String,
     }
@@ -28,7 +28,7 @@ define_sql!(
     // Note: 'updates' must come before 'id' because the generated SQL
     // is structured as 'UPDATE users SET ... WHERE id = ?'
     UpdateUser { updates: Vec<UserUpdate> [skip_primary_key], id: i32 } =>
-        build_update_sql("users", "id", &updates),
+        build_update_sql("users", "id", updates),
 );
 
 #[tokio::main]

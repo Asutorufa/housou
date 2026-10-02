@@ -2,10 +2,7 @@ use crate::ResponseExt;
 use crate::db::{AppDatabase, Comment, Database, DatabaseExecutor, User, UserUpdate};
 use crate::model::UserStatus;
 use crate::utils;
-use argon2::{
-    Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
-};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use cookie::{Cookie, SameSite, time::Duration};
 use serde::{Deserialize, Deserializer, de};
 use std::sync::OnceLock;
@@ -315,9 +312,8 @@ fn get_argon2_instance() -> &'static Argon2<'static> {
 }
 
 pub fn hash_password(password: &str) -> std::result::Result<String, Error> {
-    let salt = SaltString::generate(&mut OsRng);
     get_argon2_instance()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password(password.as_bytes())
         .map(|h| h.to_string())
         .map_err(|e| Error::RustError(e.to_string()))
 }
@@ -403,7 +399,8 @@ pub async fn handle_logout(req: Request, env: Env) -> Result<Response> {
         db.delete_session(&token).await?;
     }
     let secure = is_secure(&env);
-    Response::ok("Logged out")?.add_header("Set-Cookie", &clear_session_cookie(secure))
+    Response::from_json(&serde_json::json!({ "message": "Logged out" }))?
+        .add_header("Set-Cookie", &clear_session_cookie(secure))
 }
 
 pub async fn handle_me(req: Request, env: Env) -> Result<Response> {
@@ -485,7 +482,7 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
     )
     .await?;
 
-    Response::ok("Password updated")
+    Response::from_json(&serde_json::json!({ "message": "Password updated" }))
 }
 
 pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> {
@@ -522,7 +519,7 @@ pub async fn handle_update_item(mut req: Request, env: Env) -> Result<Response> 
         existing,
     )
     .await?;
-    Response::ok("Updated")
+    Response::from_json(&serde_json::json!({ "message": "Updated" }))
 }
 
 pub async fn handle_post_comment(mut req: Request, env: Env) -> Result<Response> {
@@ -580,7 +577,7 @@ pub async fn handle_post_comment(mut req: Request, env: Env) -> Result<Response>
     .await?
     {
         Some(comment) => Response::from_json(&comment),
-        None => Response::ok("Deleted"),
+        None => Response::from_json(&serde_json::json!({ "message": "Deleted" })),
     }
 }
 
@@ -615,7 +612,7 @@ pub async fn handle_delete_comment(req: Request, env: Env) -> Result<Response> {
         )
         .await?;
     }
-    Response::ok("Deleted")
+    Response::from_json(&serde_json::json!({ "message": "Deleted" }))
 }
 
 pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Result<()> {
@@ -653,6 +650,15 @@ mod tests {
             "password",
             "$2y$12$invalidbcrpythashformat"
         ));
+    }
+
+    #[test]
+    fn test_verify_legacy_argon2_hash() {
+        // PHC test vector verified by argon2 0.5.3. Keep existing stored hashes usable.
+        let hash =
+            "$argon2id$v=19$m=256,t=2,p=1$c29tZXNhbHQ$nf65EOgLrQMR/uIPnA4rEsF5h7TKyQwu9U1bMCHGi/4";
+        assert!(verify_password("password", hash));
+        assert!(!verify_password("wrongpassword", hash));
     }
 
     #[test]

@@ -7,7 +7,7 @@ import AnimeCard from "./AnimeCard";
 // Mock lazyObserver
 const lazyCallbacks: (() => void)[] = [];
 vi.mock("../utils/lazyObserver", () => ({
-  observeLazy: vi.fn((el, cb) => {
+  observeLazy: vi.fn((_el, cb) => {
     lazyCallbacks.push(cb);
   }),
   unobserveLazy: vi.fn(),

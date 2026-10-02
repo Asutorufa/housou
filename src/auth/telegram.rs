@@ -203,7 +203,7 @@ pub async fn handle_telegram_unbind(req: Request, env: Env) -> Result<Response> 
     db.update_user(user.id, vec![UserUpdate::telegram_id(None)])
         .await?;
 
-    Response::ok("Telegram account disconnected")
+    Response::from_json(&serde_json::json!({ "message": "Telegram account disconnected" }))
 }
 
 #[cfg(test)]

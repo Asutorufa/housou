@@ -7,7 +7,7 @@ use base64::prelude::*;
 use coset::{iana, Algorithm, CborSerializable, CoseKey, KeyType, Label};
 use p256::ecdsa::signature::Signer;
 use p256::ecdsa::{SigningKey, VerifyingKey};
-use p256::elliptic_curve::rand_core::OsRng;
+use p256::elliptic_curve::Generate;
 use p256::SecretKey;
 
 use sha2::{Digest, Sha256};
@@ -128,7 +128,7 @@ fn make_client_data(challenge: &str, origin: &str, type_: &str) -> String {
 }
 
 fn make_cose_key(public_key: &VerifyingKey) -> Vec<u8> {
-    let encoded = public_key.to_encoded_point(false);
+    let encoded = public_key.to_sec1_point(false);
     let x = encoded.x().unwrap().as_slice();
     let y = encoded.y().unwrap().as_slice();
 
@@ -236,7 +236,7 @@ async fn test_registration_flow() {
     let client_data_json = make_client_data(&challenge, origin, "webauthn.create");
 
     // Generate key pair
-    let secret_key = SecretKey::random(&mut OsRng);
+    let secret_key = SecretKey::generate();
     let signing_key = SigningKey::from(secret_key);
     let public_key = VerifyingKey::from(&signing_key);
     let cose_key = make_cose_key(&public_key);
@@ -294,7 +294,7 @@ async fn test_login_flow() {
     let now = 2000000000;
 
     // Pre-register a key
-    let secret_key = SecretKey::random(&mut OsRng);
+    let secret_key = SecretKey::generate();
     let signing_key = SigningKey::from(secret_key.clone());
     let public_key = VerifyingKey::from(&signing_key);
     let cose_key = make_cose_key(&public_key);

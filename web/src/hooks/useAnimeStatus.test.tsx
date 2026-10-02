@@ -70,7 +70,6 @@ describe("useAnimeStatus", () => {
 
   it("should revert status on API failure", async () => {
     mockApiFetch.mockRejectedValue(new Error("API Error"));
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const { result } = renderHook(() =>
       useAnimeStatus({ title: "Test Anime", initialStatus: 1 }),
@@ -83,9 +82,58 @@ describe("useAnimeStatus", () => {
     // Should revert to original status
     expect(result.current.currentStatus).toBe(1);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Failed to update status",
-      expect.any(Error),
+    expect(result.current.error).toBe("API Error");
+  });
+  it("rolls back HTTP failures and exposes the error", async () => {
+    mockApiFetch.mockResolvedValue(
+      new Response("Unavailable", { status: 503 }),
     );
+    const onUpdate = vi.fn();
+    const { result } = renderHook(() =>
+      useAnimeStatus({ title: "Test Anime", initialStatus: 1, onUpdate }),
+    );
+    await act(async () => {
+      expect(await result.current.updateStatus("2")).toBe(false);
+    });
+    expect(result.current.currentStatus).toBe(1);
+    expect(result.current.error).toBe("Unavailable");
+    expect(onUpdate).not.toHaveBeenCalled();
+  });
+  it("prevents overlapping writes and accepts the next change after completion", async () => {
+    let complete!: (response: Response) => void;
+    mockApiFetch.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const { result } = renderHook(() =>
+      useAnimeStatus({ title: "Test Anime", initialStatus: 1 }),
+    );
+    let request!: Promise<boolean>;
+    act(() => {
+      request = result.current.updateStatus("2");
+    });
+    expect(result.current.updating).toBe(true);
+    await act(async () => {
+      expect(await result.current.updateStatus("3")).toBe(false);
+    });
+    expect(mockApiFetch).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      complete(Response.json({ message: "Updated" }));
+      await request;
+    });
+    expect(result.current.currentStatus).toBe(2);
+    expect(result.current.updating).toBe(false);
+  });
+  it("rejects invalid status values without sending a request", async () => {
+    const { result } = renderHook(() =>
+      useAnimeStatus({ title: "Test Anime" }),
+    );
+    await act(async () => {
+      expect(await result.current.updateStatus("6")).toBe(false);
+      expect(await result.current.updateStatus("2abc")).toBe(false);
+    });
+    expect(mockApiFetch).not.toHaveBeenCalled();
   });
 });

@@ -19,17 +19,17 @@ d1-orm = { path = "crates/d1-orm", features = ["d1"] }
 worker = { workspace = true, features = ["d1"] }
 url = "2.5"
 serde = { workspace = true }
-serde_derive = "1.0.228"
+serde_derive = "1.0.229"
 serde_json = { workspace = true }
 console_error_panic_hook = "0.1.7"
-regex = "1.12.3"
+regex = "1.13.1"
 js-sys = { workspace = true }
-futures = "0.3.32"
-argon2 = "0.5"
+futures = "0.3.34"
+argon2 = "0.6"
 rand_core = "0.10.1"
-uuid = { version = "1.23.1", features = ["v4", "rng", "js", "serde"] }
+uuid = { version = "1.26.1", features = ["v4", "rng", "js", "serde"] }
 cookie = "0.18"
-getrandom = { version = "0.4.2", features = ["wasm_js"] }
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
 async-trait = { workspace = true }
 tmdb_client = { git = "https://github.com/asutorufa/tmdb-client-rs.git", rev = "17adf938c1d9831dc150a73d59bf2ec6b186d23c", default-features = false, features = [
     "async",
@@ -38,7 +38,7 @@ rust-anilist = { git = "https://github.com/Asutorufa/rust-anilist", rev = "3529c
 sha2 = "0.11.0"
 hmac = "0.13.0"
 hex = "0.4.3"
-serde_repr = "0.1.20"
+serde_repr = "0.1.21"
 serde_urlencoded = "0.7.1"
 time = { version = "0.3", features = ["macros", "wasm-bindgen", "parsing"] }
 
@@ -47,7 +47,8 @@ opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
-strip = true
+# wasm-bindgen needs linker symbols to locate the externref table.
+strip = "debuginfo"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
@@ -56,13 +57,13 @@ wasm-opt = false
 members = ["crates/passkey", "crates/d1-orm"]
 
 [workspace.dependencies]
-js-sys = "0.3.88"
-rusqlite = { version = "0.39", features = ["bundled"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+js-sys = "0.3.106"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 async-trait = "0.1"
-tokio = { version = "1.52.1", features = ["full"] }
-worker = "0.8.1"
+tokio = { version = "1.53.1", features = ["full"] }
+worker = "0.8.7"
 
 [dev-dependencies]
 d1-orm = { path = "crates/d1-orm", features = ["sqlite"] }

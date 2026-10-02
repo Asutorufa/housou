@@ -8,24 +8,32 @@ export class ApiError extends Error {
   }
 }
 
-export const fetcher = async (url: string, init?: RequestInit) => {
-  const res = await fetch(url, init);
-  if (res.status === 401) {
-    const error = new ApiError("Unauthorized", 401);
-    throw error;
-  }
+export async function checkResponse(res: Response): Promise<Response> {
   if (!res.ok) {
-    let errorInfo = "";
+    let message =
+      res.status === 401 ? "Unauthorized" : `Request failed (${res.status})`;
     try {
-      errorInfo = await res.text();
+      const body = await res.text();
+      if (body) {
+        try {
+          const json: { error?: string; message?: string } = JSON.parse(body);
+          message = json.error || json.message || message;
+        } catch {
+          message = body;
+        }
+      }
     } catch {
-      // Ignore
+      // Preserve the HTTP error if its body cannot be read.
     }
-    throw new Error(
-      `Failed to fetch: ${res.status} ${res.statusText}${
-        errorInfo ? ` - ${errorInfo}` : ""
-      }`,
-    );
+    throw new ApiError(message, res.status);
   }
-  return res.json();
-};
+  return res;
+}
+
+export async function fetcher<T = unknown>(
+  url: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await checkResponse(await fetch(url, init));
+  return res.json() as Promise<T>;
+}

@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MetadataProvider } from "../contexts/MetadataContext";
-import { DisplayAnimeItem, MetadataRequest, SiteMeta } from "../types";
+import type { DisplayAnimeItem, MetadataRequest, SiteMeta } from "../types";
 import { isDev } from "../utils/envUtils";
 import AnimeCard from "./AnimeCard";
 
@@ -13,7 +13,7 @@ vi.mock("../utils/envUtils", () => ({
 // Mock lazyObserver
 let lazyCallback: (() => void) | null = null;
 vi.mock("../utils/lazyObserver", () => ({
-  observeLazy: vi.fn((el, cb) => {
+  observeLazy: vi.fn((_el, cb) => {
     lazyCallback = cb;
   }),
   unobserveLazy: vi.fn(),
@@ -174,26 +174,17 @@ describe("AnimeCard fetchMetadata", () => {
       });
     }
 
-    // Wait for the "No image" text which appears when loading is false and no cover image
-    // Note: With batching, failure of fetch returns null to promises.
+    // A failed metadata request offers a retry.
     await waitFor(
       () => {
-        expect(screen.getByText("No image")).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "再試行" }),
+        ).toBeInTheDocument();
       },
       { timeout: 1000 },
     );
 
-    // In context: catch(err) -> console.error("Batch fetch error:", err) -> resolve(null).
-    // So "Metadata error:" is NOT logged by AnimeCard.
-    // But "Batch fetch error:" IS logged by Context.
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Batch fetch error:",
-      expect.any(Error),
-    );
-    expect(consoleSpy).not.toHaveBeenCalledWith(
-      "Metadata error:",
-      expect.any(Error),
-    );
+    expect(consoleSpy).not.toHaveBeenCalled();
 
     consoleSpy.mockRestore();
   });
@@ -218,19 +209,18 @@ describe("AnimeCard fetchMetadata", () => {
       });
     }
 
-    // Wait for the "No image" text
+    // Wait for the retry action.
     await waitFor(
       () => {
-        expect(screen.getByText("No image")).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "再試行" }),
+        ).toBeInTheDocument();
       },
       { timeout: 1000 },
     );
 
-    // With batching, context catches error and returns null.
-    // So "Metadata error:" is NOT logged by AnimeCard.
-    // But "Batch fetch error:" IS logged by Context.
     expect(consoleSpy).toHaveBeenCalledWith(
-      "Batch fetch error:",
+      "Metadata error for Test Anime:",
       expect.any(Error),
     );
     consoleSpy.mockRestore();

@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSmartMetadata } from "../hooks/useSmartMetadata";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
@@ -18,15 +18,18 @@ interface AnimeCardProps {
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
 }
 
-export default function AnimeCard({
+function AnimeCard({
   item,
   siteMeta,
   selectedSite,
   onOpenModal,
 }: AnimeCardProps) {
-  /* REMOVED: internal state and loadMetadata */
   const [isEnabled, setIsEnabled] = useState(false);
-  const { metadata, loading } = useSmartMetadata(item, null, isEnabled);
+  const { metadata, loading, error, retry } = useSmartMetadata(
+    item,
+    null,
+    isEnabled,
+  );
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -99,13 +102,26 @@ export default function AnimeCard({
         ) : (
           !loading && (
             <div className="flex h-full w-full items-center justify-center text-sm text-gray-400 italic">
-              No image
+              {error ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    retry();
+                  }}
+                  className="underline"
+                >
+                  再試行
+                </button>
+              ) : (
+                "No image"
+              )}
             </div>
           )
         )}
 
         {/* Status Badge */}
-        {item.userStatus && item.userStatus > 0 && (
+        {item.userStatus !== undefined && item.userStatus > 0 && (
           <div className="absolute top-2 right-2 z-20">
             <span
               className={cn(
@@ -138,7 +154,17 @@ export default function AnimeCard({
             layoutId={`title-${item.title}`}
             className="line-clamp-2 text-sm leading-tight font-bold text-gray-900 md:text-base dark:text-gray-100"
           >
-            {item.title}
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              className="cursor-pointer text-left focus-visible:outline-2 focus-visible:outline-blue-500"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenModal(item.title, metadata);
+              }}
+            >
+              {item.title}
+            </button>
           </motion.h3>
         </div>
 
@@ -212,3 +238,5 @@ export default function AnimeCard({
     </motion.div>
   );
 }
+
+export default memo(AnimeCard);

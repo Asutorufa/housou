@@ -1,7 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useSmartMetadata } from "./useSmartMetadata";
-import { DisplayAnimeItem, UnifiedMetadata } from "../types";
+import type { DisplayAnimeItem, UnifiedMetadata } from "../types";
 import { isDev } from "../utils/envUtils";
 
 // Mock MetadataContext
@@ -24,6 +24,8 @@ vi.mock("../utils/envUtils", () => ({
 const mockItem: DisplayAnimeItem = {
   title: "Test Anime",
   type: "tv",
+  lang: "ja",
+  officialSite: "",
   begin: "2024-01-01",
   end: "",
   sites: [
@@ -34,21 +36,16 @@ const mockItem: DisplayAnimeItem = {
 };
 
 const mockMetadata: UnifiedMetadata = {
-  tmdb_id: 123,
-  mal_id: 456,
-  anilist_id: 789,
-  title: "Test Anime",
-  info: {
-    title: { native: "Test Anime" },
-    coverImage: { large: "" },
-    genres: [],
-    studios: [],
-    characters: [],
-    staff: [],
-    episodesList: [],
-    isFinished: false,
-    description: "Description",
-  },
+  id: "123",
+  title: { native: "Test Anime" },
+  coverImage: { large: "" },
+  genres: [],
+  studios: [],
+  characters: [],
+  staff: [],
+  episodesList: [],
+  isFinished: false,
+  description: "Description",
 };
 
 describe("useSmartMetadata", () => {
@@ -85,13 +82,16 @@ describe("useSmartMetadata", () => {
     });
 
     expect(result.current.metadata).toEqual(mockMetadata);
-    expect(mockFetchMetadata).toHaveBeenCalledWith({
-      title: "Test Anime",
-      tmdb_id: "123",
-      mal_id: "456",
-      anilist_id: "789",
-      year: 2024,
-    });
+    expect(mockFetchMetadata).toHaveBeenCalledWith(
+      {
+        title: "Test Anime",
+        tmdb_id: "123",
+        mal_id: "456",
+        anilist_id: "789",
+        year: 2024,
+      },
+      "normal",
+    );
   });
 
   it("should handle missing sites gracefully", async () => {
@@ -107,13 +107,16 @@ describe("useSmartMetadata", () => {
       expect(result.current.loading).toBe(false);
     });
 
-    expect(mockFetchMetadata).toHaveBeenCalledWith({
-      title: "Test Anime",
-      tmdb_id: undefined,
-      mal_id: undefined,
-      anilist_id: undefined,
-      year: 2024,
-    });
+    expect(mockFetchMetadata).toHaveBeenCalledWith(
+      {
+        title: "Test Anime",
+        tmdb_id: undefined,
+        mal_id: undefined,
+        anilist_id: undefined,
+        year: 2024,
+      },
+      "normal",
+    );
   });
 
   it("should handle missing begin date gracefully", async () => {
@@ -133,6 +136,7 @@ describe("useSmartMetadata", () => {
       expect.objectContaining({
         year: undefined,
       }),
+      "normal",
     );
   });
 
@@ -153,6 +157,7 @@ describe("useSmartMetadata", () => {
       expect.objectContaining({
         year: undefined,
       }),
+      "normal",
     );
   });
 

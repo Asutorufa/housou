@@ -1,67 +1,80 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import type { UserStatus } from "../types";
+import { checkResponse } from "../utils/fetcher";
 
 interface UseAnimeStatusProps {
   title: string;
   initialStatus?: UserStatus;
   beginAt?: string;
-  onUpdate?: () => void;
+  onUpdate?: () => void | Promise<unknown>;
 }
-
 export function useAnimeStatus({
   title,
-  initialStatus,
+  initialStatus = 0,
   beginAt,
   onUpdate,
 }: UseAnimeStatusProps) {
-  const { apiFetch } = useAuth();
-  const [optimisticStatus, setOptimisticStatus] = useState<UserStatus | null>(
-    null,
-  );
+  const { apiFetch, user } = useAuth();
+  const owner = `${user?.id ?? "guest"}:${title}`;
+  const [optimistic, setOptimistic] = useState<{
+    owner: string;
+    base: UserStatus;
+    status: UserStatus;
+  } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pending = useRef(false);
+  const currentStatus =
+    optimistic?.owner === owner && optimistic.base === initialStatus
+      ? optimistic.status
+      : initialStatus;
 
-  const currentStatus = optimisticStatus ?? initialStatus ?? 0;
-
-  const persistItem = async (
-    nextStatus: UserStatus,
-    errorLabel: string,
-  ): Promise<boolean> => {
-    if (!title) return false;
-
-    const previousStatus = optimisticStatus;
-    setOptimisticStatus(nextStatus);
-
-    // Convert ISO date string to Unix timestamp (milliseconds)
-    const beginAtTs = beginAt ? new Date(beginAt).getTime() : undefined;
-
-    try {
-      await apiFetch("/api/user/item", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          status: nextStatus,
-          begin_at: beginAtTs,
-        }),
-      });
-      // Optionally notify parent to refresh list
-      onUpdate?.();
-      return true;
-    } catch (err) {
-      console.error(`Failed to ${errorLabel}`, err);
-      // Revert on error
-      setOptimisticStatus(previousStatus);
+  const updateStatus = async (value: string): Promise<boolean> => {
+    const status = Number(value);
+    if (
+      !title ||
+      pending.current ||
+      !Number.isInteger(status) ||
+      status < 0 ||
+      status > 5
+    )
       return false;
+    pending.current = true;
+    setUpdating(true);
+    setError(null);
+    const previous = optimistic;
+    setOptimistic({ owner, base: initialStatus, status: status as UserStatus });
+    const beginAtTs = beginAt ? new Date(beginAt).getTime() : undefined;
+    try {
+      await checkResponse(
+        await apiFetch("/api/user/item", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            status,
+            begin_at: Number.isFinite(beginAtTs) ? beginAtTs : undefined,
+          }),
+        }),
+      );
+    } catch (err) {
+      setOptimistic(previous);
+      setError(
+        err instanceof Error ? err.message : "状態の更新に失敗しました。",
+      );
+      return false;
+    } finally {
+      pending.current = false;
+      setUpdating(false);
     }
+    // A refresh failure must not undo a write that the server already accepted.
+    try {
+      await onUpdate?.();
+    } catch {
+      setError("保存しましたが、一覧を更新できませんでした。");
+    }
+    return true;
   };
-
-  const updateStatus = async (statusString: string): Promise<boolean> => {
-    const status = parseInt(statusString) as UserStatus;
-    return persistItem(status, "update status");
-  };
-
-  return {
-    currentStatus,
-    updateStatus,
-  };
+  return { currentStatus, updateStatus, updating, error };
 }

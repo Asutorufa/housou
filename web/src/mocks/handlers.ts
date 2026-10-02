@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import type { UnifiedMetadata } from "../types";
 import { hashPassword } from "../utils/authUtils";
 
 export const handlers = [
@@ -68,7 +69,7 @@ export const handlers = [
       episodes: 12,
       genres: ["Action", "Comedy"],
       description: "This is a test description for the anime.",
-      studios: ["Studio Test"],
+      studios: [{ name: "Studio Test" }],
       characters: [],
       staff: [],
       episodesList: [
@@ -80,7 +81,7 @@ export const handlers = [
       currentSeason: 1,
       runtime: 24,
       contentRating: "PG-13",
-    });
+    } satisfies UnifiedMetadata);
   }),
 
   http.post("/api/metadata", async ({ request }) => {
@@ -103,7 +104,7 @@ export const handlers = [
         episodes: 12,
         genres: ["Action", "Slice of Life"],
         description: `This is batch item ${idx} for ${req.title}`,
-        studios: ["Studio Batch"],
+        studios: [{ name: "Studio Batch" }],
         characters: [],
         staff: [],
         episodesList: [],
@@ -112,7 +113,7 @@ export const handlers = [
         currentSeason: 1,
         runtime: 24,
         contentRating: "PG-13",
-      },
+      } satisfies UnifiedMetadata,
     }));
     return HttpResponse.json(response);
   }),

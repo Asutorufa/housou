@@ -85,7 +85,7 @@ pub async fn handle_github_unbind(req: Request, env: Env) -> Result<Response> {
     db.update_user(user.id, vec![UserUpdate::github_id(None)])
         .await?;
 
-    Response::ok("GitHub account disconnected")
+    Response::from_json(&serde_json::json!({ "message": "GitHub account disconnected" }))
 }
 
 async fn exchange_code_for_token(

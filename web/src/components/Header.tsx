@@ -1,15 +1,17 @@
 import { Search, User as UserIcon, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { lazy, useMemo, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { glassPillClassName, iconButtonClassName } from "../styles/uiClasses";
 import type { Config } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { getSeasonOptions } from "../utils/season";
-import AuthModal from "./AuthModal";
 import CustomSelect from "./CustomSelect";
-import ProfileModal from "./ProfileModal";
+import DeferredDialog from "./DeferredDialog";
 import UserMenu from "./UserMenu";
+
+const AuthModal = lazy(() => import("./AuthModal"));
+const ProfileModal = lazy(() => import("./ProfileModal"));
 
 const filterSelectTriggerClassName =
   "min-w-[80px] sm:min-w-[90px] max-w-[120px]";
@@ -235,6 +237,7 @@ export default function Header({
                       />
                     ) : (
                       <button
+                        aria-label="ログイン"
                         onClick={() => setIsAuthModalOpen(true)}
                         className={`${iconButtonClassName} border border-gray-200 bg-white shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700`}
                       >
@@ -252,18 +255,22 @@ export default function Header({
         </AnimatePresence>
       </div>
 
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        githubEnabled={config?.github_enabled}
-        telegramBotName={config?.telegram_bot_name}
-      />
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        githubEnabled={config?.github_enabled}
-        telegramBotName={config?.telegram_bot_name}
-      />
+      <DeferredDialog open={isAuthModalOpen}>
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          githubEnabled={config?.github_enabled}
+          telegramBotName={config?.telegram_bot_name}
+        />
+      </DeferredDialog>
+      <DeferredDialog open={isProfileModalOpen && loggedIn}>
+        <ProfileModal
+          isOpen={isProfileModalOpen && loggedIn}
+          onClose={() => setIsProfileModalOpen(false)}
+          githubEnabled={config?.github_enabled}
+          telegramBotName={config?.telegram_bot_name}
+        />
+      </DeferredDialog>
     </header>
   );
 }

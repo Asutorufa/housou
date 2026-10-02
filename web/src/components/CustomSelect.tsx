@@ -5,6 +5,7 @@ import { focusRingClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
 export interface CustomSelectProps {
+  disabled?: boolean;
   value: string;
   onValueChange: (value: string) => void;
   options: { value: string; label: string }[];
@@ -18,6 +19,7 @@ export interface CustomSelectProps {
 }
 
 export default function CustomSelect({
+  disabled,
   value,
   onValueChange,
   options,
@@ -31,6 +33,7 @@ export default function CustomSelect({
 }: CustomSelectProps) {
   return (
     <Select.Root
+      disabled={disabled}
       value={value}
       onValueChange={onValueChange}
       open={isOpen}

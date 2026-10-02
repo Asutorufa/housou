@@ -4,11 +4,14 @@ import type { DisplayAnimeItem, UnifiedMetadata } from "../types";
 import { isDev } from "../utils/envUtils";
 
 export function useSmartMetadata(
-  item: DisplayAnimeItem,
+  item: Pick<DisplayAnimeItem, "title"> &
+    Partial<Pick<DisplayAnimeItem, "sites" | "begin">>,
   initialMetadata: UnifiedMetadata | null = null,
   enabled: boolean = true,
+  priority: "normal" | "detail" = "normal",
 ) {
   const { fetchMetadata } = useMetadata();
+  const [attempt, setAttempt] = useState(0);
   const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
   const malSite = item.sites?.find((s) => s.site === "mal");
   const anilistSite = item.sites?.find(
@@ -37,15 +40,24 @@ export function useSmartMetadata(
   const [fetchedResult, setFetchedResult] = useState<{
     key: string;
     metadata: UnifiedMetadata | null;
+    attempt: number;
+    error?: string;
   } | null>(null);
 
   const metadata =
     initialMetadata ||
-    (fetchedResult?.key === requestKey ? fetchedResult.metadata : null);
-  const loading = requestKey !== null && fetchedResult?.key !== requestKey;
+    (fetchedResult?.key === requestKey && fetchedResult.attempt === attempt
+      ? fetchedResult.metadata
+      : null);
+  const loading =
+    requestKey !== null &&
+    (fetchedResult?.key !== requestKey || fetchedResult.attempt !== attempt);
 
   useEffect(() => {
-    if (!requestKey || fetchedResult?.key === requestKey) {
+    if (
+      !requestKey ||
+      (fetchedResult?.key === requestKey && fetchedResult.attempt === attempt)
+    ) {
       return;
     }
 
@@ -54,17 +66,21 @@ export function useSmartMetadata(
 
     async function load() {
       try {
-        const data = await fetchMetadata({
-          title: item.title,
-          tmdb_id: tmdbSite?.id,
-          mal_id: malSite?.id,
-          anilist_id: anilistSite?.id,
-          year,
-        });
+        const data = await fetchMetadata(
+          {
+            title: item.title,
+            tmdb_id: tmdbSite?.id,
+            mal_id: malSite?.id,
+            anilist_id: anilistSite?.id,
+            year,
+          },
+          priority,
+        );
 
         if (isMounted) {
           setFetchedResult({
             key: currentRequestKey,
+            attempt,
             metadata: data || null,
           });
         }
@@ -75,7 +91,12 @@ export function useSmartMetadata(
         if (isMounted) {
           setFetchedResult({
             key: currentRequestKey,
+            attempt,
             metadata: null,
+            error:
+              err instanceof Error
+                ? err.message
+                : "メタデータを読み込めませんでした。",
           });
         }
       }
@@ -95,7 +116,19 @@ export function useSmartMetadata(
     malSite?.id,
     anilistSite?.id,
     year,
+    attempt,
+    fetchedResult?.attempt,
+    priority,
   ]);
 
-  return { metadata, loading };
+  const error =
+    fetchedResult?.key === requestKey && fetchedResult.attempt === attempt
+      ? fetchedResult.error
+      : undefined;
+  return {
+    metadata,
+    loading,
+    error,
+    retry: () => setAttempt((value) => value + 1),
+  };
 }

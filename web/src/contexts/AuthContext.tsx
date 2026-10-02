@@ -1,19 +1,20 @@
 import {
-  startAuthentication,
-  startRegistration,
-} from "@simplewebauthn/browser";
-import { createContext, useCallback, useContext, type ReactNode } from "react";
-import useSWR from "swr";
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  type ReactNode,
+} from "react";
+import useSWR, { useSWRConfig } from "swr";
+import {
+  createAuthApi,
+  type ApiFetch,
+  type ProfileUpdate,
+  type PasswordUpdate,
+} from "../api/auth";
 import type { LoginData, RegisterData, TelegramAuthData, User } from "../types";
-import { hashPassword } from "../utils/authUtils";
-import { fetcher } from "../utils/fetcher";
-
-export interface PasskeySummary {
-  id: string;
-  name: string;
-  createdAt: number;
-  lastUsedAt: number;
-}
+import { ApiError, checkResponse, fetcher } from "../utils/fetcher";
+export type { PasskeySummary } from "../api/auth";
 
 interface AuthContextType {
   user: User | undefined;
@@ -22,43 +23,30 @@ interface AuthContextType {
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
-  updateProfile: (data: {
-    username: string;
-    email?: string;
-    avatar_url?: string;
-  }) => Promise<User>;
-  changePassword: (data: {
-    old_password?: string;
-    new_password: string;
-  }) => Promise<void>;
-  apiFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  updateProfile: (data: ProfileUpdate) => Promise<User>;
+  changePassword: (data: PasswordUpdate) => Promise<void>;
+  apiFetch: ApiFetch;
   loginPasskey: () => Promise<void>;
-  registerPasskey: (name?: string) => Promise<void>;
-  listPasskeys: () => Promise<PasskeySummary[]>;
-  deletePasskey: (id: string) => Promise<void>;
-  renamePasskey: (id: string, name: string) => Promise<void>;
+  registerPasskey: ReturnType<typeof createAuthApi>["registerPasskey"];
+  listPasskeys: ReturnType<typeof createAuthApi>["listPasskeys"];
+  deletePasskey: ReturnType<typeof createAuthApi>["deletePasskey"];
+  renamePasskey: ReturnType<typeof createAuthApi>["renamePasskey"];
   bindGithub: () => void;
   unbindGithub: () => Promise<void>;
   loginTelegram: (data: TelegramAuthData) => Promise<void>;
   bindTelegram: (data: TelegramAuthData) => Promise<void>;
   unbindTelegram: () => Promise<void>;
 }
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const handleResponse = async (res: Response, defaultError: string) => {
-  if (!res.ok) {
-    let message = defaultError;
-    try {
-      const json = await res.json();
-      if (json.error) message = json.error;
-    } catch {
-      // Ignore
-    }
-    throw new Error(message);
+async function fetchSession(): Promise<User | null> {
+  try {
+    return await fetcher<User>("/api/auth/me");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return null;
+    throw error;
   }
-  return res.json();
-};
+}
 
 export function AuthProvider({
   children,
@@ -68,258 +56,116 @@ export function AuthProvider({
   enabled?: boolean;
 }) {
   const {
-    data: user,
+    data: session,
     mutate,
     isLoading,
-  } = useSWR<User>(enabled ? "/api/auth/me" : null, fetcher, {
+  } = useSWR(enabled ? "/api/auth/me" : null, fetchSession, {
     shouldRetryOnError: false,
     revalidateOnFocus: false,
   });
+  const { mutate: mutateCache } = useSWRConfig();
+  const user = session ?? undefined;
 
-  const loggedIn = !!user;
-  const loading = isLoading;
+  const clearPrivateCache = useCallback(async () => {
+    await mutateCache(
+      (key) => Array.isArray(key) && key[0] === "private",
+      undefined,
+      { revalidate: false },
+    );
+  }, [mutateCache]);
 
-  const login = useCallback(
-    async (data: LoginData) => {
-      const hashedPassword = await hashPassword(data.password);
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, password: hashedPassword }),
-      });
-      const user = await handleResponse(res, "Login failed");
-      mutate(user, false);
+  const setSession = useCallback(
+    async (next: User | null) => {
+      if (next?.id !== user?.id) await clearPrivateCache();
+      await mutate(next, false);
     },
-    [mutate],
+    [mutate, user?.id, clearPrivateCache],
   );
 
-  const register = useCallback(
-    async (data: RegisterData) => {
-      const hashedPassword = await hashPassword(data.password);
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, password: hashedPassword }),
-      });
-      const user = await handleResponse(res, "Registration failed");
-      mutate(user, false);
-    },
-    [mutate],
-  );
-
-  const apiFetch = useCallback(
-    async (url: string, init?: RequestInit) => {
+  const apiFetch = useCallback<ApiFetch>(
+    async (url, init) => {
       const res = await fetch(url, init);
-      if (res.status === 401) {
-        mutate(undefined, false);
+      // A 401 can also mean invalid credentials for a mutation. Check the session
+      // before clearing it, so an incorrect old password does not log the user out.
+      if (
+        res.status === 401 &&
+        ![
+          "/api/auth/login",
+          "/api/auth/register",
+          "/api/auth/telegram/login",
+        ].includes(url)
+      ) {
+        try {
+          const current = await fetchSession();
+          await setSession(current);
+        } catch {
+          /* A failed session check cannot prove that the user logged out. */
+        }
       }
-      return res;
+      return checkResponse(res);
     },
-    [mutate],
+    [setSession],
   );
 
-  const logout = useCallback(async () => {
-    await apiFetch("/api/auth/logout", { method: "POST" });
-    mutate(undefined, false);
-  }, [apiFetch, mutate]);
-
-  const updateProfile = useCallback(
-    async (data: { username: string; email?: string; avatar_url?: string }) => {
-      const res = await apiFetch("/api/auth/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const user = await handleResponse(res, "Update failed");
-      mutate(user, false);
-      return user;
-    },
-    [apiFetch, mutate],
+  const api = useMemo(() => createAuthApi(apiFetch), [apiFetch]);
+  const value = useMemo<AuthContextType>(
+    () => ({
+      user,
+      loading: isLoading,
+      loggedIn: !!user,
+      apiFetch,
+      login: async (data) => {
+        await setSession(await api.login(data));
+      },
+      register: async (data) => {
+        await setSession(await api.register(data));
+      },
+      logout: async () => {
+        await api.logout();
+        await setSession(null);
+      },
+      updateProfile: async (data) => {
+        const updated = await api.updateProfile(data);
+        await setSession(updated);
+        return updated;
+      },
+      changePassword: async (data) => {
+        await api.changePassword(data);
+        await mutate();
+      },
+      loginPasskey: async () => {
+        await setSession(await api.loginPasskey());
+      },
+      registerPasskey: api.registerPasskey,
+      listPasskeys: api.listPasskeys,
+      deletePasskey: api.deletePasskey,
+      renamePasskey: api.renamePasskey,
+      bindGithub: () => {
+        window.location.href = "/api/auth/github/bind";
+      },
+      unbindGithub: async () => {
+        await api.unbindGithub();
+        await mutate();
+      },
+      loginTelegram: async (data) => {
+        await setSession(await api.loginTelegram(data));
+      },
+      bindTelegram: async (data) => {
+        await setSession(await api.bindTelegram(data));
+      },
+      unbindTelegram: async () => {
+        await api.unbindTelegram();
+        await mutate();
+      },
+    }),
+    [user, isLoading, apiFetch, api, setSession, mutate],
   );
-
-  const changePassword = useCallback(
-    async (data: { old_password?: string; new_password: string }) => {
-      const hashedOld = data.old_password
-        ? await hashPassword(data.old_password)
-        : undefined;
-      const hashedNew = await hashPassword(data.new_password);
-
-      const res = await apiFetch("/api/auth/password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          old_password: hashedOld,
-          new_password: hashedNew,
-        }),
-      });
-
-      await handleResponse(res, "Password update failed");
-    },
-    [apiFetch],
-  );
-
-  const loginPasskey = useCallback(async () => {
-    // 1. Get options from server
-    const resp = await fetch("/api/auth/passkey/login/start", {
-      method: "POST",
-    });
-    if (!resp.ok) throw new Error("Failed to start passkey login");
-    const options = await resp.json();
-
-    // 2. Pass options to browser
-    let asseResp;
-    try {
-      asseResp = await startAuthentication(options);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
-
-    // 3. Send response to server
-    const verificationResp = await fetch("/api/auth/passkey/login/finish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(asseResp),
-    });
-
-    if (!verificationResp.ok) {
-      const json = await verificationResp.json().catch(() => ({}));
-      throw new Error(json.error || "Passkey verification failed");
-    }
-
-    const user = await verificationResp.json();
-    mutate(user, false);
-  }, [mutate]);
-
-  const registerPasskey = useCallback(async (name?: string) => {
-    const resp = await fetch("/api/auth/passkey/register/start", {
-      method: "POST",
-    });
-    if (!resp.ok) throw new Error("Failed to start passkey registration");
-    const options = await resp.json();
-
-    let attResp;
-    try {
-      attResp = await startRegistration(options);
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
-
-    const verificationResp = await fetch("/api/auth/passkey/register/finish", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...attResp, name }),
-    });
-
-    if (!verificationResp.ok) {
-      const json = await verificationResp.json().catch(() => ({}));
-      throw new Error(json.error || "Passkey registration failed");
-    }
-  }, []);
-
-  const listPasskeys = useCallback(async () => {
-    const res = await fetch("/api/auth/passkey");
-    if (!res.ok) throw new Error("Failed to list passkeys");
-    return res.json();
-  }, []);
-
-  const deletePasskey = useCallback(async (id: string) => {
-    const res = await fetch(`/api/auth/passkey?id=${id}`, {
-      method: "DELETE",
-    });
-    if (!res.ok) throw new Error("Failed to delete passkey");
-  }, []);
-
-  const renamePasskey = useCallback(async (id: string, name: string) => {
-    const res = await fetch("/api/auth/passkey", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, name }),
-    });
-    if (!res.ok) throw new Error("Failed to rename passkey");
-  }, []);
-
-  const bindGithub = useCallback(() => {
-    window.location.href = "/api/auth/github/bind";
-  }, []);
-
-  const unbindGithub = useCallback(async () => {
-    const res = await apiFetch("/api/auth/github", {
-      method: "DELETE",
-    });
-    await handleResponse(res, "Unbind failed");
-    mutate();
-  }, [apiFetch, mutate]);
-
-  const loginTelegram = useCallback(
-    async (data: TelegramAuthData) => {
-      const res = await fetch("/api/auth/telegram/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const user = await handleResponse(res, "Login failed");
-      mutate(user, false);
-    },
-    [mutate],
-  );
-
-  const bindTelegram = useCallback(
-    async (data: TelegramAuthData) => {
-      const res = await apiFetch("/api/auth/telegram/bind", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      const user = await handleResponse(res, "Bind failed");
-      mutate(user, false);
-    },
-    [apiFetch, mutate],
-  );
-
-  const unbindTelegram = useCallback(async () => {
-    const res = await apiFetch("/api/auth/telegram", {
-      method: "DELETE",
-    });
-    await handleResponse(res, "Unbind failed");
-    mutate();
-  }, [apiFetch, mutate]);
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        loggedIn,
-        login,
-        register,
-        logout,
-        updateProfile,
-        changePassword,
-        apiFetch,
-        loginPasskey,
-        registerPasskey,
-        listPasskeys,
-        deletePasskey,
-        renamePasskey,
-        bindGithub,
-        unbindGithub,
-        loginTelegram,
-        bindTelegram,
-        unbindTelegram,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-/* eslint-disable react-refresh/only-export-components */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
+  if (!context) throw new Error("useAuth must be used within an AuthProvider");
   return context;
 }

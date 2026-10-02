@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DetailsModal from ".";
-import { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
+import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 
 // Mock AuthContext
 vi.mock("../../contexts/AuthContext", () => ({

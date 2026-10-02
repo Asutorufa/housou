@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { lazy, useCallback, useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import AttributionModal from "./components/AttributionModal";
-import DetailsModal from "./components/DetailsModal";
 import Footer from "./components/Footer";
+import DeferredDialog from "./components/DeferredDialog";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
 import { useAnimeData } from "./hooks/useAnimeData";
 import type { UnifiedMetadata } from "./types";
+
+const AttributionModal = lazy(() => import("./components/AttributionModal"));
+const DetailsModal = lazy(() => import("./components/DetailsModal"));
 
 export default function App() {
   const {
@@ -25,14 +27,20 @@ export default function App() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
 
-  const [cachedInfo, setCachedInfo] = useState<UnifiedMetadata | null>(null);
+  const [cachedInfo, setCachedInfo] = useState<{
+    title: string;
+    info: UnifiedMetadata | null;
+  } | null>(null);
   const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
   // Derive selected anime directly from URL
   const params = new URLSearchParams(search);
   const animeTitle = params.get("anime");
   const selectedAnime = animeTitle
-    ? { title: animeTitle, info: cachedInfo }
+    ? {
+        title: animeTitle,
+        info: cachedInfo?.title === animeTitle ? cachedInfo.info : null,
+      }
     : null;
 
   // We delay opening the modal on initial deep-link load until the grid is mounted.
@@ -45,15 +53,18 @@ export default function App() {
     }
   }, [loading]);
 
-  const handleOpenModal = (title: string, info: UnifiedMetadata | null) => {
-    // Cache info for immediate presentation in the modal
-    setCachedInfo(info);
+  const handleOpenModal = useCallback(
+    (title: string, info: UnifiedMetadata | null) => {
+      // Cache info for immediate presentation in the modal
+      setCachedInfo({ title, info });
 
-    // Update URL
-    const params = new URLSearchParams(search);
-    params.set("anime", title);
-    setLocation(`${location}?${params.toString()}`);
-  };
+      // Update URL
+      const params = new URLSearchParams(search);
+      params.set("anime", title);
+      setLocation(`${location}?${params.toString()}`);
+    },
+    [location, search, setLocation],
+  );
 
   const handleCloseModal = () => {
     // Clear cache
@@ -130,21 +141,24 @@ export default function App() {
         <Footer onOpenAttribution={() => setIsAttributionOpen(true)} />
       </main>
 
-      <DetailsModal
-        isOpen={!!selectedAnime && isGridReady}
-        onClose={handleCloseModal}
-        anime={selectedAnime}
-        items={items}
-        siteMeta={config?.site_meta}
-        authEnabled={!!config?.auth_enabled}
-        onUpdate={() => mutateStatuses()}
-      />
-
-      <AttributionModal
-        isOpen={isAttributionOpen}
-        onClose={() => setIsAttributionOpen(false)}
-        config={config}
-      />
+      <DeferredDialog open={!!selectedAnime}>
+        <DetailsModal
+          isOpen={!!selectedAnime && isGridReady}
+          onClose={handleCloseModal}
+          anime={selectedAnime}
+          items={items}
+          siteMeta={config?.site_meta}
+          authEnabled={!!config?.auth_enabled}
+          onUpdate={() => mutateStatuses()}
+        />
+      </DeferredDialog>
+      <DeferredDialog open={isAttributionOpen}>
+        <AttributionModal
+          isOpen={isAttributionOpen}
+          onClose={() => setIsAttributionOpen(false)}
+          config={config}
+        />
+      </DeferredDialog>
     </div>
   );
 }

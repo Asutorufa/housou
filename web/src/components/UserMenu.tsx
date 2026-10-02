@@ -1,6 +1,6 @@
 import { LogOut, Settings, User as UserIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { focusRingClassName, iconButtonClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
@@ -46,10 +46,14 @@ export default function UserMenu({
   onOpenProfile,
 }: UserMenuProps) {
   const { user, logout } = useAuth();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   return (
     <div className="relative">
       <motion.button
+        aria-label="ユーザーメニュー"
+        aria-expanded={isOpen}
         onClick={() => onOpenChange(!isOpen)}
         className={cn(
           `${iconButtonClassName} overflow-hidden border border-gray-200 bg-white shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700`,
@@ -105,11 +109,29 @@ export default function UserMenu({
                 label="ログアウト"
                 icon={<LogOut size={16} />}
                 tone="danger"
-                onClick={() => {
-                  logout();
-                  onOpenChange(false);
+                onClick={async () => {
+                  if (loggingOut) return;
+                  setLoggingOut(true);
+                  setLogoutError(null);
+                  try {
+                    await logout();
+                    onOpenChange(false);
+                  } catch (error) {
+                    setLogoutError(
+                      error instanceof Error
+                        ? error.message
+                        : "ログアウトに失敗しました。",
+                    );
+                  } finally {
+                    setLoggingOut(false);
+                  }
                 }}
               />
+              {logoutError && (
+                <p role="alert" className="p-2 text-xs text-red-500">
+                  {logoutError}
+                </p>
+              )}
             </motion.div>
           </>
         )}

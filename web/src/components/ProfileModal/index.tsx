@@ -30,18 +30,21 @@ export default function ProfileModal({
   const { user, updateProfile } = useAuth();
   const [activeTab, setActiveTab] = useState("profile");
   const [direction, setDirection] = useState(0);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const [contentHeight, setContentHeight] = useState<number | "auto">("auto");
 
-  useEffect(() => {
-    const el = contentRef.current;
+  const contentRef = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
     if (!el) return;
-    const observer = new ResizeObserver(() => {
-      setContentHeight(el.offsetHeight);
-    });
+    setContentHeight(el.offsetHeight);
+    const observer = new ResizeObserver(() =>
+      setContentHeight(el.offsetHeight),
+    );
     observer.observe(el);
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, []);
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
   const handleTabChange = useCallback(
     (value: string) => {
@@ -72,7 +75,7 @@ export default function ProfileModal({
                 animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
                 exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-48%" }}
                 transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="fixed left-[50%] top-[50%] z-50 flex w-full max-w-md sm:max-w-xl flex-col rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 focus:outline-none max-h-[85vh]"
+                className="fixed left-[50%] top-[50%] z-50 flex w-full max-w-md sm:max-w-xl flex-col rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900 focus:outline-none max-h-[85dvh]"
               >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 pt-5 pb-0">
@@ -85,7 +88,11 @@ export default function ProfileModal({
                 </div>
 
                 {/* Tabs */}
-                <Tabs.Root value={activeTab} onValueChange={handleTabChange}>
+                <Tabs.Root
+                  value={activeTab}
+                  onValueChange={handleTabChange}
+                  className="flex min-h-0 flex-col"
+                >
                   <div className="mx-6 mt-4 mb-0 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
                     <Tabs.List className="relative grid grid-cols-4">
                       <motion.div
@@ -139,7 +146,7 @@ export default function ProfileModal({
 
                   {/* Animated content area */}
                   <motion.div
-                    className="overflow-hidden"
+                    className="min-h-0 overflow-y-auto"
                     animate={{ height: contentHeight }}
                     transition={{
                       type: "spring",

@@ -3,15 +3,19 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import useSWR from "swr";
 import { type PasskeySummary, useAuth } from "../../contexts/AuthContext";
-import { fetcher } from "../../utils/fetcher";
 
 export default function PasskeyTab() {
-  const { registerPasskey, deletePasskey, renamePasskey } = useAuth();
+  const { user, apiFetch, registerPasskey, deletePasskey, renamePasskey } =
+    useAuth();
   const {
     data: passkeys = [],
     isLoading: isListLoading,
+    error: listError,
     mutate,
-  } = useSWR<PasskeySummary[]>("/api/auth/passkey", fetcher);
+  } = useSWR<PasskeySummary[]>(
+    user ? ["private", user.id, "/api/auth/passkey"] : null,
+    async ([, , url]: [string, number, string]) => (await apiFetch(url)).json(),
+  );
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,9 +108,12 @@ export default function PasskeyTab() {
         </button>
       </div>
 
-      {error && (
+      {(error || listError) && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-500 dark:bg-red-900/20">
-          {error}
+          {error ||
+            (listError instanceof Error
+              ? listError.message
+              : "Failed to list passkeys")}
         </div>
       )}
 

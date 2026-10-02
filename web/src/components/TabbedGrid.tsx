@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useResponsiveColumns } from "../hooks/useResponsiveColumns";
 import { glassPillClassName } from "../styles/uiClasses";
@@ -50,7 +50,7 @@ const COLUMNS_BREAKPOINTS = {
   0: 2, // default
 };
 
-export default function TabbedGrid({
+function TabbedGrid({
   items,
   siteMeta,
   selectedSite,
@@ -227,3 +227,5 @@ export default function TabbedGrid({
     </div>
   );
 }
+
+export default memo(TabbedGrid);

@@ -102,13 +102,24 @@ function DetailsModalContent({
   // Use smart hook for metadata
   // We pass anime.info as initial data if it exists.
   // Enable the hook if we found the item OR if we have the title from URL
-  const { metadata: info, loading } = useSmartMetadata(
-    originalItem || ({ title } as DisplayAnimeItem), // Use a dummy item with just title if originalItem isn't loaded yet
+  const {
+    metadata: info,
+    loading,
+    error: metadataError,
+    retry,
+  } = useSmartMetadata(
+    originalItem || { title }, // Use a dummy item with just title if originalItem isn't loaded yet
     anime?.info || null,
     !!originalItem || !!title,
+    "detail",
   );
 
-  const { currentStatus, updateStatus } = useAnimeStatus({
+  const {
+    currentStatus,
+    updateStatus,
+    updating,
+    error: statusError,
+  } = useAnimeStatus({
     title,
     initialStatus: originalItem?.userStatus,
     beginAt: originalItem?.begin,
@@ -145,6 +156,7 @@ function DetailsModalContent({
       >
         <Dialog.Close asChild>
           <button
+            aria-label="作品詳細を閉じる"
             className={`absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 ${focusRingClassName}`}
           >
             <X size={24} />
@@ -186,6 +198,7 @@ function DetailsModalContent({
               {loggedIn && (
                 <div className="mb-4">
                   <CustomSelect
+                    disabled={updating}
                     value={currentStatus.toString()}
                     onValueChange={updateStatus}
                     options={Object.entries(USER_STATUS_LABELS).map(
@@ -204,6 +217,12 @@ function DetailsModalContent({
                 </div>
               )}
 
+              {statusError && (
+                <p role="alert" className="text-sm text-red-500">
+                  {statusError}
+                </p>
+              )}
+
               {loading && !info ? (
                 <div className="flex flex-wrap gap-2">
                   <Skeleton className="h-6 w-16 rounded-md" />
@@ -215,6 +234,14 @@ function DetailsModalContent({
               )}
             </div>
 
+            {metadataError && (
+              <div role="alert" className="text-sm text-red-500">
+                {metadataError}{" "}
+                <button onClick={retry} className="underline">
+                  再試行
+                </button>
+              </div>
+            )}
             {loading && !info ? (
               <div className="space-y-8">
                 {/* Titles & Links Placeholder */}

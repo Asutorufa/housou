@@ -30,7 +30,7 @@ export function useAnimeData() {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
-  const { loggedIn, apiFetch } = useAuth();
+  const { user, loggedIn, apiFetch } = useAuth();
 
   const selectedYear = selections.year;
   const selectedSeason = selections.season;
@@ -60,9 +60,13 @@ export function useAnimeData() {
     Record<string, UserItemSummary>
   >(
     loggedIn && config?.auth_enabled && itemsUrl && fetchedItems?.length
-      ? `/api/user/status?year=${selectedYear}&season=${selectedSeason}`
+      ? [
+          "private",
+          user?.id,
+          `/api/user/status?${new URLSearchParams({ year: selectedYear, season: selectedSeason })}`,
+        ]
       : null,
-    async (url: string) => {
+    async ([, , url]: [string, number, string]) => {
       const res = await apiFetch(url, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
@@ -101,7 +105,12 @@ export function useAnimeData() {
       );
     }
 
-    if (selectedStatus && selectedStatus !== "all") {
+    if (
+      loggedIn &&
+      config?.auth_enabled &&
+      selectedStatus &&
+      selectedStatus !== "all"
+    ) {
       const status = parseInt(selectedStatus, 10);
       if (!isNaN(status)) {
         filtered = filtered.filter((item) => {
@@ -125,7 +134,14 @@ export function useAnimeData() {
     }
 
     return filtered;
-  }, [items, selectedSite, selectedStatus, deferredSearchQuery]);
+  }, [
+    items,
+    selectedSite,
+    selectedStatus,
+    deferredSearchQuery,
+    loggedIn,
+    config?.auth_enabled,
+  ]);
 
   const loading = initLoading || itemsLoading;
 

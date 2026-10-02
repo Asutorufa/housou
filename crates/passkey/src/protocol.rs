@@ -6,7 +6,6 @@ use coset::cbor::value::Value;
 use coset::{CborSerializable, CoseKey, Label};
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
-use p256::EncodedPoint;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -149,9 +148,11 @@ fn verify_p256_signature(
         ));
     }
 
-    let encoded_point =
-        EncodedPoint::from_affine_coordinates(x.as_slice().into(), y.as_slice().into(), false);
-    let verifying_key = VerifyingKey::from_encoded_point(&encoded_point)
+    let mut encoded_point = [0u8; 65];
+    encoded_point[0] = 0x04; // Uncompressed SEC1 point: prefix, x, y.
+    encoded_point[1..33].copy_from_slice(x);
+    encoded_point[33..].copy_from_slice(y);
+    let verifying_key = VerifyingKey::from_sec1_bytes(&encoded_point)
         .map_err(|e| PasskeyError::InternalError(format!("Invalid P-256 key: {e}")))?;
 
     let signature = Signature::from_der(signature_der)

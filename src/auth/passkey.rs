@@ -77,7 +77,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
         .await
         .map_err(|e| Error::RustError(e.to_string()))?;
 
-    Response::ok("Passkey registered")
+    Response::from_json(&serde_json::json!({ "message": "Passkey registered" }))
 }
 
 pub async fn handle_login_start(req: Request, env: Env) -> Result<Response> {
@@ -172,7 +172,7 @@ pub async fn handle_delete(req: Request, env: Env) -> Result<Response> {
             db.delete_passkey(user.id.to_string(), &cred_id)
                 .await
                 .map_err(|e| Error::RustError(e.to_string()))?;
-            Response::ok("Deleted")
+            Response::from_json(&serde_json::json!({ "message": "Deleted" }))
         }
         None => Response::error("Missing id", 400),
     }
@@ -206,7 +206,7 @@ pub async fn handle_rename(mut req: Request, env: Env) -> Result<Response> {
             db.update_passkey_name(&body.id, &body.name)
                 .await
                 .map_err(|e| Error::RustError(e.to_string()))?;
-            Response::ok("Renamed")
+            Response::from_json(&serde_json::json!({ "message": "Renamed" }))
         }
         Some(_) => Response::error("Unauthorized", 401),
         None => Response::error("Passkey not found", 404),

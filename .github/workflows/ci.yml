@@ -68,3 +68,11 @@ jobs:
       - name: Build Frontend
         working-directory: web
         run: npm run build
+
+      - name: Check Frontend Test Types
+        working-directory: web
+        run: npm run test:types
+
+      - name: Test Frontend
+        working-directory: web
+        run: npm test
