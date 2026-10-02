@@ -7,6 +7,7 @@ mod config;
 mod db;
 mod handlers;
 mod model;
+mod preview;
 mod provider;
 mod utils;
 use db::Database; // Import Database trait
@@ -74,6 +75,16 @@ impl ResponseExt for Response {
 
 #[event(fetch)]
 pub async fn main(req: Request, env: Env, ctx: Context) -> Result<Response> {
+    // The SPA shell must keep its asset headers, not the API's restrictive CSP.
+    // Serving previews also works without an authentication database.
+    if req.url()?.path() == "/" && matches!(req.method(), Method::Get | Method::Head) {
+        return Router::with_data(ctx)
+            .get_async("/", preview::handle_page)
+            .head_async("/", preview::handle_page)
+            .run(req, env)
+            .await;
+    }
+
     // Migration Logic (Lazy)
     if let Ok(d1) = env.d1("DB")
         && try_claim_migration()

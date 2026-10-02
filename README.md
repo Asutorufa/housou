@@ -16,6 +16,7 @@ Leveraging curated data from [bangumi-data](https://github.com/bangumi-data/bang
 - 📅 **Future Schedules**: Automatically switches to **Jikan API** for future or newly announced seasons not yet in bangumi-data.
 - 🌙 **Modern Design**: Responsive UI with automatic dark mode and smooth animations.
 - 🔑 **Secure Auth**: Support for GitHub OAuth and Passkeys (WebAuthn).
+- 🔗 **Link Previews**: Existing `?anime=...` links include server-rendered Open Graph and Twitter Card metadata for Telegram and other sharing clients, with an anime title and cover when available. Previews use Japanese TMDb synopses or Japanese fallback text.
 
 ## Screenshots
 
