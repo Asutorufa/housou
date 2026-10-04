@@ -114,7 +114,10 @@ pub fn media_kind_score(expected: Option<MediaKind>, actual: MediaKind) -> i32 {
     match (expected, actual) {
         (MediaKind::Tv | MediaKind::Ova | MediaKind::Ona | MediaKind::Special, MediaKind::Tv) => 18,
         (MediaKind::Tv, MediaKind::Ova | MediaKind::Ona | MediaKind::Special) => 12,
-        (MediaKind::Ova | MediaKind::Ona | MediaKind::Special, MediaKind::Ova | MediaKind::Ona | MediaKind::Special) => 8,
+        (
+            MediaKind::Ova | MediaKind::Ona | MediaKind::Special,
+            MediaKind::Ova | MediaKind::Ona | MediaKind::Special,
+        ) => 8,
         (MediaKind::Movie, _) | (_, MediaKind::Movie) => -30,
         _ => -10,
     }
@@ -154,10 +157,7 @@ mod tests {
 
     #[test]
     fn movie_mismatch_is_strongly_penalized() {
-        assert_eq!(
-            media_kind_score(Some(MediaKind::Movie), MediaKind::Tv),
-            -30
-        );
+        assert_eq!(media_kind_score(Some(MediaKind::Movie), MediaKind::Tv), -30);
         assert!(media_kind_score(Some(MediaKind::Ona), MediaKind::Tv) > 0);
     }
 }
