@@ -1,6 +1,6 @@
 use super::{MetadataArgs, MetadataRequest, ProviderFetch};
 use crate::config;
-use crate::db::{AppDatabase, Database, MetadataCacheEntry};
+use crate::db::{AppDatabase, Database, MetadataCacheEntry, MetadataCacheWrite};
 use crate::model::{MetadataSource, UnifiedMetadata};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -58,9 +58,7 @@ fn cached_metadata(entry: &MetadataCacheEntry) -> Option<UnifiedMetadata> {
 }
 
 fn refresh_reason(entry: &MetadataCacheEntry, now: i64) -> Option<RefreshReason> {
-    if entry.metadata_json.is_none() {
-        return None;
-    }
+    entry.metadata_json.as_ref()?;
 
     let retry_active = entry.retry_after.is_some_and(|deadline| deadline > now);
     let refresh_due = entry.refresh_after.is_none_or(|deadline| deadline <= now);
@@ -141,11 +139,13 @@ async fn store_positive(
     db.store_metadata_cache(
         cache_key,
         refresh_token,
-        Some(&metadata_json),
-        Some(&source),
-        Some(now),
-        Some(refresh_after),
-        retry_after,
+        MetadataCacheWrite {
+            metadata_json: Some(&metadata_json),
+            source: Some(&source),
+            fetched_at: Some(now),
+            refresh_after: Some(refresh_after),
+            retry_after,
+        },
     )
     .await?;
 
@@ -170,11 +170,13 @@ async fn store_negative(
     db.store_metadata_cache(
         cache_key,
         refresh_token,
-        None,
-        None,
-        Some(now),
-        None,
-        Some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS)),
+        MetadataCacheWrite {
+            metadata_json: None,
+            source: None,
+            fetched_at: Some(now),
+            refresh_after: None,
+            retry_after: Some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS)),
+        },
     )
     .await
 }
