@@ -180,8 +180,11 @@ export interface MetadataRequest {
   tmdb_id?: string;
   mal_id?: string;
   anilist_id?: string;
+  bangumi_id?: string;
   title?: string;
+  aliases?: string[];
   year?: number;
+  media_type?: string;
 }
 
 export interface CommentWithUser {
