@@ -36,11 +36,7 @@ pub trait Database {
         &self,
         cache_key: &str,
         refresh_token: &str,
-        metadata_json: Option<&str>,
-        source: Option<&str>,
-        fetched_at: Option<i64>,
-        refresh_after: Option<i64>,
-        retry_after: Option<i64>,
+        value: MetadataCacheWrite<'_>,
     ) -> Result<()>;
     async fn try_acquire_metadata_refresh(
         &self,
@@ -328,18 +324,14 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         &self,
         cache_key: &str,
         refresh_token: &str,
-        metadata_json: Option<&str>,
-        source: Option<&str>,
-        fetched_at: Option<i64>,
-        refresh_after: Option<i64>,
-        retry_after: Option<i64>,
+        value: MetadataCacheWrite<'_>,
     ) -> Result<()> {
         self.execute(Sql::StoreMetadataCache {
-            metadata_json,
-            source,
-            fetched_at,
-            refresh_after,
-            retry_after,
+            metadata_json: value.metadata_json,
+            source: value.source,
+            fetched_at: value.fetched_at,
+            refresh_after: value.refresh_after,
+            retry_after: value.retry_after,
             cache_key,
             refresh_token,
         })
@@ -828,11 +820,13 @@ mod tests {
         db.store_metadata_cache(
             "title:test:2026",
             "lease-a",
-            Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
-            Some("tmdb"),
-            Some(1_000),
-            Some(2_000),
-            None,
+            MetadataCacheWrite {
+                metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
+                source: Some("tmdb"),
+                fetched_at: Some(1_000),
+                refresh_after: Some(2_000),
+                retry_after: None,
+            },
         )
         .await?;
 
