@@ -182,13 +182,15 @@ async fn send(method: Method, url: &str, body: Option<&serde_json::Value>) -> Re
     let headers = Headers::new();
     headers.set("Accept", "application/json")?;
     headers.set("User-Agent", USER_AGENT)?;
+    if body.is_some() {
+        headers.set("Content-Type", "application/json")?;
+    }
 
     let mut init = RequestInit::new();
     init.with_method(method);
     init.with_headers(headers);
 
     if let Some(body) = body {
-        headers.set("Content-Type", "application/json")?;
         init.with_body(Some(JsValue::from_str(&body.to_string())));
     }
 
