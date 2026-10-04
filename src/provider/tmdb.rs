@@ -786,14 +786,9 @@ mod tests {
         });
         let expected = vec!["Test Anime".to_string()];
 
-        let (score, media) = score_search_result(
-            &expected,
-            Some(2026),
-            Some(MatchMediaKind::Tv),
-            2,
-            &result,
-        )
-        .expect("candidate should be scoreable");
+        let (score, media) =
+            score_search_result(&expected, Some(2026), Some(MatchMediaKind::Tv), 2, &result)
+                .expect("candidate should be scoreable");
 
         assert!(score >= 130);
         assert_eq!(
