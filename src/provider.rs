@@ -151,9 +151,6 @@ pub async fn get_metadata(
 fn create_response(unified: &model::UnifiedMetadata) -> Result<Response> {
     Response::from_json(unified)?.add_header(
         "Cache-Control",
-        &format!(
-            "public, max-age={}",
-            crate::config::CACHE_TTL_METADATA_L1
-        ),
+        &format!("public, max-age={}", crate::config::CACHE_TTL_METADATA_L1),
     )
 }
