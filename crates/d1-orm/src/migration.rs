@@ -98,7 +98,7 @@ struct InsertVersionQuery {
 impl Query for InsertVersionQuery {
     fn build(&self) -> Result<(Cow<'static, str>, Vec<DatabaseValue>), Error> {
         let sql = format!(
-            "INSERT OR IGNORE INTO {} (version, applied_at) VALUES (?, strftime('%s', 'now'))",
+            "INSERT INTO {} (version, applied_at) VALUES (?, strftime('%s', 'now'))",
             self.table_name
         );
         Ok((Cow::Owned(sql), vec![self.version.into()]))
