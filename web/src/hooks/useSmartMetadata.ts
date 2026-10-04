@@ -22,23 +22,37 @@ export function useSmartMetadata(
   const bangumiSite = item.sites?.find(
     (s) => s.site === "bangumi" || s.site === "bgm",
   );
-  const aliases = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          Object.values(item.titleTranslate ?? {})
-            .flatMap((titles) => titles ?? [])
-            .map((title) => title.trim())
-            .filter(
-              (title) =>
-                title.length > 0 &&
-                title.toLocaleLowerCase() !==
-                  item.title.trim().toLocaleLowerCase(),
-            ),
-        ),
-      ).slice(0, 6),
-    [item.title, item.titleTranslate],
-  );
+  const aliases = useMemo(() => {
+    const translations = item.titleTranslate ?? {};
+    const preferredKeys = [
+      "JP",
+      "ja",
+      "US",
+      "en",
+      "CN",
+      "zh-Hans",
+      "TW",
+      "zh-Hant",
+    ];
+    const preferred = new Set(preferredKeys);
+    const ordered = [
+      ...preferredKeys.flatMap((key) => translations[key] ?? []),
+      ...Object.entries(translations)
+        .filter(([key]) => !preferred.has(key))
+        .flatMap(([, titles]) => titles ?? []),
+    ];
+
+    const seen = new Set([item.title.trim().toLocaleLowerCase()]);
+    return ordered
+      .map((title) => title.trim())
+      .filter((title) => {
+        const key = title.toLocaleLowerCase();
+        if (!title || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 6);
+  }, [item.title, item.titleTranslate]);
 
   let year: number | undefined;
   if (item.begin) {
