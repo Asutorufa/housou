@@ -166,7 +166,10 @@ async fn search_subject(
         let results: SearchResponse = response.json().await?;
         for subject in results.data {
             let score = score_subject(&expected_titles, year, expected_kind, &subject);
-            if best.as_ref().is_none_or(|(best_score, _)| score > *best_score) {
+            if best
+                .as_ref()
+                .is_none_or(|(best_score, _)| score > *best_score)
+            {
                 best = Some((score, subject));
             }
         }
@@ -291,7 +294,9 @@ fn subject_to_unified(subject: BangumiSubject) -> UnifiedMetadata {
                         .entry("US".into())
                         .or_default()
                         .push(value.to_string());
-                } else if label.contains("罗马") || label.contains("羅馬") || label.contains("romaji")
+                } else if label.contains("罗马")
+                    || label.contains("羅馬")
+                    || label.contains("romaji")
                 {
                     romaji.get_or_insert_with(|| value.to_string());
                 }
