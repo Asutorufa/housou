@@ -16,7 +16,7 @@ impl MediaKind {
             "ova" => Some(Self::Ova),
             "ona" | "web" => Some(Self::Ona),
             "special" => Some(Self::Special),
-            _ => Some(Self::Other),
+            _ => None,
         }
     }
 }
