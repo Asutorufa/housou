@@ -31,13 +31,12 @@ pub trait Database {
     async fn delete_session(&self, token: &str) -> Result<()>;
 
     async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>>;
-    async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()>;
     async fn store_metadata_cache(
         &self,
         cache_key: &str,
         refresh_token: &str,
         value: MetadataCacheWrite<'_>,
-    ) -> Result<()>;
+    ) -> Result<Option<MetadataCacheEntry>>;
     async fn try_acquire_metadata_refresh(
         &self,
         cache_key: &str,
@@ -182,10 +181,7 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
         Migration::new(
             12,
             "Add persistent metadata cache",
-            vec![
-                Sql::CreateMetadataCacheTable,
-                Sql::CreateMetadataCacheRefreshAfterIndex,
-            ],
+            vec![Sql::CreateMetadataCacheTable],
         ),
     ]
 }
@@ -315,18 +311,13 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         self.query_first(Sql::GetMetadataCache { cache_key }).await
     }
 
-    async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()> {
-        self.execute(Sql::EnsureMetadataCacheEntry { cache_key })
-            .await
-    }
-
     async fn store_metadata_cache(
         &self,
         cache_key: &str,
         refresh_token: &str,
         value: MetadataCacheWrite<'_>,
-    ) -> Result<()> {
-        self.execute(Sql::StoreMetadataCache {
+    ) -> Result<Option<MetadataCacheEntry>> {
+        self.query_first(Sql::StoreMetadataCache {
             metadata_json: value.metadata_json,
             source: value.source,
             fetched_at: value.fetched_at,
@@ -345,18 +336,15 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         now: i64,
         refreshing_until: i64,
     ) -> Result<bool> {
-        self.execute(Sql::AcquireMetadataRefresh {
-            refresh_token,
-            refreshing_until,
-            cache_key,
-            now,
-        })
-        .await?;
-
-        Ok(self
-            .get_metadata_cache(cache_key)
-            .await?
-            .is_some_and(|entry| entry.refresh_token.as_deref() == Some(refresh_token)))
+        let acquired: Option<MetadataCacheEntry> = self
+            .query_first(Sql::AcquireMetadataRefresh {
+                cache_key,
+                refresh_token,
+                refreshing_until,
+                now,
+            })
+            .await?;
+        Ok(acquired.is_some())
     }
 
     async fn release_metadata_refresh(&self, cache_key: &str, refresh_token: &str) -> Result<()> {
