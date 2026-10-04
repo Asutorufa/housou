@@ -130,9 +130,9 @@ describe("useSmartMetadata", () => {
     const itemWithAliases: DisplayAnimeItem = {
       ...mockItem,
       titleTranslate: {
-        JP: ["テストアニメ"],
-        US: ["Test Anime English"],
         CN: ["测试动画"],
+        US: ["Test Anime English"],
+        JP: ["テストアニメ"],
       },
       sites: [...(mockItem.sites ?? []), { site: "bangumi", id: "616808" }],
     };
