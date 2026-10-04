@@ -428,15 +428,7 @@ pub(super) async fn fetch_metadata(
                 return fetch_with_lease(req, ctx, &db, cache, &d1_cache_key, edge_key).await;
             }
             Ok(None) => {
-                return fetch_with_lease(
-                    req,
-                    ctx,
-                    &db,
-                    cache,
-                    &d1_cache_key,
-                    edge_key,
-                )
-                .await;
+                return fetch_with_lease(req, ctx, &db, cache, &d1_cache_key, edge_key).await;
             }
             Err(error) => {
                 worker::console_warn!(
