@@ -140,6 +140,11 @@ impl AnilistProvider {
         } else {
             105
         };
+        let strong_score = if year.is_none() && expected_kind.is_none() {
+            100
+        } else {
+            130
+        };
         let mut best: Option<(i32, i64)> = None;
 
         for search_title in &expected_titles {
@@ -163,7 +168,10 @@ impl AnilistProvider {
                 }
             }
 
-            if best.as_ref().is_some_and(|(score, _)| *score >= 150) {
+            if best
+                .as_ref()
+                .is_some_and(|(score, _)| *score >= strong_score)
+            {
                 break;
             }
         }
