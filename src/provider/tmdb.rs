@@ -1,5 +1,5 @@
-use super::match_score::{self, MediaKind as MatchMediaKind};
 use super::MetadataProvider;
+use super::match_score::{self, MediaKind as MatchMediaKind};
 use crate::model;
 use regex::Regex;
 use std::cell::OnceCell;
@@ -53,7 +53,7 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
                 aliases,
                 year,
                 media_type,
-            } => search_media(&client, title, aliases, year, media_type).await?
+            } => search_media(&client, title, aliases, year, media_type).await?,
         };
 
         // 2. Fetch Details based on type
@@ -192,11 +192,14 @@ fn score_search_result(
 
     let candidate_titles = [
         result.get("title").and_then(|value| value.as_str()),
-        result.get("original_title").and_then(|value| value.as_str()),
+        result
+            .get("original_title")
+            .and_then(|value| value.as_str()),
         result.get("name").and_then(|value| value.as_str()),
         result.get("original_name").and_then(|value| value.as_str()),
     ];
-    let title_score = match_score::title_score(expected_titles, candidate_titles.into_iter().flatten());
+    let title_score =
+        match_score::title_score(expected_titles, candidate_titles.into_iter().flatten());
     if title_score == 0 {
         return None;
     }
