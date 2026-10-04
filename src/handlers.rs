@@ -26,8 +26,10 @@ struct MetadataQuery {
     tmdb_id: Option<String>,
     mal_id: Option<String>,
     anilist_id: Option<String>,
+    bangumi_id: Option<String>,
     title: Option<String>,
     begin: Option<String>,
+    media_type: Option<String>,
 }
 
 #[derive(serde_derive::Deserialize)]
@@ -272,8 +274,10 @@ pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Re
         tmdb_id: None,
         mal_id: None,
         anilist_id: None,
+        bangumi_id: None,
         title: None,
         begin: None,
+        media_type: None,
     });
 
     let year = query
@@ -286,8 +290,11 @@ pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Re
         tmdb_id: query.tmdb_id.as_deref(),
         mal_id: query.mal_id.as_deref(),
         anilist_id: query.anilist_id.as_deref(),
+        bangumi_id: query.bangumi_id.as_deref(),
         title: query.title.as_deref(),
+        aliases: &[],
         year,
+        media_type: query.media_type.as_deref(),
     };
 
     provider::get_metadata(args, &ctx, &cache_origin).await
