@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMetadata } from "../contexts/MetadataContext";
 import type { DisplayAnimeItem, UnifiedMetadata } from "../types";
 import { isDev } from "../utils/envUtils";
 
 export function useSmartMetadata(
   item: Pick<DisplayAnimeItem, "title"> &
-    Partial<Pick<DisplayAnimeItem, "sites" | "begin">>,
+    Partial<
+      Pick<DisplayAnimeItem, "sites" | "begin" | "titleTranslate" | "type">
+    >,
   initialMetadata: UnifiedMetadata | null = null,
   enabled: boolean = true,
   priority: "normal" | "detail" = "normal",
@@ -17,6 +19,40 @@ export function useSmartMetadata(
   const anilistSite = item.sites?.find(
     (s) => s.site === "aniList" || s.site === "anilist",
   );
+  const bangumiSite = item.sites?.find(
+    (s) => s.site === "bangumi" || s.site === "bgm",
+  );
+  const aliases = useMemo(() => {
+    const translations = item.titleTranslate ?? {};
+    const preferredKeys = [
+      "JP",
+      "ja",
+      "US",
+      "en",
+      "CN",
+      "zh-Hans",
+      "TW",
+      "zh-Hant",
+    ];
+    const preferred = new Set(preferredKeys);
+    const ordered = [
+      ...preferredKeys.flatMap((key) => translations[key] ?? []),
+      ...Object.entries(translations)
+        .filter(([key]) => !preferred.has(key))
+        .flatMap(([, titles]) => titles ?? []),
+    ];
+
+    const seen = new Set([item.title.trim().toLocaleLowerCase()]);
+    return ordered
+      .map((title) => title.trim())
+      .filter((title) => {
+        const key = title.toLocaleLowerCase();
+        if (!title || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 6);
+  }, [item.title, item.titleTranslate]);
 
   let year: number | undefined;
   if (item.begin) {
@@ -33,7 +69,10 @@ export function useSmartMetadata(
           tmdb_id: tmdbSite?.id,
           mal_id: malSite?.id,
           anilist_id: anilistSite?.id,
+          bangumi_id: bangumiSite?.id,
+          aliases,
           year,
+          media_type: item.type,
         })
       : null;
 
@@ -72,7 +111,10 @@ export function useSmartMetadata(
             tmdb_id: tmdbSite?.id,
             mal_id: malSite?.id,
             anilist_id: anilistSite?.id,
+            bangumi_id: bangumiSite?.id,
+            aliases,
             year,
+            media_type: item.type,
           },
           priority,
         );
@@ -115,7 +157,10 @@ export function useSmartMetadata(
     tmdbSite?.id,
     malSite?.id,
     anilistSite?.id,
+    bangumiSite?.id,
+    aliases,
     year,
+    item.type,
     attempt,
     fetchedResult?.attempt,
     priority,

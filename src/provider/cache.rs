@@ -6,12 +6,18 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use worker::{Cache, Context, D1Database, Env, Error, Response, Result, RouteContext};
 
-const EDGE_CACHE_NAME: &str = "housou-metadata-v1";
+const EDGE_CACHE_NAME: &str = "housou-metadata-v3";
+const EDGE_EXPIRY_HEADER: &str = "X-Housou-Metadata-Expires-At";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshReason {
     Full,
     TmdbOnly,
+}
+
+struct RefreshLease {
+    token: String,
+    entry: Option<MetadataCacheEntry>,
 }
 
 fn ttl_ms(seconds: i32) -> i64 {
@@ -23,18 +29,29 @@ fn now_ms() -> i64 {
 }
 
 fn metadata_cache_key(req: &MetadataRequest) -> String {
-    let identity = if let Some(tmdb_id) = req.tmdb_id.as_deref() {
-        serde_json::json!(["tmdb", tmdb_id])
+    let (version, identity) = if let Some(tmdb_id) = req.tmdb_id.as_deref() {
+        ("v2", serde_json::json!(["tmdb", tmdb_id]))
     } else if let Some(mal_id) = req.mal_id.as_deref() {
-        serde_json::json!(["mal", mal_id])
+        ("v2", serde_json::json!(["mal", mal_id]))
     } else if let Some(anilist_id) = req.anilist_id.as_deref() {
-        serde_json::json!(["anilist", anilist_id])
+        ("v2", serde_json::json!(["anilist", anilist_id]))
+    } else if let Some(bangumi_id) = req.bangumi_id.as_deref() {
+        ("v3", serde_json::json!(["bangumi", bangumi_id]))
     } else {
-        serde_json::json!(["title", req.title.as_deref().unwrap_or("").trim(), req.year])
+        (
+            "v4",
+            serde_json::json!([
+                "title",
+                req.title.as_deref().unwrap_or("").trim(),
+                req.year,
+                req.media_type.as_deref().unwrap_or(""),
+                req.aliases
+            ]),
+        )
     };
 
     let encoded = serde_json::to_vec(&identity).unwrap_or_default();
-    format!("v2-{}", hex::encode(Sha256::digest(encoded)))
+    format!("{version}-{}", hex::encode(Sha256::digest(encoded)))
 }
 
 fn edge_cache_key(cache_origin: &str, cache_key: &str) -> String {
@@ -76,7 +93,7 @@ fn refresh_reason(entry: &MetadataCacheEntry, now: i64) -> Option<RefreshReason>
     tmdb_retry_due.then_some(RefreshReason::TmdbOnly)
 }
 
-fn edge_ttl_seconds(entry: &MetadataCacheEntry, now: i64) -> i32 {
+fn edge_expires_at(entry: &MetadataCacheEntry, now: i64) -> i64 {
     let mut deadline = now + ttl_ms(config::CACHE_TTL_METADATA_L1);
 
     if let Some(refresh_after) = entry.refresh_after
@@ -91,7 +108,12 @@ fn edge_ttl_seconds(entry: &MetadataCacheEntry, now: i64) -> i32 {
         deadline = deadline.min(retry_after);
     }
 
-    ((deadline - now) / 1_000).clamp(1, i64::from(config::CACHE_TTL_METADATA_L1)) as i32
+    deadline
+}
+
+fn remaining_edge_ttl(expires_at: i64, now: i64) -> Option<i32> {
+    let seconds = (expires_at - now) / 1_000;
+    (seconds > 0).then(|| seconds.min(i64::from(config::CACHE_TTL_METADATA_L1)) as i32)
 }
 
 fn metadata_args(req: &MetadataRequest) -> MetadataArgs<'_> {
@@ -99,9 +121,28 @@ fn metadata_args(req: &MetadataRequest) -> MetadataArgs<'_> {
         tmdb_id: req.tmdb_id.as_deref(),
         mal_id: req.mal_id.as_deref(),
         anilist_id: req.anilist_id.as_deref(),
+        bangumi_id: req.bangumi_id.as_deref(),
         title: req.title.as_deref(),
+        aliases: &req.aliases,
         year: req.year,
+        media_type: req.media_type.as_deref(),
     }
+}
+
+fn request_for_refresh(req: &MetadataRequest, metadata: &UnifiedMetadata) -> MetadataRequest {
+    let mut req = req.clone();
+    match &metadata.source {
+        MetadataSource::Tmdb(id) => req.tmdb_id = Some(id.clone()),
+        MetadataSource::Mal(id) if req.mal_id.is_none() => req.mal_id = Some(id.clone()),
+        MetadataSource::Anilist(id) if req.anilist_id.is_none() => {
+            req.anilist_id = Some(id.clone());
+        }
+        MetadataSource::Bangumi(id) if req.bangumi_id.is_none() => {
+            req.bangumi_id = Some(id.clone());
+        }
+        _ => {}
+    }
+    req
 }
 
 fn schedule_edge_put(
@@ -109,14 +150,26 @@ fn schedule_edge_put(
     cache: Cache,
     cache_key: String,
     metadata: &UnifiedMetadata,
-    ttl: i32,
+    expires_at: i64,
 ) -> Result<()> {
     let mut response = Response::from_json(metadata)?;
     response
         .headers_mut()
-        .set("Cache-Control", &format!("public, max-age={ttl}"))?;
+        .set(EDGE_EXPIRY_HEADER, &expires_at.to_string())?;
 
     ctx.data.wait_until(async move {
+        // Cache-Control starts counting at insertion, so a deferred write must
+        // keep the absolute deadline from the D1 row it originally read.
+        let Some(ttl) = remaining_edge_ttl(expires_at, now_ms()) else {
+            return;
+        };
+        if let Err(error) = response
+            .headers_mut()
+            .set("Cache-Control", &format!("public, max-age={ttl}"))
+        {
+            worker::console_warn!("Failed to set metadata edge TTL: {:?}", error);
+            return;
+        }
         if let Err(error) = cache.put(&cache_key, response).await {
             worker::console_warn!("Failed to populate metadata edge cache: {:?}", error);
         }
@@ -125,7 +178,7 @@ fn schedule_edge_put(
 }
 
 async fn store_positive(
-    db: &AppDatabase<D1Database>,
+    db: &impl Database,
     cache_key: &str,
     refresh_token: &str,
     outcome: &ProviderFetch,
@@ -136,8 +189,8 @@ async fn store_positive(
     let source = source_name(&outcome.metadata).to_string();
     let refresh_after = now + ttl_ms(config::CACHE_TTL_METADATA_D1);
     let retry_after = outcome
-        .tmdb_failed
-        .then_some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS));
+        .tmdb_retry_after_seconds
+        .map(|seconds| now + ttl_ms(seconds));
 
     db.store_metadata_cache(
         cache_key,
@@ -154,10 +207,11 @@ async fn store_positive(
 }
 
 async fn store_negative(
-    db: &AppDatabase<D1Database>,
+    db: &impl Database,
     cache_key: &str,
     refresh_token: &str,
     now: i64,
+    retry_after_seconds: i32,
 ) -> Result<Option<MetadataCacheEntry>> {
     db.store_metadata_cache(
         cache_key,
@@ -167,24 +221,48 @@ async fn store_negative(
             source: None,
             fetched_at: Some(now),
             refresh_after: None,
-            retry_after: Some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS)),
+            retry_after: Some(now + ttl_ms(retry_after_seconds)),
         },
     )
     .await
 }
 
 async fn acquire_refresh_lease(
-    db: &AppDatabase<D1Database>,
+    db: &impl Database,
     cache_key: &str,
     now: i64,
-) -> Result<Option<String>> {
+) -> Result<Option<RefreshLease>> {
     let refresh_token = Uuid::new_v4().to_string();
     let refreshing_until = now + ttl_ms(config::CACHE_TTL_METADATA_REFRESH_LEASE);
     if db
         .try_acquire_metadata_refresh(cache_key, &refresh_token, now, refreshing_until)
         .await?
     {
-        Ok(Some(refresh_token))
+        // A queued lookup may acquire the lease after another lookup has
+        // already populated the cache or installed retry backoff.
+        let entry = match db.get_metadata_cache(cache_key).await {
+            Ok(entry) => entry,
+            Err(error) => {
+                let _ = db.release_metadata_refresh(cache_key, &refresh_token).await;
+                return Err(error);
+            }
+        };
+        if let Some(entry) = &entry {
+            let lookup_due = if cached_metadata(entry).is_some() {
+                refresh_reason(entry, now).is_some()
+            } else {
+                entry.retry_after.is_none_or(|deadline| deadline <= now)
+            };
+            if !lookup_due {
+                db.release_metadata_refresh(cache_key, &refresh_token)
+                    .await?;
+                return Ok(None);
+            }
+        }
+        Ok(Some(RefreshLease {
+            token: refresh_token,
+            entry,
+        }))
     } else {
         Ok(None)
     }
@@ -199,7 +277,7 @@ async fn fetch_with_lease(
     edge_key: String,
 ) -> Result<UnifiedMetadata> {
     let now = now_ms();
-    let Some(refresh_token) = acquire_refresh_lease(db, d1_cache_key, now).await? else {
+    let Some(lease) = acquire_refresh_lease(db, d1_cache_key, now).await? else {
         if let Some(entry) = db.get_metadata_cache(d1_cache_key).await? {
             if let Some(metadata) = cached_metadata(&entry) {
                 return Ok(metadata);
@@ -215,6 +293,13 @@ async fn fetch_with_lease(
         ));
     };
 
+    let refresh_token = lease.token;
+    let previous_metadata = lease.entry.as_ref().and_then(cached_metadata);
+    let refresh_req = previous_metadata
+        .as_ref()
+        .map(|metadata| request_for_refresh(req, metadata));
+    let req = refresh_req.as_ref().unwrap_or(req);
+
     match super::fetch_metadata_from_providers(metadata_args(req), &ctx.env).await {
         Ok(outcome) => {
             let metadata = outcome.metadata.clone();
@@ -225,7 +310,7 @@ async fn fetch_with_lease(
                         cache,
                         edge_key,
                         &metadata,
-                        edge_ttl_seconds(&entry, now),
+                        edge_expires_at(&entry, now),
                     )?;
                 }
                 Ok(None) => {
@@ -242,8 +327,32 @@ async fn fetch_with_lease(
             }
             Ok(metadata)
         }
-        Err(error) => {
-            if let Err(cache_error) = store_negative(db, d1_cache_key, &refresh_token, now).await {
+        Err(failure) => {
+            if let Some(metadata) = previous_metadata {
+                if let Err(error) = db
+                    .defer_metadata_retry(
+                        d1_cache_key,
+                        &refresh_token,
+                        now_ms() + ttl_ms(failure.retry_after_seconds),
+                    )
+                    .await
+                {
+                    worker::console_warn!("Failed to defer metadata retry: {:?}", error);
+                    let _ = db
+                        .release_metadata_refresh(d1_cache_key, &refresh_token)
+                        .await;
+                }
+                return Ok(metadata);
+            }
+            if let Err(cache_error) = store_negative(
+                db,
+                d1_cache_key,
+                &refresh_token,
+                now,
+                failure.retry_after_seconds,
+            )
+            .await
+            {
                 worker::console_warn!(
                     "Failed to persist negative metadata lookup in D1: {:?}",
                     cache_error
@@ -252,7 +361,7 @@ async fn fetch_with_lease(
                     .release_metadata_refresh(d1_cache_key, &refresh_token)
                     .await;
             }
-            Err(error)
+            Err(failure.error)
         }
     }
 }
@@ -263,45 +372,48 @@ async fn fetch_without_d1(
     cache: Cache,
     edge_key: String,
 ) -> Result<UnifiedMetadata> {
-    let outcome = super::fetch_metadata_from_providers(metadata_args(req), &ctx.env).await?;
+    let outcome = super::fetch_metadata_from_providers(metadata_args(req), &ctx.env)
+        .await
+        .map_err(|failure| failure.error)?;
     let metadata = outcome.metadata;
-    schedule_edge_put(
-        ctx,
-        cache,
-        edge_key,
-        &metadata,
-        config::CACHE_TTL_METADATA_L1,
-    )?;
+    let ttl = outcome
+        .tmdb_retry_after_seconds
+        .unwrap_or(config::CACHE_TTL_METADATA_L1)
+        .min(config::CACHE_TTL_METADATA_L1);
+    schedule_edge_put(ctx, cache, edge_key, &metadata, now_ms() + ttl_ms(ttl))?;
     Ok(metadata)
 }
 
-fn schedule_refresh(
-    req: &MetadataRequest,
-    ctx: &RouteContext<Context>,
-    d1_cache_key: String,
-    reason: RefreshReason,
-) {
+fn schedule_refresh(req: &MetadataRequest, ctx: &RouteContext<Context>, d1_cache_key: String) {
     let req = req.clone();
     let env = ctx.env.clone();
     ctx.data.wait_until(async move {
-        if let Err(error) = refresh_cached_metadata(req, env, d1_cache_key, reason).await {
+        if let Err(error) = refresh_cached_metadata(req, env, d1_cache_key).await {
             worker::console_warn!("Background metadata refresh failed: {:?}", error);
         }
     });
 }
 
-async fn refresh_cached_metadata(
-    req: MetadataRequest,
-    env: Env,
-    cache_key: String,
-    reason: RefreshReason,
-) -> Result<()> {
+async fn refresh_cached_metadata(req: MetadataRequest, env: Env, cache_key: String) -> Result<()> {
     let d1 = env.d1("DB")?;
     let db = AppDatabase::new(d1);
     let now = now_ms();
-    let Some(refresh_token) = acquire_refresh_lease(&db, &cache_key, now).await? else {
+    let Some(lease) = acquire_refresh_lease(&db, &cache_key, now).await? else {
         return Ok(());
     };
+    // Use the current row under the lease, not the scheduler's earlier snapshot.
+    let reason = lease
+        .entry
+        .as_ref()
+        .and_then(|entry| refresh_reason(entry, now))
+        .unwrap_or(RefreshReason::Full);
+    let req = lease
+        .entry
+        .as_ref()
+        .and_then(cached_metadata)
+        .map(|metadata| request_for_refresh(&req, &metadata))
+        .unwrap_or(req);
+    let refresh_token = lease.token;
 
     match reason {
         RefreshReason::TmdbOnly => {
@@ -309,7 +421,7 @@ async fn refresh_cached_metadata(
                 Some(Ok(metadata)) => {
                     let outcome = ProviderFetch {
                         metadata,
-                        tmdb_failed: false,
+                        tmdb_retry_after_seconds: None,
                     };
                     match store_positive(&db, &cache_key, &refresh_token, &outcome, now).await {
                         Ok(Some(_)) | Ok(None) => {}
@@ -326,7 +438,7 @@ async fn refresh_cached_metadata(
                     db.defer_metadata_retry(
                         &cache_key,
                         &refresh_token,
-                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                        now + ttl_ms(super::provider_retry_after_seconds(&error)),
                     )
                     .await?;
                 }
@@ -353,15 +465,15 @@ async fn refresh_cached_metadata(
                         }
                     }
                 }
-                Err(error) => {
+                Err(failure) => {
                     worker::console_log!(
                         "Metadata refresh failed; keeping stale D1 data: {:?}",
-                        error
+                        failure.error
                     );
                     db.defer_metadata_retry(
                         &cache_key,
                         &refresh_token,
-                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                        now + ttl_ms(failure.retry_after_seconds),
                     )
                     .await?;
                 }
@@ -382,6 +494,13 @@ pub(super) async fn fetch_metadata(
     let cache = Cache::open(EDGE_CACHE_NAME.to_string()).await;
 
     if let Ok(Some(mut response)) = cache.get(&edge_key, true).await
+        && response
+            .headers()
+            .get(EDGE_EXPIRY_HEADER)
+            .ok()
+            .flatten()
+            .and_then(|value| value.parse::<i64>().ok())
+            .is_some_and(|deadline| deadline > now_ms())
         && let Ok(metadata) = response.json::<UnifiedMetadata>().await
     {
         return Ok(metadata);
@@ -394,8 +513,8 @@ pub(super) async fn fetch_metadata(
                 let now = now_ms();
 
                 if let Some(metadata) = cached_metadata(&entry) {
-                    if let Some(reason) = refresh_reason(&entry, now) {
-                        schedule_refresh(req, ctx, d1_cache_key, reason);
+                    if refresh_reason(&entry, now).is_some() {
+                        schedule_refresh(req, ctx, d1_cache_key);
                         return Ok(metadata);
                     }
 
@@ -404,7 +523,7 @@ pub(super) async fn fetch_metadata(
                         cache,
                         edge_key,
                         &metadata,
-                        edge_ttl_seconds(&entry, now),
+                        edge_expires_at(&entry, now),
                     )?;
                     return Ok(metadata);
                 }
@@ -437,6 +556,7 @@ pub(super) async fn fetch_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use d1_orm::sqlite::SqliteExecutor;
 
     fn entry(
         source: Option<&str>,
@@ -464,6 +584,8 @@ mod tests {
             mal_id: Some("2".into()),
             anilist_id: Some("3".into()),
             year: Some(2026),
+            media_type: Some("tv".into()),
+            ..Default::default()
         };
         let first = metadata_cache_key(&request);
         request.request_id = Some("two".into());
@@ -482,6 +604,125 @@ mod tests {
 
         request.title = Some("Another title".into());
         assert_ne!(title_based, metadata_cache_key(&request));
+    }
+
+    #[test]
+    fn refresh_reuses_resolved_tmdb_id() {
+        let request = MetadataRequest {
+            title: Some("Search Title".into()),
+            ..Default::default()
+        };
+        let metadata = UnifiedMetadata {
+            source: MetadataSource::Tmdb("tv/123/season/2".into()),
+            ..Default::default()
+        };
+
+        let refreshed = request_for_refresh(&request, &metadata);
+        assert_eq!(refreshed.tmdb_id.as_deref(), Some("tv/123/season/2"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn aliases_can_retry_a_negatively_cached_title() -> Result<()> {
+        let db = AppDatabase::new(SqliteExecutor::new_in_memory().unwrap());
+        db.migrate().await?;
+        let original = MetadataRequest {
+            title: Some("Localized Title".into()),
+            year: Some(2026),
+            media_type: Some("tv".into()),
+            ..Default::default()
+        };
+        let first_key = metadata_cache_key(&original);
+        let token = acquire_refresh_lease(&db, &first_key, 1_000)
+            .await?
+            .unwrap()
+            .token;
+        store_negative(
+            &db,
+            &first_key,
+            &token,
+            1_000,
+            config::CACHE_TTL_METADATA_MISS,
+        )
+        .await?;
+        let mut enriched = original.clone();
+        enriched.aliases = vec!["Original Japanese Title".into()];
+        let enriched_key = metadata_cache_key(&enriched);
+        assert!(db.get_metadata_cache(&enriched_key).await?.is_none());
+        assert!(
+            acquire_refresh_lease(&db, &enriched_key, 1_001)
+                .await?
+                .is_some()
+        );
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn delayed_requests_respect_fresh_data_and_backoff() -> Result<()> {
+        let db = AppDatabase::new(SqliteExecutor::new_in_memory().unwrap());
+        db.migrate().await?;
+        let token = acquire_refresh_lease(&db, "positive", 1_000)
+            .await?
+            .unwrap()
+            .token;
+        let outcome = ProviderFetch {
+            metadata: UnifiedMetadata {
+                source: MetadataSource::Tmdb("tv/1/season/2".into()),
+                ..Default::default()
+            },
+            tmdb_retry_after_seconds: None,
+        };
+        store_positive(&db, "positive", &token, &outcome, 1_000).await?;
+        // A delayed cold lookup or queued stale refresh must not fetch again.
+        assert!(
+            acquire_refresh_lease(&db, "positive", 1_001)
+                .await?
+                .is_none()
+        );
+        let refresh_at = 1_000 + ttl_ms(config::CACHE_TTL_METADATA_D1);
+        let token = acquire_refresh_lease(&db, "positive", refresh_at)
+            .await?
+            .unwrap()
+            .token;
+        db.defer_metadata_retry("positive", &token, refresh_at + 60_000)
+            .await?;
+        assert!(
+            acquire_refresh_lease(&db, "positive", refresh_at + 1)
+                .await?
+                .is_none()
+        );
+        assert!(
+            acquire_refresh_lease(&db, "positive", refresh_at + 60_000)
+                .await?
+                .is_some()
+        );
+
+        let token = acquire_refresh_lease(&db, "negative", 1_000)
+            .await?
+            .unwrap()
+            .token;
+        store_negative(
+            &db,
+            "negative",
+            &token,
+            1_000,
+            config::CACHE_TTL_METADATA_MISS,
+        )
+        .await?;
+        assert!(
+            acquire_refresh_lease(&db, "negative", 1_001)
+                .await?
+                .is_none()
+        );
+        assert!(
+            acquire_refresh_lease(
+                &db,
+                "negative",
+                1_000 + ttl_ms(config::CACHE_TTL_METADATA_MISS)
+            )
+            .await?
+            .is_some()
+        );
+        Ok(())
     }
 
     #[test]
@@ -505,6 +746,19 @@ mod tests {
     fn edge_ttl_is_capped_by_earliest_refresh_deadline() {
         let now = 1_000;
         let cached = entry(Some("mal"), Some(now + 60_000), Some(now + 30_000));
-        assert_eq!(edge_ttl_seconds(&cached, now), 30);
+        assert_eq!(
+            remaining_edge_ttl(edge_expires_at(&cached, now), now),
+            Some(30)
+        );
+    }
+
+    #[test]
+    fn deferred_edge_put_keeps_its_original_deadline() {
+        let read_at = 1_000;
+        let cached = entry(Some("mal"), Some(read_at + 60_000), Some(read_at + 30_000));
+        let expires_at = edge_expires_at(&cached, read_at);
+        assert_eq!(remaining_edge_ttl(expires_at, read_at + 20_000), Some(10));
+        assert_eq!(remaining_edge_ttl(expires_at, expires_at), None);
+        assert_eq!(remaining_edge_ttl(expires_at, expires_at + 5_000), None);
     }
 }

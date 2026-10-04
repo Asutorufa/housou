@@ -154,7 +154,10 @@ export function createMetadataClient() {
       request.tmdb_id ?? "",
       request.mal_id ?? "",
       request.anilist_id ?? "",
+      request.bangumi_id ?? "",
       request.year ?? "",
+      request.media_type ?? "",
+      request.aliases ?? [],
     ]);
     const existing = cache.get(key);
     if (existing && existing.expiresAt > Date.now()) {

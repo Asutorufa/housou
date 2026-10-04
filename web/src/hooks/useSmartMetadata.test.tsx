@@ -88,7 +88,10 @@ describe("useSmartMetadata", () => {
         tmdb_id: "123",
         mal_id: "456",
         anilist_id: "789",
+        bangumi_id: undefined,
+        aliases: [],
         year: 2024,
+        media_type: "tv",
       },
       "normal",
     );
@@ -113,8 +116,39 @@ describe("useSmartMetadata", () => {
         tmdb_id: undefined,
         mal_id: undefined,
         anilist_id: undefined,
+        bangumi_id: undefined,
+        aliases: [],
         year: 2024,
+        media_type: "tv",
       },
+      "normal",
+    );
+  });
+
+  it("should forward translated titles and Bangumi ID", async () => {
+    mockFetchMetadata.mockResolvedValue(mockMetadata);
+    const itemWithAliases: DisplayAnimeItem = {
+      ...mockItem,
+      titleTranslate: {
+        CN: ["测试动画"],
+        US: ["Test Anime English"],
+        JP: ["テストアニメ"],
+      },
+      sites: [...(mockItem.sites ?? []), { site: "bangumi", id: "616808" }],
+    };
+
+    const { result } = renderHook(() => useSmartMetadata(itemWithAliases));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(mockFetchMetadata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bangumi_id: "616808",
+        aliases: ["テストアニメ", "Test Anime English", "测试动画"],
+        media_type: "tv",
+      }),
       "normal",
     );
   });

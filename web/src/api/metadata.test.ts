@@ -39,6 +39,49 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("metadata batching", () => {
+  it.each([
+    {
+      field: "Bangumi IDs",
+      first: { bangumi_id: "1" },
+      second: { bangumi_id: "2" },
+    },
+    {
+      field: "media types",
+      first: { media_type: "tv" },
+      second: { media_type: "movie" },
+    },
+    {
+      field: "search aliases",
+      first: { aliases: ["Original Title"] },
+      second: { aliases: ["Another Original Title"] },
+    },
+  ])(
+    "keeps lookups with different $field separate",
+    async ({ first, second }) => {
+      fetchMock.mockImplementation(async (_url, init) => {
+        const requests = JSON.parse(String(init?.body)) as (MetadataRequest & {
+          request_id: string;
+        })[];
+        return Response.json(
+          requests.map((request) => ({
+            request_id: request.request_id,
+            metadata: { ...metadata, id: request.request_id },
+          })),
+        );
+      });
+      const api = client();
+      const firstRequest = { title: "Shared Title", year: 2026, ...first };
+      const secondRequest = { title: "Shared Title", year: 2026, ...second };
+      const firstResult = api.fetchMetadata(firstRequest);
+      const secondResult = api.fetchMetadata(secondRequest);
+      await vi.advanceTimersByTimeAsync(120);
+      const [a, b] = await Promise.all([firstResult, secondResult]);
+      expect(a?.id).not.toBe(b?.id);
+      expect(api.fetchMetadata(firstRequest)).toBe(firstResult);
+      expect(api.fetchMetadata(secondRequest)).toBe(secondResult);
+    },
+  );
+
   it("deduplicates requests and reuses successful results until expiry", async () => {
     fetchMock.mockImplementation(async (_url, init) => response(init));
     const api = client();
