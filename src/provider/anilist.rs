@@ -1,8 +1,8 @@
-use super::match_score::{self, MediaKind};
 use super::MetadataProvider;
+use super::match_score::{self, MediaKind};
 use crate::model;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use std::sync::OnceLock;
 use worker::wasm_bindgen::JsValue;
 use worker::*;
@@ -107,21 +107,17 @@ impl AnilistProvider {
             .parse::<i64>()
             .map_err(|error| Error::RustError(format!("Invalid MAL ID: {error}")))?;
 
-        let data: MalLookupData = graphql(
-            MAL_ID_QUERY,
-            serde_json::json!({ "idMal": mal_id }),
-        )
-        .await?;
+        let data: MalLookupData =
+            graphql(MAL_ID_QUERY, serde_json::json!({ "idMal": mal_id })).await?;
         let id = data
             .media
             .ok_or_else(|| Error::RustError("AniList: Not Found".into()))?
             .id;
 
-        let anime = self
-            .client()
-            .get_anime(id)
-            .await
-            .map_err(|error| Error::RustError(format!("AniList API error (get_anime): {error}")))?;
+        let anime =
+            self.client().get_anime(id).await.map_err(|error| {
+                Error::RustError(format!("AniList API error (get_anime): {error}"))
+            })?;
         Ok(anilist_to_unified(anime))
     }
 
@@ -177,11 +173,10 @@ impl AnilistProvider {
             _ => return Err(Error::RustError("AniList: Not Found".into())),
         };
 
-        let anime = self
-            .client()
-            .get_anime(id)
-            .await
-            .map_err(|error| Error::RustError(format!("AniList API error (get_anime): {error}")))?;
+        let anime =
+            self.client().get_anime(id).await.map_err(|error| {
+                Error::RustError(format!("AniList API error (get_anime): {error}"))
+            })?;
         Ok(anilist_to_unified(anime))
     }
 }
@@ -193,12 +188,9 @@ impl MetadataProvider for AnilistProvider {
                 let anime_id = id
                     .parse::<i64>()
                     .map_err(|error| Error::RustError(format!("Invalid AniList ID: {error}")))?;
-                self.client()
-                    .get_anime(anime_id)
-                    .await
-                    .map_err(|error| {
-                        Error::RustError(format!("AniList API error (get_anime): {error}"))
-                    })?
+                self.client().get_anime(anime_id).await.map_err(|error| {
+                    Error::RustError(format!("AniList API error (get_anime): {error}"))
+                })?
             }
             super::LookupQuery::ByTitle {
                 title,
@@ -401,9 +393,7 @@ mod tests {
             start_date: None,
         };
         let expected = vec!["テストアニメ".to_string()];
-        assert!(
-            score_candidate(&expected, Some(2026), Some(MediaKind::Tv), &candidate) >= 150
-        );
+        assert!(score_candidate(&expected, Some(2026), Some(MediaKind::Tv), &candidate) >= 150);
     }
 
     // Helper to create an Anime struct via serde since fields are private or hard to construct
