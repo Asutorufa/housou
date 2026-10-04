@@ -276,6 +276,7 @@ fn extract_season_hint(title: &str) -> Option<i32> {
 
 /// Check if a date string's year is within ±1 of the expected year.
 /// This handles timezone edge cases (e.g., begin date 2025-12-31 UTC = 2026-01-01 JST).
+#[cfg(test)]
 fn year_matches(date_str: Option<&str>, expected_year: i32) -> bool {
     date_year(date_str).is_some_and(|date_year| (date_year - expected_year).abs() <= 1)
 }
