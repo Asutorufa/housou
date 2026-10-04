@@ -114,7 +114,7 @@ d1_orm::define_sql! {
     AddCommentsBeginAtColumn => "ALTER TABLE comments ADD COLUMN begin_at INTEGER;",
     @table("metadata_cache")
     CreateMetadataCacheTable => "CREATE TABLE IF NOT EXISTS metadata_cache (
-            cache_key TEXT PRIMARY KEY,
+            cache_key TEXT PRIMARY KEY NOT NULL,
             metadata_json TEXT,
             source TEXT,
             fetched_at INTEGER,
@@ -123,8 +123,6 @@ d1_orm::define_sql! {
             refreshing_until INTEGER,
             refresh_token TEXT
         );",
-    @index("idx_metadata_cache_refresh_after")
-    CreateMetadataCacheRefreshAfterIndex => "CREATE INDEX IF NOT EXISTS idx_metadata_cache_refresh_after ON metadata_cache(refresh_after);",
     MigrateUserItemsToComments => "INSERT INTO comments (user_id, title, content, score, status, begin_at, created_at, updated_at)
         SELECT user_id, title, '', score, status, begin_at, COALESCE(updated_at, 0), COALESCE(updated_at, 0)
         FROM user_items_v2
@@ -140,9 +138,6 @@ d1_orm::define_sql! {
         cache_key: &'a str,
     } => "SELECT cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token
           FROM metadata_cache WHERE cache_key = ?",
-    EnsureMetadataCacheEntry {
-        cache_key: &'a str,
-    } => "INSERT OR IGNORE INTO metadata_cache (cache_key) VALUES (?)",
     StoreMetadataCache {
         metadata_json: Option<&'a str>,
         source: Option<&'a str>,
@@ -159,15 +154,20 @@ d1_orm::define_sql! {
               retry_after = ?,
               refreshing_until = NULL,
               refresh_token = NULL
-          WHERE cache_key = ? AND refresh_token = ?",
+          WHERE cache_key = ? AND refresh_token = ?
+          RETURNING cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token",
     AcquireMetadataRefresh {
+        cache_key: &'a str,
         refresh_token: &'a str,
         refreshing_until: i64,
-        cache_key: &'a str,
         now: i64,
-    } => "UPDATE metadata_cache
-          SET refresh_token = ?, refreshing_until = ?
-          WHERE cache_key = ? AND (refreshing_until IS NULL OR refreshing_until <= ?)",
+    } => "INSERT INTO metadata_cache (cache_key, refresh_token, refreshing_until)
+          VALUES (?, ?, ?)
+          ON CONFLICT(cache_key) DO UPDATE SET
+              refresh_token = excluded.refresh_token,
+              refreshing_until = excluded.refreshing_until
+          WHERE metadata_cache.refreshing_until IS NULL OR metadata_cache.refreshing_until <= ?
+          RETURNING cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token",
     ReleaseMetadataRefresh {
         cache_key: &'a str,
         refresh_token: &'a str,
