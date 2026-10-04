@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 use worker::{Cache, Context, D1Database, Env, Error, Response, Result, RouteContext};
 
-const EDGE_CACHE_NAME: &str = "housou-metadata-v1";
+const EDGE_CACHE_NAME: &str = "housou-metadata-v2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshReason {
@@ -23,18 +23,28 @@ fn now_ms() -> i64 {
 }
 
 fn metadata_cache_key(req: &MetadataRequest) -> String {
-    let identity = if let Some(tmdb_id) = req.tmdb_id.as_deref() {
-        serde_json::json!(["tmdb", tmdb_id])
+    let (version, identity) = if let Some(tmdb_id) = req.tmdb_id.as_deref() {
+        ("v2", serde_json::json!(["tmdb", tmdb_id]))
     } else if let Some(mal_id) = req.mal_id.as_deref() {
-        serde_json::json!(["mal", mal_id])
+        ("v2", serde_json::json!(["mal", mal_id]))
     } else if let Some(anilist_id) = req.anilist_id.as_deref() {
-        serde_json::json!(["anilist", anilist_id])
+        ("v2", serde_json::json!(["anilist", anilist_id]))
+    } else if let Some(bangumi_id) = req.bangumi_id.as_deref() {
+        ("v3", serde_json::json!(["bangumi", bangumi_id]))
     } else {
-        serde_json::json!(["title", req.title.as_deref().unwrap_or("").trim(), req.year])
+        (
+            "v3",
+            serde_json::json!([
+                "title",
+                req.title.as_deref().unwrap_or("").trim(),
+                req.year,
+                req.media_type.as_deref().unwrap_or("")
+            ]),
+        )
     };
 
     let encoded = serde_json::to_vec(&identity).unwrap_or_default();
-    format!("v2-{}", hex::encode(Sha256::digest(encoded)))
+    format!("{version}-{}", hex::encode(Sha256::digest(encoded)))
 }
 
 fn edge_cache_key(cache_origin: &str, cache_key: &str) -> String {
@@ -99,9 +109,28 @@ fn metadata_args(req: &MetadataRequest) -> MetadataArgs<'_> {
         tmdb_id: req.tmdb_id.as_deref(),
         mal_id: req.mal_id.as_deref(),
         anilist_id: req.anilist_id.as_deref(),
+        bangumi_id: req.bangumi_id.as_deref(),
         title: req.title.as_deref(),
+        aliases: &req.aliases,
         year: req.year,
+        media_type: req.media_type.as_deref(),
     }
+}
+
+fn request_for_refresh(req: &MetadataRequest, metadata: &UnifiedMetadata) -> MetadataRequest {
+    let mut req = req.clone();
+    match &metadata.source {
+        MetadataSource::Tmdb(id) => req.tmdb_id = Some(id.clone()),
+        MetadataSource::Mal(id) if req.mal_id.is_none() => req.mal_id = Some(id.clone()),
+        MetadataSource::Anilist(id) if req.anilist_id.is_none() => {
+            req.anilist_id = Some(id.clone());
+        }
+        MetadataSource::Bangumi(id) if req.bangumi_id.is_none() => {
+            req.bangumi_id = Some(id.clone());
+        }
+        _ => {}
+    }
+    req
 }
 
 fn schedule_edge_put(
@@ -136,8 +165,8 @@ async fn store_positive(
     let source = source_name(&outcome.metadata).to_string();
     let refresh_after = now + ttl_ms(config::CACHE_TTL_METADATA_D1);
     let retry_after = outcome
-        .tmdb_failed
-        .then_some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS));
+        .tmdb_retry_after_seconds
+        .map(|seconds| now + ttl_ms(seconds));
 
     db.store_metadata_cache(
         cache_key,
@@ -158,6 +187,7 @@ async fn store_negative(
     cache_key: &str,
     refresh_token: &str,
     now: i64,
+    retry_after_seconds: i32,
 ) -> Result<Option<MetadataCacheEntry>> {
     db.store_metadata_cache(
         cache_key,
@@ -167,7 +197,7 @@ async fn store_negative(
             source: None,
             fetched_at: Some(now),
             refresh_after: None,
-            retry_after: Some(now + ttl_ms(config::CACHE_TTL_METADATA_MISS)),
+            retry_after: Some(now + ttl_ms(retry_after_seconds)),
         },
     )
     .await
@@ -242,8 +272,16 @@ async fn fetch_with_lease(
             }
             Ok(metadata)
         }
-        Err(error) => {
-            if let Err(cache_error) = store_negative(db, d1_cache_key, &refresh_token, now).await {
+        Err(failure) => {
+            if let Err(cache_error) = store_negative(
+                db,
+                d1_cache_key,
+                &refresh_token,
+                now,
+                failure.retry_after_seconds,
+            )
+            .await
+            {
                 worker::console_warn!(
                     "Failed to persist negative metadata lookup in D1: {:?}",
                     cache_error
@@ -252,7 +290,7 @@ async fn fetch_with_lease(
                     .release_metadata_refresh(d1_cache_key, &refresh_token)
                     .await;
             }
-            Err(error)
+            Err(failure.error)
         }
     }
 }
@@ -263,7 +301,9 @@ async fn fetch_without_d1(
     cache: Cache,
     edge_key: String,
 ) -> Result<UnifiedMetadata> {
-    let outcome = super::fetch_metadata_from_providers(metadata_args(req), &ctx.env).await?;
+    let outcome = super::fetch_metadata_from_providers(metadata_args(req), &ctx.env)
+        .await
+        .map_err(|failure| failure.error)?;
     let metadata = outcome.metadata;
     schedule_edge_put(
         ctx,
@@ -309,7 +349,7 @@ async fn refresh_cached_metadata(
                 Some(Ok(metadata)) => {
                     let outcome = ProviderFetch {
                         metadata,
-                        tmdb_failed: false,
+                        tmdb_retry_after_seconds: None,
                     };
                     match store_positive(&db, &cache_key, &refresh_token, &outcome, now).await {
                         Ok(Some(_)) | Ok(None) => {}
@@ -326,7 +366,7 @@ async fn refresh_cached_metadata(
                     db.defer_metadata_retry(
                         &cache_key,
                         &refresh_token,
-                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                        now + ttl_ms(super::tmdb_retry_after_seconds(&error)),
                     )
                     .await?;
                 }
@@ -353,15 +393,15 @@ async fn refresh_cached_metadata(
                         }
                     }
                 }
-                Err(error) => {
+                Err(failure) => {
                     worker::console_log!(
                         "Metadata refresh failed; keeping stale D1 data: {:?}",
-                        error
+                        failure.error
                     );
                     db.defer_metadata_retry(
                         &cache_key,
                         &refresh_token,
-                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                        now + ttl_ms(failure.retry_after_seconds),
                     )
                     .await?;
                 }
@@ -395,7 +435,8 @@ pub(super) async fn fetch_metadata(
 
                 if let Some(metadata) = cached_metadata(&entry) {
                     if let Some(reason) = refresh_reason(&entry, now) {
-                        schedule_refresh(req, ctx, d1_cache_key, reason);
+                        let refresh_req = request_for_refresh(req, &metadata);
+                        schedule_refresh(&refresh_req, ctx, d1_cache_key, reason);
                         return Ok(metadata);
                     }
 
@@ -464,6 +505,8 @@ mod tests {
             mal_id: Some("2".into()),
             anilist_id: Some("3".into()),
             year: Some(2026),
+            media_type: Some("tv".into()),
+            ..Default::default()
         };
         let first = metadata_cache_key(&request);
         request.request_id = Some("two".into());
@@ -482,6 +525,21 @@ mod tests {
 
         request.title = Some("Another title".into());
         assert_ne!(title_based, metadata_cache_key(&request));
+    }
+
+    #[test]
+    fn refresh_reuses_resolved_tmdb_id() {
+        let request = MetadataRequest {
+            title: Some("Search Title".into()),
+            ..Default::default()
+        };
+        let metadata = UnifiedMetadata {
+            source: MetadataSource::Tmdb("tv/123/season/2".into()),
+            ..Default::default()
+        };
+
+        let refreshed = request_for_refresh(&request, &metadata);
+        assert_eq!(refreshed.tmdb_id.as_deref(), Some("tv/123/season/2"));
     }
 
     #[test]
