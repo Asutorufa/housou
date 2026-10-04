@@ -108,10 +108,16 @@ impl MetadataProvider for BangumiProvider {
 }
 
 async fn fetch_subject(id: &str) -> Result<BangumiSubject> {
+    let id = id.trim();
     let id = id
-        .trim()
+        .split_once("/subject/")
+        .map(|(_, value)| value)
+        .unwrap_or(id)
         .trim_start_matches("subject/")
-        .trim_start_matches('/');
+        .trim_start_matches('/')
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("");
     if id.is_empty() || !id.chars().all(|ch| ch.is_ascii_digit()) {
         return Err(Error::RustError("Invalid Bangumi subject ID".into()));
     }
@@ -144,6 +150,11 @@ async fn search_subject(
     } else {
         105
     };
+    let strong_score = if year.is_none() && expected_kind.is_none() {
+        100
+    } else {
+        130
+    };
     let mut best: Option<(i32, BangumiSubject)> = None;
 
     for query in &expected_titles {
@@ -174,7 +185,10 @@ async fn search_subject(
             }
         }
 
-        if best.as_ref().is_some_and(|(score, _)| *score >= 150) {
+        if best
+            .as_ref()
+            .is_some_and(|(score, _)| *score >= strong_score)
+        {
             break;
         }
     }
