@@ -320,7 +320,8 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     }
 
     async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()> {
-        self.execute(Sql::EnsureMetadataCacheEntry { cache_key }).await
+        self.execute(Sql::EnsureMetadataCacheEntry { cache_key })
+            .await
     }
 
     async fn store_metadata_cache(
