@@ -1,3 +1,4 @@
+use super::match_score::{self, MediaKind as MatchMediaKind};
 use super::MetadataProvider;
 use crate::model;
 use regex::Regex;
@@ -47,9 +48,12 @@ impl<'a> MetadataProvider for TmdbProvider<'a> {
         // 1. Resolve ID (Search if needed)
         let media_type = match query {
             super::LookupQuery::ById(id) => parse_tmdb_id(id)?,
-            super::LookupQuery::ByTitle { title, year } => {
-                search_media(&client, title, year).await?
-            }
+            super::LookupQuery::ByTitle {
+                title,
+                aliases,
+                year,
+                media_type,
+            } => search_media(&client, title, aliases, year, media_type).await?
         };
 
         // 2. Fetch Details based on type
@@ -110,76 +114,167 @@ fn parse_tmdb_id(id: &str) -> Result<MediaType> {
 async fn search_media(
     client: &AsyncAPIClient,
     title: &str,
+    aliases: &[String],
     year: Option<i32>,
+    media_type: Option<&str>,
 ) -> Result<MediaType> {
-    // Try normalized title search
-    let normalized = normalize_title(title);
+    const SEARCH_TITLE_LIMIT: usize = 5;
 
-    let results = client
-        .search_api()
-        .get_search_multi_paginated(&normalized, Some("ja-JP"), Some(1), Some(false), None)
-        .await
-        .map_err(|e| Error::RustError(format!("TMDb search failed: {e}")))?;
+    let raw_titles = match_score::title_candidates(Some(title), aliases, SEARCH_TITLE_LIMIT);
+    let expected_titles: Vec<String> = raw_titles
+        .iter()
+        .map(|title| normalize_title(title))
+        .filter(|title| !title.is_empty())
+        .collect();
+    if expected_titles.is_empty() {
+        return Err(Error::RustError("No suitable match found".into()));
+    }
 
-    // Filter and find best match
-    if let Some(results_vec) = results.results {
-        for res in results_vec {
-            let media_type = res.get("media_type").and_then(|v| v.as_str());
+    let expected_kind = MatchMediaKind::from_request(media_type);
+    let season = raw_titles
+        .iter()
+        .find_map(|title| extract_season_hint(title))
+        .unwrap_or(1);
+    let min_score = if year.is_none() && expected_kind.is_none() {
+        90
+    } else {
+        105
+    };
 
-            match media_type {
-                Some("movie") => {
-                    let id = res.get("id").and_then(|v| v.as_i64());
-                    let release_date = res.get("release_date").and_then(|v| v.as_str());
+    let mut best: Option<(i32, MediaType)> = None;
 
-                    if let Some(id) = id {
-                        let id_str = id.to_string();
-                        // Check year if provided (±1 year tolerance for timezone/date edge cases)
-                        if let Some(y) = year {
-                            if year_matches(release_date, y) {
-                                return Ok(MediaType::Movie(id_str));
-                            }
-                        } else {
-                            return Ok(MediaType::Movie(id_str));
-                        }
-                    }
-                }
-                Some("tv") => {
-                    let id = res.get("id").and_then(|v| v.as_i64());
-                    let first_air_date = res.get("first_air_date").and_then(|v| v.as_str());
+    for query_title in &raw_titles {
+        let normalized = normalize_title(query_title);
+        if normalized.is_empty() {
+            continue;
+        }
 
-                    if let Some(id) = id {
-                        let id_str = id.to_string();
-                        // Check year if provided (±1 year tolerance for timezone/date edge cases)
-                        if let Some(y) = year {
-                            if year_matches(first_air_date, y) {
-                                return Ok(MediaType::Tv {
-                                    show_id: id_str,
-                                    season: 1,
-                                });
-                            }
-                        } else {
-                            return Ok(MediaType::Tv {
-                                show_id: id_str,
-                                season: 1,
-                            });
-                        }
-                    }
-                }
-                _ => continue,
+        let results = client
+            .search_api()
+            .get_search_multi_paginated(&normalized, Some("ja-JP"), Some(1), Some(false), None)
+            .await
+            .map_err(|e| Error::RustError(format!("TMDb search failed: {e}")))?;
+
+        for result in results.results.unwrap_or_default() {
+            let Some(candidate) =
+                score_search_result(&expected_titles, year, expected_kind, season, &result)
+            else {
+                continue;
+            };
+
+            if best
+                .as_ref()
+                .is_none_or(|(best_score, _)| candidate.0 > *best_score)
+            {
+                best = Some(candidate);
             }
+        }
+
+        if best.as_ref().is_some_and(|(score, _)| *score >= 150) {
+            break;
         }
     }
 
-    Err(Error::RustError("No suitable match found".into()))
+    match best {
+        Some((score, media)) if score >= min_score => Ok(media),
+        _ => Err(Error::RustError("No suitable match found".into())),
+    }
+}
+
+fn score_search_result(
+    expected_titles: &[String],
+    year: Option<i32>,
+    expected_kind: Option<MatchMediaKind>,
+    season: i32,
+    result: &serde_json::Value,
+) -> Option<(i32, MediaType)> {
+    let media_type = result.get("media_type")?.as_str()?;
+
+    let candidate_titles = [
+        result.get("title").and_then(|value| value.as_str()),
+        result.get("original_title").and_then(|value| value.as_str()),
+        result.get("name").and_then(|value| value.as_str()),
+        result.get("original_name").and_then(|value| value.as_str()),
+    ];
+    let title_score = match_score::title_score(expected_titles, candidate_titles.into_iter().flatten());
+    if title_score == 0 {
+        return None;
+    }
+
+    let (actual_year, actual_kind, media) = match media_type {
+        "movie" => {
+            let id = result.get("id")?.as_i64()?.to_string();
+            let release_date = result.get("release_date").and_then(|value| value.as_str());
+            (
+                date_year(release_date),
+                MatchMediaKind::Movie,
+                MediaType::Movie(id),
+            )
+        }
+        "tv" => {
+            let id = result.get("id")?.as_i64()?.to_string();
+            let first_air_date = result
+                .get("first_air_date")
+                .and_then(|value| value.as_str());
+            (
+                date_year(first_air_date),
+                MatchMediaKind::Tv,
+                MediaType::Tv {
+                    show_id: id,
+                    season,
+                },
+            )
+        }
+        _ => return None,
+    };
+
+    let score = title_score
+        + match_score::year_score(year, actual_year)
+        + match_score::media_kind_score(expected_kind, actual_kind);
+    Some((score, media))
+}
+
+fn date_year(date: Option<&str>) -> Option<i32> {
+    date.and_then(|value| value.get(..4))
+        .and_then(|value| value.parse().ok())
+}
+
+fn extract_season_hint(title: &str) -> Option<i32> {
+    static SEASON_HINT_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = SEASON_HINT_REGEX.get_or_init(|| {
+        Regex::new(
+            r"(?i)(?:season\s*(\d+)|(\d+)(?:st|nd|rd|th)\s*season|第\s*(\d+)\s*期)\s*(?:\(\d{4}\))?\s*$",
+        )
+        .expect("Invalid season hint regex")
+    });
+
+    if let Some(captures) = re.captures(title) {
+        return (1..=3)
+            .find_map(|index| captures.get(index))
+            .and_then(|value| value.as_str().parse::<i32>().ok())
+            .filter(|season| *season > 0);
+    }
+
+    let trimmed = title.trim();
+    let roman = trimmed.split_whitespace().last()?;
+    match roman {
+        "Ⅱ" | "II" => Some(2),
+        "Ⅲ" | "III" => Some(3),
+        "Ⅳ" | "IV" => Some(4),
+        "Ⅴ" | "V" => Some(5),
+        "Ⅵ" | "VI" => Some(6),
+        "Ⅶ" | "VII" => Some(7),
+        "Ⅷ" | "VIII" => Some(8),
+        "Ⅸ" | "IX" => Some(9),
+        "Ⅹ" | "X" => Some(10),
+        _ => None,
+    }
 }
 
 /// Check if a date string's year is within ±1 of the expected year.
 /// This handles timezone edge cases (e.g., begin date 2025-12-31 UTC = 2026-01-01 JST).
 fn year_matches(date_str: Option<&str>, expected_year: i32) -> bool {
-    date_str
-        .and_then(|d| d.get(..4))
-        .and_then(|y| y.parse::<i32>().ok())
-        .is_some_and(|date_year| (date_year - expected_year).abs() <= 1)
+    date_year(date_str).is_some_and(|date_year| (date_year - expected_year).abs() <= 1)
 }
 
 static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -665,6 +760,16 @@ mod tests {
         assert!(parse_tmdb_id("").is_err());
         // foo/bar returns Unknown media type
         assert!(parse_tmdb_id("foo/bar").is_err());
+    }
+
+    #[test]
+    fn test_extract_season_hint() {
+        assert_eq!(extract_season_hint("Test Season 2"), Some(2));
+        assert_eq!(extract_season_hint("Test 3rd Season"), Some(3));
+        assert_eq!(extract_season_hint("テスト 第4期"), Some(4));
+        assert_eq!(extract_season_hint("Title Ⅱ"), Some(2));
+        assert_eq!(extract_season_hint("Title 第2クール"), None);
+        assert_eq!(extract_season_hint("Title Part 2"), None);
     }
 
     #[test]
