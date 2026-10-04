@@ -23,15 +23,22 @@ fn now_ms() -> i64 {
 }
 
 fn metadata_cache_key(req: &MetadataRequest) -> String {
-    let encoded = serde_json::to_vec(&(
-        req.title.as_deref().unwrap_or(""),
-        req.tmdb_id.as_deref().unwrap_or(""),
-        req.mal_id.as_deref().unwrap_or(""),
-        req.anilist_id.as_deref().unwrap_or(""),
-        req.year,
-    ))
-    .unwrap_or_default();
-    format!("v1-{}", hex::encode(Sha256::digest(encoded)))
+    let identity = if let Some(tmdb_id) = req.tmdb_id.as_deref() {
+        serde_json::json!(["tmdb", tmdb_id])
+    } else if let Some(mal_id) = req.mal_id.as_deref() {
+        serde_json::json!(["mal", mal_id])
+    } else if let Some(anilist_id) = req.anilist_id.as_deref() {
+        serde_json::json!(["anilist", anilist_id])
+    } else {
+        serde_json::json!([
+            "title",
+            req.title.as_deref().unwrap_or("").trim(),
+            req.year
+        ])
+    };
+
+    let encoded = serde_json::to_vec(&identity).unwrap_or_default();
+    format!("v2-{}", hex::encode(Sha256::digest(encoded)))
 }
 
 fn edge_cache_key(cache_origin: &str, cache_key: &str) -> String {
@@ -127,7 +134,7 @@ async fn store_positive(
     refresh_token: &str,
     outcome: &ProviderFetch,
     now: i64,
-) -> Result<MetadataCacheEntry> {
+) -> Result<Option<MetadataCacheEntry>> {
     let metadata_json = serde_json::to_string(&outcome.metadata)
         .map_err(|error| Error::RustError(format!("Failed to serialize metadata: {error}")))?;
     let source = source_name(&outcome.metadata).to_string();
@@ -147,18 +154,7 @@ async fn store_positive(
             retry_after,
         },
     )
-    .await?;
-
-    Ok(MetadataCacheEntry {
-        cache_key: cache_key.to_string(),
-        metadata_json: Some(metadata_json),
-        source: Some(source),
-        fetched_at: Some(now),
-        refresh_after: Some(refresh_after),
-        retry_after,
-        refreshing_until: None,
-        refresh_token: None,
-    })
+    .await
 }
 
 async fn store_negative(
@@ -166,7 +162,7 @@ async fn store_negative(
     cache_key: &str,
     refresh_token: &str,
     now: i64,
-) -> Result<()> {
+) -> Result<Option<MetadataCacheEntry>> {
     db.store_metadata_cache(
         cache_key,
         refresh_token,
@@ -186,8 +182,6 @@ async fn acquire_refresh_lease(
     cache_key: &str,
     now: i64,
 ) -> Result<Option<String>> {
-    db.ensure_metadata_cache_entry(cache_key).await?;
-
     let refresh_token = Uuid::new_v4().to_string();
     let refreshing_until = now + ttl_ms(config::CACHE_TTL_METADATA_REFRESH_LEASE);
     if db
@@ -229,7 +223,7 @@ async fn fetch_with_lease(
         Ok(outcome) => {
             let metadata = outcome.metadata.clone();
             match store_positive(db, d1_cache_key, &refresh_token, &outcome, now).await {
-                Ok(entry) => {
+                Ok(Some(entry)) => {
                     schedule_edge_put(
                         ctx,
                         cache,
@@ -238,18 +232,16 @@ async fn fetch_with_lease(
                         edge_ttl_seconds(&entry, now),
                     )?;
                 }
+                Ok(None) => {
+                    worker::console_log!(
+                        "Metadata refresh lease expired before the result could be stored"
+                    );
+                }
                 Err(error) => {
                     worker::console_warn!("Failed to persist metadata in D1: {:?}", error);
                     let _ = db
                         .release_metadata_refresh(d1_cache_key, &refresh_token)
                         .await;
-                    schedule_edge_put(
-                        ctx,
-                        cache,
-                        edge_key,
-                        &metadata,
-                        config::CACHE_TTL_METADATA_L1,
-                    )?;
                 }
             }
             Ok(metadata)
@@ -323,13 +315,14 @@ async fn refresh_cached_metadata(
                         metadata,
                         tmdb_failed: false,
                     };
-                    if let Err(error) =
-                        store_positive(&db, &cache_key, &refresh_token, &outcome, now).await
-                    {
-                        let _ = db
-                            .release_metadata_refresh(&cache_key, &refresh_token)
-                            .await;
-                        return Err(error);
+                    match store_positive(&db, &cache_key, &refresh_token, &outcome, now).await {
+                        Ok(Some(_)) | Ok(None) => {}
+                        Err(error) => {
+                            let _ = db
+                                .release_metadata_refresh(&cache_key, &refresh_token)
+                                .await;
+                            return Err(error);
+                        }
                     }
                 }
                 Some(Err(error)) => {
@@ -354,13 +347,14 @@ async fn refresh_cached_metadata(
         RefreshReason::Full => {
             match super::fetch_metadata_from_providers(metadata_args(&req), &env).await {
                 Ok(outcome) => {
-                    if let Err(error) =
-                        store_positive(&db, &cache_key, &refresh_token, &outcome, now).await
-                    {
-                        let _ = db
-                            .release_metadata_refresh(&cache_key, &refresh_token)
-                            .await;
-                        return Err(error);
+                    match store_positive(&db, &cache_key, &refresh_token, &outcome, now).await {
+                        Ok(Some(_)) | Ok(None) => {}
+                        Err(error) => {
+                            let _ = db
+                                .release_metadata_refresh(&cache_key, &refresh_token)
+                                .await;
+                            return Err(error);
+                        }
                     }
                 }
                 Err(error) => {
@@ -480,7 +474,18 @@ mod tests {
         assert_eq!(first, metadata_cache_key(&request));
 
         request.year = Some(2027);
-        assert_ne!(first, metadata_cache_key(&request));
+        request.title = Some("Renamed".into());
+        assert_eq!(first, metadata_cache_key(&request));
+
+        request.tmdb_id = None;
+        let id_based = metadata_cache_key(&request);
+        request.mal_id = None;
+        request.anilist_id = None;
+        let title_based = metadata_cache_key(&request);
+        assert_ne!(id_based, title_based);
+
+        request.title = Some("Another title".into());
+        assert_ne!(title_based, metadata_cache_key(&request));
     }
 
     #[test]
