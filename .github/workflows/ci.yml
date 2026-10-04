@@ -36,8 +36,14 @@ jobs:
       - name: Install wrangler
         run: npm install -g wrangler
 
+      - name: Test Rust
+        run: cargo test --lib
+
       - name: Build Worker
         run: npx wrangler build --env production
+
+      - name: Test Worker Metadata
+        run: node tests/metadata-runtime.test.mjs "$(npm root -g)/wrangler"
 
   check-frontend:
     runs-on: ubuntu-latest

@@ -98,7 +98,7 @@ pub(super) async fn fetch_tmdb_metadata(
     Some(tmdb.fetch(query).await)
 }
 
-fn tmdb_retry_after_seconds(error: &Error) -> i32 {
+fn provider_retry_after_seconds(error: &Error) -> i32 {
     let error = error.to_string().to_ascii_lowercase();
     if error.contains("no suitable match")
         || error.contains("not found")
@@ -117,6 +117,7 @@ pub(super) async fn fetch_metadata_from_providers(
     env: &Env,
 ) -> std::result::Result<ProviderFetch, ProviderChainError> {
     let mut tmdb_retry_after = None;
+    let mut chain_retry_after = crate::config::CACHE_TTL_METADATA_MISS;
 
     // TMDb is the preferred source because it provides the richest metadata.
     if let Some(result) = fetch_tmdb_metadata(args, env).await {
@@ -128,7 +129,9 @@ pub(super) async fn fetch_metadata_from_providers(
                 });
             }
             Err(error) => {
-                tmdb_retry_after = Some(tmdb_retry_after_seconds(&error));
+                let retry_after = provider_retry_after_seconds(&error);
+                tmdb_retry_after = Some(retry_after);
+                chain_retry_after = chain_retry_after.min(retry_after);
                 console_log!("TMDb fetch failed {:?}", error);
             }
         }
@@ -144,7 +147,10 @@ pub(super) async fn fetch_metadata_from_providers(
                     tmdb_retry_after_seconds: tmdb_retry_after,
                 });
             }
-            Err(error) => console_log!("Jikan fetch failed {:?}", error),
+            Err(error) => {
+                chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                console_log!("Jikan fetch failed {:?}", error);
+            }
         }
     }
 
@@ -153,7 +159,18 @@ pub(super) async fn fetch_metadata_from_providers(
     let anilist_result = if let Some(id) = args.anilist_id {
         Some(anilist.fetch(LookupQuery::ById(id)).await)
     } else if let Some(mal_id) = args.mal_id {
-        Some(anilist.fetch_by_mal_id(mal_id).await)
+        match anilist.fetch_by_mal_id(mal_id).await {
+            Ok(Some(metadata)) => Some(Ok(metadata)),
+            Ok(None) => {
+                // A missing MAL mapping must not remove the existing title fallback.
+                if let Some(query) = title_query(args) {
+                    Some(anilist.fetch(query).await)
+                } else {
+                    None
+                }
+            }
+            Err(error) => Some(Err(error)),
+        }
     } else if let Some(query) = title_query(args) {
         Some(anilist.fetch(query).await)
     } else {
@@ -168,7 +185,10 @@ pub(super) async fn fetch_metadata_from_providers(
                     tmdb_retry_after_seconds: tmdb_retry_after,
                 });
             }
-            Err(error) => console_log!("AniList fetch failed {:?}", error),
+            Err(error) => {
+                chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                console_log!("AniList fetch failed {:?}", error);
+            }
         }
     }
 
@@ -187,13 +207,16 @@ pub(super) async fn fetch_metadata_from_providers(
                     tmdb_retry_after_seconds: tmdb_retry_after,
                 });
             }
-            Err(error) => console_log!("Bangumi fetch failed {:?}", error),
+            Err(error) => {
+                chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                console_log!("Bangumi fetch failed {:?}", error);
+            }
         }
     }
 
     Err(ProviderChainError {
         error: Error::RustError("No metadata provider could fulfill the request".into()),
-        retry_after_seconds: tmdb_retry_after.unwrap_or(crate::config::CACHE_TTL_METADATA_MISS),
+        retry_after_seconds: chain_retry_after,
     })
 }
 

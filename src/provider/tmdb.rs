@@ -135,16 +135,7 @@ async fn search_media(
         .iter()
         .find_map(|title| extract_season_hint(title))
         .unwrap_or(1);
-    let min_score = if year.is_none() && expected_kind.is_none() {
-        90
-    } else {
-        105
-    };
-    let strong_score = if year.is_none() && expected_kind.is_none() {
-        100
-    } else {
-        130
-    };
+    let (min_score, strong_score) = match_score::score_thresholds(year, expected_kind);
 
     let mut best: Option<(i32, MediaType)> = None;
 
@@ -275,20 +266,30 @@ fn extract_season_hint(title: &str) -> Option<i32> {
             .filter(|season| *season > 0);
     }
 
-    let trimmed = title.trim();
-    let roman = trimmed.split_whitespace().last()?;
-    match roman {
-        "Ⅱ" | "II" => Some(2),
-        "Ⅲ" | "III" => Some(3),
-        "Ⅳ" | "IV" => Some(4),
-        "Ⅴ" | "V" => Some(5),
-        "Ⅵ" | "VI" => Some(6),
-        "Ⅶ" | "VII" => Some(7),
-        "Ⅷ" | "VIII" => Some(8),
-        "Ⅸ" | "IX" => Some(9),
-        "Ⅹ" | "X" => Some(10),
-        _ => None,
-    }
+    roman_season_suffix(title).map(|(_, season)| season)
+}
+
+fn roman_season_suffix(title: &str) -> Option<(&str, i32)> {
+    static ROMAN_SEASON_REGEX: OnceLock<Regex> = OnceLock::new();
+    let re = ROMAN_SEASON_REGEX.get_or_init(|| {
+        Regex::new(r"(?i)(?:\s+(II|III|IV|V|VI|VII|VIII|IX|X)|([ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]))\s*(?:\(\d{4}\))?\s*$")
+            .expect("Invalid Roman season regex")
+    });
+    let captures = re.captures(title)?;
+    let roman = captures.get(1).or_else(|| captures.get(2))?.as_str();
+    let season = match roman.to_ascii_uppercase().as_str() {
+        "Ⅱ" | "II" => 2,
+        "Ⅲ" | "III" => 3,
+        "Ⅳ" | "IV" => 4,
+        "Ⅴ" | "V" => 5,
+        "Ⅵ" | "VI" => 6,
+        "Ⅶ" | "VII" => 7,
+        "Ⅷ" | "VIII" => 8,
+        "Ⅸ" | "IX" => 9,
+        "Ⅹ" | "X" => 10,
+        _ => return None,
+    };
+    Some((&title[..captures.get(0)?.start()], season))
 }
 
 /// Check if a date string's year is within ±1 of the expected year.
@@ -302,13 +303,16 @@ static TITLE_NORMALIZE_REGEX: OnceLock<Regex> = OnceLock::new();
 
 fn normalize_title(title: &str) -> String {
     let normalized = title.replace("-", " - ");
+    let normalized = roman_season_suffix(&normalized)
+        .map(|(title, _)| title)
+        .unwrap_or(&normalized);
 
     let re = TITLE_NORMALIZE_REGEX.get_or_init(|| {
         Regex::new(r"(?i)(\s*第\d+期|\s*第\d+クール|\s*Season\s*\d+|\s*\d+(st|nd|rd|th)\s*Season|\s*[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]+\s*|\s*\(\d{4}\)\s*)+$")
             .expect("Invalid Title Normalize Regex")
     });
 
-    let stripped = re.replace(&normalized, "");
+    let stripped = re.replace(normalized, "");
 
     let mut parts = stripped.split_whitespace();
     let mut result = String::with_capacity(stripped.len());
@@ -816,6 +820,37 @@ mod tests {
         assert_eq!(extract_season_hint("Title Ⅱ"), Some(2));
         assert_eq!(extract_season_hint("Title 第2クール"), None);
         assert_eq!(extract_season_hint("Title Part 2"), None);
+    }
+
+    #[test]
+    fn roman_season_titles_match_the_parent_show() {
+        let result = serde_json::json!({
+            "id": 64196,
+            "media_type": "tv",
+            "name": "Overlord",
+            "original_name": "オーバーロード",
+            "first_air_date": "2015-07-07"
+        });
+        for title in ["Overlord II", "OverlordⅡ", "Overlord II (2018)"] {
+            let season = extract_season_hint(title).expect("season hint should be recognized");
+            let expected = vec![normalize_title(title)];
+            let (score, media) = score_search_result(
+                &expected,
+                Some(2018),
+                Some(MatchMediaKind::Tv),
+                season,
+                &result,
+            )
+            .expect("parent show should be scoreable");
+            assert!(score >= 130, "{title} must match season 2; got {score}");
+            assert_eq!(
+                media,
+                MediaType::Tv {
+                    show_id: "64196".into(),
+                    season: 2
+                }
+            );
+        }
     }
 
     #[test]

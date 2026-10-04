@@ -145,16 +145,7 @@ async fn search_subject(
     }
 
     let expected_kind = MediaKind::from_request(media_type);
-    let min_score = if year.is_none() && expected_kind.is_none() {
-        90
-    } else {
-        105
-    };
-    let strong_score = if year.is_none() && expected_kind.is_none() {
-        100
-    } else {
-        130
-    };
+    let (min_score, strong_score) = match_score::score_thresholds(year, expected_kind);
     let mut best: Option<(i32, BangumiSubject)> = None;
 
     for query in &expected_titles {

@@ -102,23 +102,26 @@ impl AnilistProvider {
         ANILIST_CLIENT.get_or_init(rust_anilist::Client::default)
     }
 
-    pub async fn fetch_by_mal_id(&self, mal_id: &str) -> Result<model::UnifiedMetadata> {
+    pub async fn fetch_by_mal_id(&self, mal_id: &str) -> Result<Option<model::UnifiedMetadata>> {
         let mal_id = mal_id
             .parse::<i64>()
             .map_err(|error| Error::RustError(format!("Invalid MAL ID: {error}")))?;
 
-        let data: MalLookupData =
+        let data: Option<MalLookupData> =
             graphql(MAL_ID_QUERY, serde_json::json!({ "idMal": mal_id })).await?;
-        let id = data
-            .media
-            .ok_or_else(|| Error::RustError("AniList: Not Found".into()))?
-            .id;
+        let Some(data) = data else {
+            return Ok(None);
+        };
+        let Some(media) = data.media else {
+            return Ok(None);
+        };
+        let id = media.id;
 
         let anime =
             self.client().get_anime(id).await.map_err(|error| {
                 Error::RustError(format!("AniList API error (get_anime): {error}"))
             })?;
-        Ok(anilist_to_unified(anime))
+        Ok(Some(anilist_to_unified(anime)))
     }
 
     async fn search(
@@ -135,20 +138,11 @@ impl AnilistProvider {
         }
 
         let expected_kind = MediaKind::from_request(media_type);
-        let min_score = if year.is_none() && expected_kind.is_none() {
-            90
-        } else {
-            105
-        };
-        let strong_score = if year.is_none() && expected_kind.is_none() {
-            100
-        } else {
-            130
-        };
+        let (min_score, strong_score) = match_score::score_thresholds(year, expected_kind);
         let mut best: Option<(i32, i64)> = None;
 
         for search_title in &expected_titles {
-            let data: SearchData = graphql(
+            let data: Option<SearchData> = graphql(
                 SEARCH_QUERY,
                 serde_json::json!({
                     "search": search_title,
@@ -157,6 +151,9 @@ impl AnilistProvider {
                 }),
             )
             .await?;
+            let Some(data) = data else {
+                continue;
+            };
 
             for candidate in data.page.media {
                 let score = score_candidate(&expected_titles, year, expected_kind, &candidate);
@@ -214,7 +211,10 @@ impl MetadataProvider for AnilistProvider {
     }
 }
 
-async fn graphql<T: DeserializeOwned>(query: &str, variables: serde_json::Value) -> Result<T> {
+async fn graphql<T: DeserializeOwned>(
+    query: &str,
+    variables: serde_json::Value,
+) -> Result<Option<T>> {
     let body = serde_json::json!({
         "query": query,
         "variables": variables,
@@ -235,6 +235,10 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: serde_json::Value)
 
     let request = Request::new_with_init(ANILIST_API, &init)?;
     let mut response = Fetch::Request(request).send().await?;
+    // AniList reports missing Media IDs as HTTP 404, not only as a null field.
+    if response.status_code() == 404 {
+        return Ok(None);
+    }
     if response.status_code() != 200 {
         return Err(Error::RustError(format!(
             "AniList GraphQL request failed with HTTP {}",
@@ -244,7 +248,7 @@ async fn graphql<T: DeserializeOwned>(query: &str, variables: serde_json::Value)
 
     let response: GraphQlResponse<T> = response.json().await?;
     if let Some(data) = response.data {
-        return Ok(data);
+        return Ok(Some(data));
     }
 
     let message = response

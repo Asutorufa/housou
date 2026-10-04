@@ -102,6 +102,14 @@ pub fn year_score(expected: Option<i32>, actual: Option<i32>) -> i32 {
     }
 }
 
+pub fn score_thresholds(year: Option<i32>, kind: Option<MediaKind>) -> (i32, i32) {
+    if year.is_none() && kind.is_none() {
+        (90, 100)
+    } else {
+        (105, 130)
+    }
+}
+
 pub fn media_kind_score(expected: Option<MediaKind>, actual: MediaKind) -> i32 {
     let Some(expected) = expected else {
         return 0;
