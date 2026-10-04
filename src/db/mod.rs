@@ -30,6 +30,31 @@ pub trait Database {
     async fn get_user_by_session_token(&self, filter: SessionUpdate) -> Result<Option<User>>;
     async fn delete_session(&self, token: &str) -> Result<()>;
 
+    async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>>;
+    async fn save_metadata_cache(
+        &self,
+        cache_key: &str,
+        metadata_json: Option<&str>,
+        source: Option<&str>,
+        fetched_at: Option<i64>,
+        refresh_after: Option<i64>,
+        retry_after: Option<i64>,
+    ) -> Result<()>;
+    async fn try_acquire_metadata_refresh(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        now: i64,
+        refreshing_until: i64,
+    ) -> Result<bool>;
+    async fn release_metadata_refresh(&self, cache_key: &str, refresh_token: &str) -> Result<()>;
+    async fn defer_metadata_retry(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        retry_after: i64,
+    ) -> Result<()>;
+
     async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>>;
     async fn get_comment_items_by_range(
         &self,
@@ -156,6 +181,14 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
                 Sql::CreateCommentsTitleUpdatedAtIndex,
             ],
         ),
+        Migration::new(
+            12,
+            "Add persistent metadata cache",
+            vec![
+                Sql::CreateMetadataCacheTable,
+                Sql::CreateMetadataCacheRefreshAfterIndex,
+            ],
+        ),
     ]
 }
 
@@ -278,6 +311,73 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     async fn delete_session(&self, token: &str) -> Result<()> {
         let sql = Sql::DeleteSession { token };
         self.execute(sql).await
+    }
+
+    async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>> {
+        self.query_first(Sql::GetMetadataCache { cache_key }).await
+    }
+
+    async fn save_metadata_cache(
+        &self,
+        cache_key: &str,
+        metadata_json: Option<&str>,
+        source: Option<&str>,
+        fetched_at: Option<i64>,
+        refresh_after: Option<i64>,
+        retry_after: Option<i64>,
+    ) -> Result<()> {
+        self.execute(Sql::SaveMetadataCache {
+            cache_key,
+            metadata_json,
+            source,
+            fetched_at,
+            refresh_after,
+            retry_after,
+        })
+        .await
+    }
+
+    async fn try_acquire_metadata_refresh(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        now: i64,
+        refreshing_until: i64,
+    ) -> Result<bool> {
+        self.execute(Sql::AcquireMetadataRefresh {
+            refresh_token,
+            refreshing_until,
+            cache_key,
+            now,
+        })
+        .await?;
+
+        Ok(self
+            .get_metadata_cache(cache_key)
+            .await?
+            .is_some_and(|entry| entry.refresh_token.as_deref() == Some(refresh_token)))
+    }
+
+    async fn release_metadata_refresh(&self, cache_key: &str, refresh_token: &str) -> Result<()> {
+        self.execute(Sql::ReleaseMetadataRefresh {
+            cache_key,
+            refresh_token,
+        })
+        .await
+    }
+
+    async fn defer_metadata_retry(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        retry_after: i64,
+    ) -> Result<()> {
+        self.execute(Sql::DeferMetadataRetry {
+            retry_after,
+            cache_key,
+            refresh_token,
+        })
+        .await
     }
 
     async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>> {
@@ -701,6 +801,50 @@ mod tests {
         assert!(!tables.is_empty());
         assert_eq!(tables[0].name, "users");
 
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_metadata_cache_round_trip_and_refresh_lease() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        db.save_metadata_cache(
+            "title:test:2026",
+            Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
+            Some("tmdb"),
+            Some(1_000),
+            Some(2_000),
+            None,
+        )
+        .await?;
+
+        let entry = db
+            .get_metadata_cache("title:test:2026")
+            .await?
+            .expect("metadata cache entry should exist");
+        assert_eq!(entry.source.as_deref(), Some("tmdb"));
+        assert_eq!(entry.refresh_after, Some(2_000));
+
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-a", 2_000, 2_300)
+                .await?
+        );
+        assert!(
+            !db.try_acquire_metadata_refresh("title:test:2026", "lease-b", 2_001, 2_301)
+                .await?
+        );
+
+        db.defer_metadata_retry("title:test:2026", "lease-a", 3_600)
+            .await?;
+        let deferred = db
+            .get_metadata_cache("title:test:2026")
+            .await?
+            .expect("metadata cache entry should still exist");
+        assert_eq!(deferred.retry_after, Some(3_600));
+        assert!(deferred.refresh_token.is_none());
         Ok(())
     }
 
