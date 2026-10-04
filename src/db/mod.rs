@@ -30,6 +30,28 @@ pub trait Database {
     async fn get_user_by_session_token(&self, filter: SessionUpdate) -> Result<Option<User>>;
     async fn delete_session(&self, token: &str) -> Result<()>;
 
+    async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>>;
+    async fn store_metadata_cache(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        value: MetadataCacheWrite<'_>,
+    ) -> Result<Option<MetadataCacheEntry>>;
+    async fn try_acquire_metadata_refresh(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        now: i64,
+        refreshing_until: i64,
+    ) -> Result<bool>;
+    async fn release_metadata_refresh(&self, cache_key: &str, refresh_token: &str) -> Result<()>;
+    async fn defer_metadata_retry(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        retry_after: i64,
+    ) -> Result<()>;
+
     async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>>;
     async fn get_comment_items_by_range(
         &self,
@@ -156,6 +178,11 @@ fn get_migrations() -> Vec<Migration<Sql<'static>>> {
                 Sql::CreateCommentsTitleUpdatedAtIndex,
             ],
         ),
+        Migration::new(
+            12,
+            "Add persistent metadata cache",
+            vec![Sql::CreateMetadataCacheTable],
+        ),
     ]
 }
 
@@ -278,6 +305,68 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
     async fn delete_session(&self, token: &str) -> Result<()> {
         let sql = Sql::DeleteSession { token };
         self.execute(sql).await
+    }
+
+    async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>> {
+        self.query_first(Sql::GetMetadataCache { cache_key }).await
+    }
+
+    async fn store_metadata_cache(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        value: MetadataCacheWrite<'_>,
+    ) -> Result<Option<MetadataCacheEntry>> {
+        self.query_first(Sql::StoreMetadataCache {
+            metadata_json: value.metadata_json,
+            source: value.source,
+            fetched_at: value.fetched_at,
+            refresh_after: value.refresh_after,
+            retry_after: value.retry_after,
+            cache_key,
+            refresh_token,
+        })
+        .await
+    }
+
+    async fn try_acquire_metadata_refresh(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        now: i64,
+        refreshing_until: i64,
+    ) -> Result<bool> {
+        let acquired: Option<MetadataCacheEntry> = self
+            .query_first(Sql::AcquireMetadataRefresh {
+                cache_key,
+                refresh_token,
+                refreshing_until,
+                now,
+            })
+            .await?;
+        Ok(acquired.is_some())
+    }
+
+    async fn release_metadata_refresh(&self, cache_key: &str, refresh_token: &str) -> Result<()> {
+        self.execute(Sql::ReleaseMetadataRefresh {
+            cache_key,
+            refresh_token,
+        })
+        .await
+    }
+
+    async fn defer_metadata_retry(
+        &self,
+        cache_key: &str,
+        refresh_token: &str,
+        retry_after: i64,
+    ) -> Result<()> {
+        self.execute(Sql::DeferMetadataRetry {
+            retry_after,
+            cache_key,
+            refresh_token,
+        })
+        .await
     }
 
     async fn get_comment_items_all(&self, user_id: i32) -> Result<Vec<CommentItem>> {
@@ -414,6 +503,14 @@ mod tests {
     #[derive(Debug, Deserialize)]
     struct TableColumnInfo {
         name: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TableColumnDetail {
+        name: String,
+        #[serde(rename = "notnull")]
+        not_null: i32,
+        pk: i32,
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -701,6 +798,145 @@ mod tests {
         assert!(!tables.is_empty());
         assert_eq!(tables[0].name, "users");
 
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_metadata_cache_round_trip_and_refresh_lease() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+        db.migrate().await?;
+
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-a", 1_000, 1_300)
+                .await?
+        );
+        let stored = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-a",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(1_000),
+                    refresh_after: Some(2_000),
+                    retry_after: None,
+                },
+            )
+            .await?;
+        assert!(stored.is_some());
+
+        let entry = db
+            .get_metadata_cache("title:test:2026")
+            .await?
+            .expect("metadata cache entry should exist");
+        assert_eq!(entry.source.as_deref(), Some("tmdb"));
+        assert_eq!(entry.refresh_after, Some(2_000));
+
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-a", 2_000, 2_300)
+                .await?
+        );
+        assert!(
+            !db.try_acquire_metadata_refresh("title:test:2026", "lease-b", 2_001, 2_301)
+                .await?
+        );
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-b", 2_300, 2_600)
+                .await?
+        );
+
+        let stale_write = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-a",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/old"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(2_100),
+                    refresh_after: Some(3_000),
+                    retry_after: None,
+                },
+            )
+            .await?;
+        assert!(stale_write.is_none());
+
+        let current_write = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-b",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/2"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(2_300),
+                    refresh_after: Some(3_300),
+                    retry_after: None,
+                },
+            )
+            .await?;
+        assert!(current_write.is_some());
+
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-c", 3_300, 3_600)
+                .await?
+        );
+        db.defer_metadata_retry("title:test:2026", "lease-c", 4_600)
+            .await?;
+
+        let deferred = db
+            .get_metadata_cache("title:test:2026")
+            .await?
+            .expect("metadata cache entry should still exist");
+        assert_eq!(deferred.retry_after, Some(4_600));
+        assert!(deferred.refresh_token.is_none());
+        assert_eq!(deferred.fetched_at, Some(2_300));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_metadata_cache_migrates_cleanly_from_v11() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        // Match the older app-owned migration table shape. d1-orm must remain
+        // compatible with it instead of assuming a freshly-created tracker.
+        db.execute(Sql::CreateMigrationsTable).await?;
+        db.execute(Sql::InsertMigration {
+            version: 11,
+            applied_at: 1,
+        })
+        .await?;
+
+        db.migrate().await?;
+
+        let tables: Vec<TableColumnInfo> = db
+            .query_all(Sql::CheckTableExists {
+                name: "metadata_cache",
+            })
+            .await?;
+        assert_eq!(tables.len(), 1);
+
+        let columns: Vec<TableColumnDetail> = db
+            .query_all(Sql::GetTableInfo {
+                table: "metadata_cache",
+            })
+            .await?;
+        let cache_key = columns
+            .iter()
+            .find(|column| column.name == "cache_key")
+            .expect("cache_key column should exist");
+        assert_eq!(cache_key.not_null, 1);
+        assert_eq!(cache_key.pk, 1);
+
+        let version: SchemaVersion = db
+            .query_first(Sql::GetSchemaVersion)
+            .await?
+            .expect("schema version should exist");
+        assert_eq!(version.version, Some(12));
+
+        db.migrate().await?;
         Ok(())
     }
 

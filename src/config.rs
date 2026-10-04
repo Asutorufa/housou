@@ -11,9 +11,10 @@ pub const CACHE_TTL_SECONDS: i32 = 6 * ONE_HOUR; // 6 hours cache
 pub const CACHE_TTL_404: i32 = ONE_HOUR; // 1 hour for 404s
 pub const CACHE_TTL_CONFIG: i32 = ONE_MINUTE; // 1 minute for config
 pub const CACHE_TTL_API: i32 = ONE_DAY; // 24 hours for API responses
-pub const CACHE_TTL_FINISHED: i32 = 30 * ONE_DAY; // 30 days for finished titles
-pub const CACHE_TTL_ONGOING: i32 = 7 * ONE_DAY; // 1 week for ongoing titles
-pub const CACHE_TTL_JIKAN: i32 = ONE_DAY; // 1 day for Jikan API responses
+pub const CACHE_TTL_METADATA_L1: i32 = ONE_HOUR; // edge/browser metadata cache
+pub const CACHE_TTL_METADATA_D1: i32 = 3 * ONE_DAY; // lazy refresh window
+pub const CACHE_TTL_METADATA_MISS: i32 = ONE_HOUR; // negative lookup / retry backoff
+pub const CACHE_TTL_METADATA_REFRESH_LEASE: i32 = 5 * ONE_MINUTE;
 pub const CACHE_TTL_FAVICON: i32 = 30 * ONE_DAY; // 30 days for favicon
 pub const CACHE_TTL_FAVICON_404: i32 = ONE_DAY; // 1 day for favicon 404
 

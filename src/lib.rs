@@ -164,6 +164,7 @@ fn should_skip_shared_cache(path: &str) -> bool {
     path.starts_with("/api/auth")
         || path.starts_with("/api/user")
         || path.starts_with("/api/comments")
+        || path.starts_with("/api/metadata")
 }
 
 async fn router(req: Request, env: Env, ctx: Context) -> Result<Response> {
@@ -347,8 +348,8 @@ mod tests {
         assert!(should_skip_shared_cache("/api/user/status"));
         assert!(should_skip_shared_cache("/api/comments"));
         assert!(should_skip_shared_cache("/api/comments?title=test"));
+        assert!(should_skip_shared_cache("/api/metadata"));
         assert!(!should_skip_shared_cache("/api/items"));
-        assert!(!should_skip_shared_cache("/api/metadata"));
     }
 
     #[test]

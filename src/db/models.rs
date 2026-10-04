@@ -112,3 +112,24 @@ pub struct CommentWithUser {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
+pub struct MetadataCacheEntry {
+    pub cache_key: String,
+    pub metadata_json: Option<String>,
+    pub source: Option<String>,
+    pub fetched_at: Option<i64>,
+    pub refresh_after: Option<i64>,
+    pub retry_after: Option<i64>,
+    pub refreshing_until: Option<i64>,
+    pub refresh_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MetadataCacheWrite<'a> {
+    pub metadata_json: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub fetched_at: Option<i64>,
+    pub refresh_after: Option<i64>,
+    pub retry_after: Option<i64>,
+}

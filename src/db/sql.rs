@@ -112,6 +112,17 @@ d1_orm::define_sql! {
     AddCommentsStatusColumn => "ALTER TABLE comments ADD COLUMN status INTEGER DEFAULT 0;",
     @column("comments", "begin_at")
     AddCommentsBeginAtColumn => "ALTER TABLE comments ADD COLUMN begin_at INTEGER;",
+    @table("metadata_cache")
+    CreateMetadataCacheTable => "CREATE TABLE IF NOT EXISTS metadata_cache (
+            cache_key TEXT PRIMARY KEY NOT NULL,
+            metadata_json TEXT,
+            source TEXT,
+            fetched_at INTEGER,
+            refresh_after INTEGER,
+            retry_after INTEGER,
+            refreshing_until INTEGER,
+            refresh_token TEXT
+        );",
     MigrateUserItemsToComments => "INSERT INTO comments (user_id, title, content, score, status, begin_at, created_at, updated_at)
         SELECT user_id, title, '', score, status, begin_at, COALESCE(updated_at, 0), COALESCE(updated_at, 0)
         FROM user_items_v2
@@ -121,6 +132,55 @@ d1_orm::define_sql! {
             status = excluded.status,
             begin_at = COALESCE(excluded.begin_at, comments.begin_at),
             updated_at = MAX(comments.updated_at, excluded.updated_at);",
+
+    // Metadata cache
+    GetMetadataCache {
+        cache_key: &'a str,
+    } => "SELECT cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token
+          FROM metadata_cache WHERE cache_key = ?",
+    StoreMetadataCache {
+        metadata_json: Option<&'a str>,
+        source: Option<&'a str>,
+        fetched_at: Option<i64>,
+        refresh_after: Option<i64>,
+        retry_after: Option<i64>,
+        cache_key: &'a str,
+        refresh_token: &'a str,
+    } => "UPDATE metadata_cache
+          SET metadata_json = ?,
+              source = ?,
+              fetched_at = ?,
+              refresh_after = ?,
+              retry_after = ?,
+              refreshing_until = NULL,
+              refresh_token = NULL
+          WHERE cache_key = ? AND refresh_token = ?
+          RETURNING cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token",
+    AcquireMetadataRefresh {
+        cache_key: &'a str,
+        refresh_token: &'a str,
+        refreshing_until: i64,
+        now: i64,
+    } => "INSERT INTO metadata_cache (cache_key, refresh_token, refreshing_until)
+          VALUES (?, ?, ?)
+          ON CONFLICT(cache_key) DO UPDATE SET
+              refresh_token = excluded.refresh_token,
+              refreshing_until = excluded.refreshing_until
+          WHERE metadata_cache.refreshing_until IS NULL OR metadata_cache.refreshing_until <= ?
+          RETURNING cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token",
+    ReleaseMetadataRefresh {
+        cache_key: &'a str,
+        refresh_token: &'a str,
+    } => "UPDATE metadata_cache
+          SET refreshing_until = NULL, refresh_token = NULL
+          WHERE cache_key = ? AND refresh_token = ?",
+    DeferMetadataRetry {
+        retry_after: i64,
+        cache_key: &'a str,
+        refresh_token: &'a str,
+    } => "UPDATE metadata_cache
+          SET retry_after = ?, refreshing_until = NULL, refresh_token = NULL
+          WHERE cache_key = ? AND refresh_token = ?",
 
     // Users
     CreateUser {
