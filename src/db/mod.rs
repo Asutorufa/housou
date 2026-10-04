@@ -505,6 +505,14 @@ mod tests {
         name: String,
     }
 
+    #[derive(Debug, Deserialize)]
+    struct TableColumnDetail {
+        name: String,
+        #[serde(rename = "notnull")]
+        not_null: i32,
+        pk: i32,
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn test_migrations_and_basic_workflow() -> Result<()> {
         let executor =
@@ -800,23 +808,24 @@ mod tests {
         let db = AppDatabase::new(executor);
         db.migrate().await?;
 
-        db.ensure_metadata_cache_entry("title:test:2026").await?;
         assert!(
             db.try_acquire_metadata_refresh("title:test:2026", "lease-a", 1_000, 1_300)
                 .await?
         );
-        db.store_metadata_cache(
-            "title:test:2026",
-            "lease-a",
-            MetadataCacheWrite {
-                metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
-                source: Some("tmdb"),
-                fetched_at: Some(1_000),
-                refresh_after: Some(2_000),
-                retry_after: None,
-            },
-        )
-        .await?;
+        let stored = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-a",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(1_000),
+                    refresh_after: Some(2_000),
+                    retry_after: None,
+                },
+            )
+            .await?;
+        assert!(stored.is_some());
 
         let entry = db
             .get_metadata_cache("title:test:2026")
@@ -833,15 +842,101 @@ mod tests {
             !db.try_acquire_metadata_refresh("title:test:2026", "lease-b", 2_001, 2_301)
                 .await?
         );
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-b", 2_300, 2_600)
+                .await?
+        );
 
-        db.defer_metadata_retry("title:test:2026", "lease-a", 3_600)
+        let stale_write = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-a",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/old"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(2_100),
+                    refresh_after: Some(3_000),
+                    retry_after: None,
+                },
+            )
             .await?;
+        assert!(stale_write.is_none());
+
+        let current_write = db
+            .store_metadata_cache(
+                "title:test:2026",
+                "lease-b",
+                MetadataCacheWrite {
+                    metadata_json: Some(r#"{"sourceSite":"tmdb","id":"tv/2"}"#),
+                    source: Some("tmdb"),
+                    fetched_at: Some(2_300),
+                    refresh_after: Some(3_300),
+                    retry_after: None,
+                },
+            )
+            .await?;
+        assert!(current_write.is_some());
+
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-c", 3_300, 3_600)
+                .await?
+        );
+        db.defer_metadata_retry("title:test:2026", "lease-c", 4_600)
+            .await?;
+
         let deferred = db
             .get_metadata_cache("title:test:2026")
             .await?
             .expect("metadata cache entry should still exist");
-        assert_eq!(deferred.retry_after, Some(3_600));
+        assert_eq!(deferred.retry_after, Some(4_600));
         assert!(deferred.refresh_token.is_none());
+        assert_eq!(deferred.fetched_at, Some(2_300));
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_metadata_cache_migrates_cleanly_from_v11() -> Result<()> {
+        let executor =
+            SqliteExecutor::new_in_memory().map_err(|e| Error::RustError(e.to_string()))?;
+        let db = AppDatabase::new(executor);
+
+        // Match the older app-owned migration table shape. d1-orm must remain
+        // compatible with it instead of assuming a freshly-created tracker.
+        db.execute(Sql::CreateMigrationsTable).await?;
+        db.execute(Sql::InsertMigration {
+            version: 11,
+            applied_at: 1,
+        })
+        .await?;
+
+        db.migrate().await?;
+
+        let tables: Vec<TableColumnInfo> = db
+            .query_all(Sql::CheckTableExists {
+                name: "metadata_cache",
+            })
+            .await?;
+        assert_eq!(tables.len(), 1);
+
+        let columns: Vec<TableColumnDetail> = db
+            .query_all(Sql::GetTableInfo {
+                table: "metadata_cache",
+            })
+            .await?;
+        let cache_key = columns
+            .iter()
+            .find(|column| column.name == "cache_key")
+            .expect("cache_key column should exist");
+        assert_eq!(cache_key.not_null, 1);
+        assert_eq!(cache_key.pk, 1);
+
+        let version: SchemaVersion = db
+            .query_first(Sql::GetSchemaVersion)
+            .await?
+            .expect("schema version should exist");
+        assert_eq!(version.version, Some(12));
+
+        db.migrate().await?;
         Ok(())
     }
 
