@@ -31,6 +31,7 @@ pub trait Database {
     async fn delete_session(&self, token: &str) -> Result<()>;
 
     async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>>;
+    async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()>;
     async fn save_metadata_cache(
         &self,
         cache_key: &str,
@@ -315,6 +316,10 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
 
     async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>> {
         self.query_first(Sql::GetMetadataCache { cache_key }).await
+    }
+
+    async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()> {
+        self.execute(Sql::EnsureMetadataCacheEntry { cache_key }).await
     }
 
     async fn save_metadata_cache(
