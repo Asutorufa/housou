@@ -5,7 +5,9 @@ import { isDev } from "../utils/envUtils";
 
 export function useSmartMetadata(
   item: Pick<DisplayAnimeItem, "title"> &
-    Partial<Pick<DisplayAnimeItem, "sites" | "begin">>,
+    Partial<
+      Pick<DisplayAnimeItem, "sites" | "begin" | "titleTranslate" | "type">
+    >,
   initialMetadata: UnifiedMetadata | null = null,
   enabled: boolean = true,
   priority: "normal" | "detail" = "normal",
@@ -17,6 +19,21 @@ export function useSmartMetadata(
   const anilistSite = item.sites?.find(
     (s) => s.site === "aniList" || s.site === "anilist",
   );
+  const bangumiSite = item.sites?.find(
+    (s) => s.site === "bangumi" || s.site === "bgm",
+  );
+  const aliases = Array.from(
+    new Set(
+      Object.values(item.titleTranslate ?? {})
+        .flatMap((titles) => titles ?? [])
+        .map((title) => title.trim())
+        .filter(
+          (title) =>
+            title.length > 0 &&
+            title.toLocaleLowerCase() !== item.title.trim().toLocaleLowerCase(),
+        ),
+    ),
+  ).slice(0, 6);
 
   let year: number | undefined;
   if (item.begin) {
@@ -33,7 +50,10 @@ export function useSmartMetadata(
           tmdb_id: tmdbSite?.id,
           mal_id: malSite?.id,
           anilist_id: anilistSite?.id,
+          bangumi_id: bangumiSite?.id,
+          aliases,
           year,
+          media_type: item.type,
         })
       : null;
 
@@ -72,7 +92,10 @@ export function useSmartMetadata(
             tmdb_id: tmdbSite?.id,
             mal_id: malSite?.id,
             anilist_id: anilistSite?.id,
+            bangumi_id: bangumiSite?.id,
+            aliases,
             year,
+            media_type: item.type,
           },
           priority,
         );
@@ -115,7 +138,10 @@ export function useSmartMetadata(
     tmdbSite?.id,
     malSite?.id,
     anilistSite?.id,
+    bangumiSite?.id,
+    aliases,
     year,
+    item.type,
     attempt,
     fetchedResult?.attempt,
     priority,
