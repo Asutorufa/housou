@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMetadata } from "../contexts/MetadataContext";
 import type { DisplayAnimeItem, UnifiedMetadata } from "../types";
 import { isDev } from "../utils/envUtils";
@@ -22,18 +22,23 @@ export function useSmartMetadata(
   const bangumiSite = item.sites?.find(
     (s) => s.site === "bangumi" || s.site === "bgm",
   );
-  const aliases = Array.from(
-    new Set(
-      Object.values(item.titleTranslate ?? {})
-        .flatMap((titles) => titles ?? [])
-        .map((title) => title.trim())
-        .filter(
-          (title) =>
-            title.length > 0 &&
-            title.toLocaleLowerCase() !== item.title.trim().toLocaleLowerCase(),
+  const aliases = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(item.titleTranslate ?? {})
+            .flatMap((titles) => titles ?? [])
+            .map((title) => title.trim())
+            .filter(
+              (title) =>
+                title.length > 0 &&
+                title.toLocaleLowerCase() !==
+                  item.title.trim().toLocaleLowerCase(),
+            ),
         ),
-    ),
-  ).slice(0, 6);
+      ).slice(0, 6),
+    [item.title, item.titleTranslate],
+  );
 
   let year: number | undefined;
   if (item.begin) {
