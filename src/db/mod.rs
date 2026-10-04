@@ -32,9 +32,10 @@ pub trait Database {
 
     async fn get_metadata_cache(&self, cache_key: &str) -> Result<Option<MetadataCacheEntry>>;
     async fn ensure_metadata_cache_entry(&self, cache_key: &str) -> Result<()>;
-    async fn save_metadata_cache(
+    async fn store_metadata_cache(
         &self,
         cache_key: &str,
+        refresh_token: &str,
         metadata_json: Option<&str>,
         source: Option<&str>,
         fetched_at: Option<i64>,
@@ -322,22 +323,24 @@ impl<E: DatabaseExecutor> Database for AppDatabase<E> {
         self.execute(Sql::EnsureMetadataCacheEntry { cache_key }).await
     }
 
-    async fn save_metadata_cache(
+    async fn store_metadata_cache(
         &self,
         cache_key: &str,
+        refresh_token: &str,
         metadata_json: Option<&str>,
         source: Option<&str>,
         fetched_at: Option<i64>,
         refresh_after: Option<i64>,
         retry_after: Option<i64>,
     ) -> Result<()> {
-        self.execute(Sql::SaveMetadataCache {
-            cache_key,
+        self.execute(Sql::StoreMetadataCache {
             metadata_json,
             source,
             fetched_at,
             refresh_after,
             retry_after,
+            cache_key,
+            refresh_token,
         })
         .await
     }
@@ -816,8 +819,14 @@ mod tests {
         let db = AppDatabase::new(executor);
         db.migrate().await?;
 
-        db.save_metadata_cache(
+        db.ensure_metadata_cache_entry("title:test:2026").await?;
+        assert!(
+            db.try_acquire_metadata_refresh("title:test:2026", "lease-a", 1_000, 1_300)
+                .await?
+        );
+        db.store_metadata_cache(
             "title:test:2026",
+            "lease-a",
             Some(r#"{"sourceSite":"tmdb","id":"tv/1"}"#),
             Some("tmdb"),
             Some(1_000),
