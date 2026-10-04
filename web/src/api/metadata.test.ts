@@ -67,7 +67,7 @@ describe("metadata batching", () => {
     await expect(retry).resolves.toEqual(metadata);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
-  it("bounds concurrency to two batches and runs queued work immediately after completion", async () => {
+  it("serializes normal list batches and runs queued work immediately after completion", async () => {
     const completions: (() => void)[] = [];
     fetchMock.mockImplementation(
       (_url, init) =>
@@ -79,16 +79,22 @@ describe("metadata batching", () => {
     const requests = Array.from({ length: 30 }, (_, index) =>
       api.fetchMetadata({ title: String(index) }),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(
       fetchMock.mock.calls.every(
         ([, init]) =>
           (JSON.parse(String(init?.body)) as unknown[]).length <= 10,
       ),
     ).toBe(true);
+
+    completions.shift()!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
     completions.shift()!();
     await vi.advanceTimersByTimeAsync(0);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+
     completions.splice(0).forEach((complete) => complete());
     await Promise.all(requests);
   });
@@ -106,12 +112,14 @@ describe("metadata batching", () => {
     );
     const detail = api.fetchMetadata({ title: "30" }, "detail");
     expect(detail).toBe(requests[30]);
-    completions.shift()!();
-    await vi.advanceTimersByTimeAsync(0);
-    const batch = JSON.parse(
-      String(fetchMock.mock.calls[2][1]?.body),
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const detailBatch = JSON.parse(
+      String(fetchMock.mock.calls[1][1]?.body),
     ) as MetadataRequest[];
-    expect(batch[0].title).toBe("30");
+    expect(detailBatch).toHaveLength(1);
+    expect(detailBatch[0].title).toBe("30");
+
     while (completions.length) {
       completions.shift()!();
       await vi.advanceTimersByTimeAsync(0);
