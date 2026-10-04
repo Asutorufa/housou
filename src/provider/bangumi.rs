@@ -4,14 +4,12 @@ use crate::model::{
     MetadataSource, Studio, TitleTranslate, UnifiedMetadata, UniversalCoverImage, UniversalTitle,
 };
 use serde::Deserialize;
-use wasm_bindgen::JsValue;
 use worker::*;
 
 const BANGUMI_API: &str = "https://api.bgm.tv";
 const USER_AGENT: &str = "housou/0.1.0 (https://github.com/Asutorufa/housou)";
 const SEARCH_LIMIT: usize = 10;
 const SEARCH_TITLE_LIMIT: usize = 4;
-const MIN_MATCH_SCORE: i32 = 90;
 
 pub struct BangumiProvider;
 
@@ -140,6 +138,11 @@ async fn search_subject(
     }
 
     let expected_kind = MediaKind::from_request(media_type);
+    let min_score = if year.is_none() && expected_kind.is_none() {
+        90
+    } else {
+        105
+    };
     let mut best: Option<(i32, BangumiSubject)> = None;
 
     for query in &expected_titles {
@@ -173,7 +176,7 @@ async fn search_subject(
     }
 
     match best {
-        Some((score, subject)) if score >= MIN_MATCH_SCORE => Ok(subject),
+        Some((score, subject)) if score >= min_score => Ok(subject),
         _ => Err(Error::RustError("Bangumi: Not Found".into())),
     }
 }
@@ -330,12 +333,12 @@ fn subject_to_unified(subject: BangumiSubject) -> UnifiedMetadata {
         large: subject
             .images
             .as_ref()
-            .map(|images| images.large.clone())
+            .map(|images| images.common.clone())
             .filter(|url| !url.is_empty()),
         extra_large: subject
             .images
             .as_ref()
-            .map(|images| images.common.clone())
+            .map(|images| images.large.clone())
             .filter(|url| !url.is_empty()),
     };
 
@@ -410,6 +413,10 @@ mod tests {
         assert_eq!(metadata.episodes, Some(12));
         assert_eq!(
             metadata.cover_image.large.as_deref(),
+            Some("https://lain.bgm.tv/common.jpg")
+        );
+        assert_eq!(
+            metadata.cover_image.extra_large.as_deref(),
             Some("https://lain.bgm.tv/large.jpg")
         );
     }
