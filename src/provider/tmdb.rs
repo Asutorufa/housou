@@ -231,9 +231,18 @@ fn score_search_result(
         _ => return None,
     };
 
-    let score = title_score
-        + match_score::year_score(year, actual_year)
-        + match_score::media_kind_score(expected_kind, actual_kind);
+    let year_score = match_score::year_score(year, actual_year);
+    let year_score = if media_type == "tv" && season > 1 {
+        // TMDb search results expose the show's first-air year, not the
+        // selected season's year. A later anime season must not be rejected
+        // just because the parent show started several years earlier.
+        year_score.max(0)
+    } else {
+        year_score
+    };
+
+    let score =
+        title_score + year_score + match_score::media_kind_score(expected_kind, actual_kind);
     Some((score, media))
 }
 
@@ -764,6 +773,36 @@ mod tests {
         assert!(parse_tmdb_id("").is_err());
         // foo/bar returns Unknown media type
         assert!(parse_tmdb_id("foo/bar").is_err());
+    }
+
+    #[test]
+    fn later_tv_season_does_not_penalize_parent_show_year() {
+        let result = serde_json::json!({
+            "id": 123,
+            "media_type": "tv",
+            "name": "Test Anime",
+            "original_name": "Test Anime",
+            "first_air_date": "2020-01-01"
+        });
+        let expected = vec!["Test Anime".to_string()];
+
+        let (score, media) = score_search_result(
+            &expected,
+            Some(2026),
+            Some(MatchMediaKind::Tv),
+            2,
+            &result,
+        )
+        .expect("candidate should be scoreable");
+
+        assert!(score >= 130);
+        assert_eq!(
+            media,
+            MediaType::Tv {
+                show_id: "123".into(),
+                season: 2
+            }
+        );
     }
 
     #[test]
