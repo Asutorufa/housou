@@ -113,7 +113,6 @@ pub struct CommentWithUser {
     pub updated_at: i64,
 }
 
-
 #[derive(Debug, Clone, serde_derive::Serialize, serde_derive::Deserialize)]
 pub struct MetadataCacheEntry {
     pub cache_key: String,
