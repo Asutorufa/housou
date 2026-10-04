@@ -4,7 +4,6 @@ use crate::model;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use std::sync::OnceLock;
-use wasm_bindgen::JsValue;
 use worker::*;
 
 pub struct AnilistProvider;
