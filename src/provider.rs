@@ -90,7 +90,10 @@ pub(super) async fn fetch_tmdb_metadata(
     args: MetadataArgs<'_>,
     env: &Env,
 ) -> Option<Result<model::UnifiedMetadata>> {
-    let query = args.tmdb_id.map(LookupQuery::ById).or_else(|| title_query(args))?;
+    let query = args
+        .tmdb_id
+        .map(LookupQuery::ById)
+        .or_else(|| title_query(args))?;
     let tmdb = tmdb::TmdbProvider::new(env);
     Some(tmdb.fetch(query).await)
 }
