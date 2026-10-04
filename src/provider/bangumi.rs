@@ -4,6 +4,7 @@ use crate::model::{
     MetadataSource, Studio, TitleTranslate, UnifiedMetadata, UniversalCoverImage, UniversalTitle,
 };
 use serde::Deserialize;
+use worker::wasm_bindgen::JsValue;
 use worker::*;
 
 const BANGUMI_API: &str = "https://api.bgm.tv";
@@ -282,7 +283,7 @@ fn subject_to_unified(subject: BangumiSubject) -> UnifiedMetadata {
         let values = wiki_values(item);
 
         if key.contains("别名") || key.contains("別名") || key.contains("alias") {
-            for (label, value) in values {
+            for &(label, value) in &values {
                 let label = label.unwrap_or("").to_ascii_lowercase();
                 if label.contains("英文") || label.contains("english") {
                     english.get_or_insert_with(|| value.to_string());
