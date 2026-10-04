@@ -30,11 +30,7 @@ fn metadata_cache_key(req: &MetadataRequest) -> String {
     } else if let Some(anilist_id) = req.anilist_id.as_deref() {
         serde_json::json!(["anilist", anilist_id])
     } else {
-        serde_json::json!([
-            "title",
-            req.title.as_deref().unwrap_or("").trim(),
-            req.year
-        ])
+        serde_json::json!(["title", req.title.as_deref().unwrap_or("").trim(), req.year])
     };
 
     let encoded = serde_json::to_vec(&identity).unwrap_or_default();
