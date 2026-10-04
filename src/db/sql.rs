@@ -140,6 +140,9 @@ d1_orm::define_sql! {
         cache_key: &'a str,
     } => "SELECT cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token
           FROM metadata_cache WHERE cache_key = ?",
+    EnsureMetadataCacheEntry {
+        cache_key: &'a str,
+    } => "INSERT OR IGNORE INTO metadata_cache (cache_key) VALUES (?)",
     SaveMetadataCache {
         cache_key: &'a str,
         metadata_json: Option<&'a str>,
