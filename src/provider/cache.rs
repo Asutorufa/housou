@@ -90,8 +90,7 @@ fn edge_ttl_seconds(entry: &MetadataCacheEntry, now: i64) -> i32 {
         deadline = deadline.min(retry_after);
     }
 
-    ((deadline - now) / 1_000)
-        .clamp(1, i64::from(config::CACHE_TTL_METADATA_L1)) as i32
+    ((deadline - now) / 1_000).clamp(1, i64::from(config::CACHE_TTL_METADATA_L1)) as i32
 }
 
 fn metadata_args(req: &MetadataRequest) -> MetadataArgs<'_> {
@@ -254,9 +253,7 @@ async fn fetch_with_lease(
             Ok(metadata)
         }
         Err(error) => {
-            if let Err(cache_error) =
-                store_negative(db, d1_cache_key, &refresh_token, now).await
-            {
+            if let Err(cache_error) = store_negative(db, d1_cache_key, &refresh_token, now).await {
                 worker::console_warn!(
                     "Failed to persist negative metadata lookup in D1: {:?}",
                     cache_error
@@ -317,39 +314,41 @@ async fn refresh_cached_metadata(
     };
 
     match reason {
-        RefreshReason::TmdbOnly => match super::fetch_tmdb_metadata(metadata_args(&req), &env).await {
-            Some(Ok(metadata)) => {
-                let outcome = ProviderFetch {
-                    metadata,
-                    tmdb_failed: false,
-                };
-                if let Err(error) =
-                    store_positive(&db, &cache_key, &refresh_token, &outcome, now).await
-                {
-                    let _ = db
-                        .release_metadata_refresh(&cache_key, &refresh_token)
-                        .await;
-                    return Err(error);
+        RefreshReason::TmdbOnly => {
+            match super::fetch_tmdb_metadata(metadata_args(&req), &env).await {
+                Some(Ok(metadata)) => {
+                    let outcome = ProviderFetch {
+                        metadata,
+                        tmdb_failed: false,
+                    };
+                    if let Err(error) =
+                        store_positive(&db, &cache_key, &refresh_token, &outcome, now).await
+                    {
+                        let _ = db
+                            .release_metadata_refresh(&cache_key, &refresh_token)
+                            .await;
+                        return Err(error);
+                    }
+                }
+                Some(Err(error)) => {
+                    worker::console_log!("TMDb preferred-source retry failed: {:?}", error);
+                    db.defer_metadata_retry(
+                        &cache_key,
+                        &refresh_token,
+                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                    )
+                    .await?;
+                }
+                None => {
+                    db.defer_metadata_retry(
+                        &cache_key,
+                        &refresh_token,
+                        now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
+                    )
+                    .await?;
                 }
             }
-            Some(Err(error)) => {
-                worker::console_log!("TMDb preferred-source retry failed: {:?}", error);
-                db.defer_metadata_retry(
-                    &cache_key,
-                    &refresh_token,
-                    now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
-                )
-                .await?;
-            }
-            None => {
-                db.defer_metadata_retry(
-                    &cache_key,
-                    &refresh_token,
-                    now + ttl_ms(config::CACHE_TTL_METADATA_MISS),
-                )
-                .await?;
-            }
-        },
+        }
         RefreshReason::Full => {
             match super::fetch_metadata_from_providers(metadata_args(&req), &env).await {
                 Ok(outcome) => {
@@ -426,15 +425,7 @@ pub(super) async fn fetch_metadata(
                     ));
                 }
 
-                return fetch_with_lease(
-                    req,
-                    ctx,
-                    &db,
-                    cache,
-                    &d1_cache_key,
-                    edge_key,
-                )
-                .await;
+                return fetch_with_lease(req, ctx, &db, cache, &d1_cache_key, edge_key).await;
             }
             Ok(None) => {
                 return fetch_with_lease(
@@ -512,10 +503,7 @@ mod tests {
     fn full_refresh_waits_for_backoff() {
         let cached = entry(Some("tmdb"), Some(5_000), Some(6_000));
         assert_eq!(refresh_reason(&cached, 5_500), None);
-        assert_eq!(
-            refresh_reason(&cached, 6_000),
-            Some(RefreshReason::Full)
-        );
+        assert_eq!(refresh_reason(&cached, 6_000), Some(RefreshReason::Full));
     }
 
     #[test]
