@@ -124,3 +124,12 @@ pub struct MetadataCacheEntry {
     pub refreshing_until: Option<i64>,
     pub refresh_token: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct MetadataCacheWrite<'a> {
+    pub metadata_json: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub fetched_at: Option<i64>,
+    pub refresh_after: Option<i64>,
+    pub retry_after: Option<i64>,
+}
