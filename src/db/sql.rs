@@ -143,23 +143,23 @@ d1_orm::define_sql! {
     EnsureMetadataCacheEntry {
         cache_key: &'a str,
     } => "INSERT OR IGNORE INTO metadata_cache (cache_key) VALUES (?)",
-    SaveMetadataCache {
-        cache_key: &'a str,
+    StoreMetadataCache {
         metadata_json: Option<&'a str>,
         source: Option<&'a str>,
         fetched_at: Option<i64>,
         refresh_after: Option<i64>,
         retry_after: Option<i64>,
-    } => "INSERT INTO metadata_cache (cache_key, metadata_json, source, fetched_at, refresh_after, retry_after, refreshing_until, refresh_token)
-          VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
-          ON CONFLICT(cache_key) DO UPDATE SET
-              metadata_json = excluded.metadata_json,
-              source = excluded.source,
-              fetched_at = excluded.fetched_at,
-              refresh_after = excluded.refresh_after,
-              retry_after = excluded.retry_after,
+        cache_key: &'a str,
+        refresh_token: &'a str,
+    } => "UPDATE metadata_cache
+          SET metadata_json = ?,
+              source = ?,
+              fetched_at = ?,
+              refresh_after = ?,
+              retry_after = ?,
               refreshing_until = NULL,
-              refresh_token = NULL",
+              refresh_token = NULL
+          WHERE cache_key = ? AND refresh_token = ?",
     AcquireMetadataRefresh {
         refresh_token: &'a str,
         refreshing_until: i64,
