@@ -387,7 +387,7 @@ pub(super) async fn fetch_metadata(
 ) -> Result<UnifiedMetadata> {
     let d1_cache_key = metadata_cache_key(req);
     let edge_key = edge_cache_key(cache_origin, &d1_cache_key);
-    let cache = Cache::open(EDGE_CACHE_NAME).await;
+    let cache = Cache::open(EDGE_CACHE_NAME.to_string()).await;
 
     if let Ok(Some(mut response)) = cache.get(&edge_key, true).await
         && let Ok(metadata) = response.json::<UnifiedMetadata>().await
