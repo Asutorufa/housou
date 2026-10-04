@@ -20,7 +20,9 @@ interface CacheEntry {
   expiresAt: number;
 }
 const BATCH_SIZE = 10;
-const CONCURRENCY = 2;
+const NORMAL_CONCURRENCY = 1;
+const DETAIL_CONCURRENCY = 1;
+const REQUEST_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 30 * 60_000;
 const CACHE_SIZE = 500;
 
@@ -31,7 +33,8 @@ export function createMetadataClient() {
   const controllers = new Set<AbortController>();
   let queue: Pending[] = [];
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let active = 0;
+  let activeNormal = 0;
+  let activeDetail = 0;
   let nextId = 0;
 
   function trimCache() {
@@ -41,12 +44,30 @@ export function createMetadataClient() {
     }
   }
 
+  function takeBatch(priority: Priority) {
+    const batch: Pending[] = [];
+    const remaining: Pending[] = [];
+    for (const item of queue) {
+      if (item.priority === priority && batch.length < BATCH_SIZE) {
+        batch.push(item);
+      } else {
+        remaining.push(item);
+      }
+    }
+    queue = remaining;
+    return batch;
+  }
+
   function schedule() {
-    if (queue.length === 0 || active >= CONCURRENCY) return;
-    if (
-      queue.length >= BATCH_SIZE ||
-      queue.some((item) => item.priority === "detail")
-    ) {
+    if (queue.length === 0) return;
+
+    const hasDetail = queue.some((item) => item.priority === "detail");
+    const normalCount = queue.reduce(
+      (count, item) => count + Number(item.priority === "normal"),
+      0,
+    );
+
+    if (hasDetail || normalCount >= BATCH_SIZE) {
       pump();
     } else if (!timer) {
       // Use a fixed batching window; continuous scrolling cannot postpone it.
@@ -57,21 +78,34 @@ export function createMetadataClient() {
   function pump() {
     clearTimeout(timer);
     timer = undefined;
-    while (active < CONCURRENCY && queue.length > 0) {
-      queue.sort(
-        (a, b) =>
-          Number(b.priority === "detail") - Number(a.priority === "detail"),
-      );
-      const batch = queue.splice(0, BATCH_SIZE);
-      active++;
-      void send(batch);
+
+    // Keep ordinary card loading serialized, matching the pre-refactor behavior.
+    // A detail request gets its own lane so opening a card is never stuck behind
+    // a large list batch, while we still avoid firing two heavy list batches at once.
+    if (activeDetail < DETAIL_CONCURRENCY) {
+      const batch = takeBatch("detail");
+      if (batch.length > 0) {
+        activeDetail++;
+        void send(batch, "detail");
+      }
+    }
+
+    if (activeNormal < NORMAL_CONCURRENCY) {
+      const batch = takeBatch("normal");
+      if (batch.length > 0) {
+        activeNormal++;
+        void send(batch, "normal");
+      }
     }
   }
 
-  async function send(batch: Pending[]) {
+  async function send(batch: Pending[], priority: Priority) {
     const controller = new AbortController();
     controllers.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
     try {
       const response = await checkResponse(
         await fetch("/api/metadata", {
@@ -107,7 +141,8 @@ export function createMetadataClient() {
     } finally {
       clearTimeout(timeout);
       controllers.delete(controller);
-      active--;
+      if (priority === "detail") activeDetail--;
+      else activeNormal--;
       // Queued work has already waited for a batch; do not add another debounce.
       pump();
     }
