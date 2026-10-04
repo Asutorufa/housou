@@ -102,10 +102,7 @@ export function createMetadataClient() {
   async function send(batch: Pending[], priority: Priority) {
     const controller = new AbortController();
     controllers.add(controller);
-    const timeout = setTimeout(
-      () => controller.abort(),
-      REQUEST_TIMEOUT_MS,
-    );
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const response = await checkResponse(
         await fetch("/api/metadata", {
