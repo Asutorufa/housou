@@ -8,7 +8,7 @@ function okJson(value: unknown) {
 
 describe("createAuthApi password protocol", () => {
   it("sends raw login passwords with a legacy fallback hash", async () => {
-    const apiFetch = vi.fn(async () => okJson({ id: 1 }));
+    const apiFetch = vi.fn(async (_url: string, _init?: RequestInit) => okJson({ id: 1 }));
     const api = createAuthApi(apiFetch);
 
     await api.login({
@@ -24,7 +24,7 @@ describe("createAuthApi password protocol", () => {
   });
 
   it("registers with the raw password after client-side validation", async () => {
-    const apiFetch = vi.fn(async () => okJson({ id: 1 }));
+    const apiFetch = vi.fn(async (_url: string, _init?: RequestInit) => okJson({ id: 1 }));
     const api = createAuthApi(apiFetch);
 
     await api.register({
@@ -40,7 +40,7 @@ describe("createAuthApi password protocol", () => {
   });
 
   it("rejects weak registration passwords before sending a request", async () => {
-    const apiFetch = vi.fn(async () => okJson({ id: 1 }));
+    const apiFetch = vi.fn(async (_url: string, _init?: RequestInit) => okJson({ id: 1 }));
     const api = createAuthApi(apiFetch);
 
     await expect(
@@ -54,7 +54,7 @@ describe("createAuthApi password protocol", () => {
   });
 
   it("sends raw password changes with a legacy hash for the old password", async () => {
-    const apiFetch = vi.fn(async () => okJson({ message: "Password updated" }));
+    const apiFetch = vi.fn(async (_url: string, _init?: RequestInit) => okJson({ message: "Password updated" }));
     const api = createAuthApi(apiFetch);
 
     await api.changePassword({
