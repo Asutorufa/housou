@@ -99,7 +99,7 @@ describe("authentication and private state", () => {
     const { result } = renderHook(() => useAuth(), { wrapper });
     await waitFor(() => expect(result.current.user?.has_password).toBe(false));
     await act(async () => {
-      await result.current.changePassword({ new_password: "abcdefgh" });
+      await result.current.changePassword({ new_password: "Abcdefgh1" });
     });
     expect(result.current.user?.has_password).toBe(true);
   });
@@ -137,7 +137,7 @@ describe("authentication and private state", () => {
       await expect(
         result.current.changePassword({
           old_password: "wrong",
-          new_password: "abcdefgh",
+          new_password: "Abcdefgh1",
         }),
       ).rejects.toThrow("Invalid old password");
     });
