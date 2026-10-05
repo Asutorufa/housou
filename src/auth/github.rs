@@ -1,7 +1,7 @@
 use crate::auth::{
     EMAIL_IN_USE_ERR, USERNAME_TAKEN_ERR, clear_oauth_action_cookie, clear_oauth_state_cookie,
     create_oauth_action_cookie, create_oauth_state_cookie, create_user_session, get_auth,
-    get_base_url, get_cookie_values, get_db, verify_oauth_state,
+    get_base_url, get_cookie_values, get_db, is_secure, verify_oauth_state,
 };
 use crate::db::{AppDatabase, Database, DatabaseExecutor, User, UserUpdate};
 use serde::Deserialize;
@@ -34,7 +34,7 @@ pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response
         "https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=user:email&state={state}"
     );
 
-    let secure = base_url.starts_with("https");
+    let secure = is_secure(&env);
     let mut resp = Response::redirect(Url::parse(&url)?)?;
     resp.headers_mut()
         .append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
@@ -59,7 +59,7 @@ pub async fn handle_github_bind_authorize(req: Request, env: Env) -> Result<Resp
         "https://github.com/login/oauth/authorize?client_id={client_id}&redirect_uri={redirect_uri}&scope=user:email&state={state}"
     );
 
-    let secure = base_url.starts_with("https");
+    let secure = is_secure(&env);
     let mut resp = Response::redirect(Url::parse(&url)?)?;
     resp.headers_mut()
         .append("Set-Cookie", &create_oauth_state_cookie(&state, secure))?;
@@ -227,7 +227,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
 
         let db = get_db(&env)?;
         let base_url = get_base_url(&env)?;
-        let secure = base_url.starts_with("https");
+        let secure = is_secure(&env);
 
         if action == "bind" {
             // Bind flow
