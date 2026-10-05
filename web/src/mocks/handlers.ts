@@ -1,6 +1,5 @@
 import { http, HttpResponse } from "msw";
 import type { UnifiedMetadata } from "../types";
-import { hashPassword } from "../utils/authUtils";
 
 export const handlers = [
   http.get("/api/config", () => {
@@ -140,9 +139,7 @@ export const handlers = [
       email: string;
       password?: string;
     };
-    const expectedHash = await hashPassword("password");
-
-    if (body.email === "user@example.com" && body.password === expectedHash) {
+    if (body.email === "user@example.com" && body.password === "password") {
       return HttpResponse.json({
         id: 1,
         email: "user@example.com",
@@ -152,7 +149,7 @@ export const handlers = [
         created_at: Date.now(),
       });
     }
-    if (body.email === "linked@example.com" && body.password === expectedHash) {
+    if (body.email === "linked@example.com" && body.password === "password") {
       return HttpResponse.json({
         id: 2,
         email: "linked@example.com",
