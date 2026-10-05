@@ -4,6 +4,7 @@ import type {
 } from "@simplewebauthn/browser";
 import type { LoginData, RegisterData, TelegramAuthData, User } from "../types";
 import { checkResponse } from "../utils/fetcher";
+import { validatePasswordComplexity } from "../utils/password";
 
 export type ApiFetch = (url: string, init?: RequestInit) => Promise<Response>;
 export interface PasskeySummary {
@@ -44,7 +45,7 @@ export function createAuthApi(apiFetch: ApiFetch) {
     );
     return res.json() as Promise<T>;
   }
-  async function hash(password: string) {
+  async function legacyHash(password: string) {
     const { hashPassword } = await import("../utils/authUtils");
     return hashPassword(password);
   }
@@ -52,26 +53,23 @@ export function createAuthApi(apiFetch: ApiFetch) {
     async login(data: LoginData) {
       return request<User>("/api/auth/login", "POST", {
         ...data,
-        password: await hash(data.password),
+        legacy_password_hash: await legacyHash(data.password),
       });
     },
     async register(data: RegisterData) {
-      return request<User>("/api/auth/register", "POST", {
-        ...data,
-        password: await hash(data.password),
-      });
+      validatePasswordComplexity(data.password);
+      return request<User>("/api/auth/register", "POST", data);
     },
     logout: () => request<MessageResponse>("/api/auth/logout", "POST"),
     updateProfile: (data: ProfileUpdate) =>
       request<User>("/api/auth/profile", "PUT", data),
     async changePassword(data: PasswordUpdate) {
-      const [oldPassword, newPassword] = await Promise.all([
-        data.old_password ? hash(data.old_password) : undefined,
-        hash(data.new_password),
-      ]);
+      validatePasswordComplexity(data.new_password);
       return request<MessageResponse>("/api/auth/password", "PUT", {
-        old_password: oldPassword,
-        new_password: newPassword,
+        ...data,
+        legacy_old_password_hash: data.old_password
+          ? await legacyHash(data.old_password)
+          : undefined,
       });
     },
     async loginPasskey() {

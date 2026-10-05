@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { formInputClassName } from "../styles/uiClasses";
+import { validatePasswordComplexity } from "../utils/password";
 import TelegramLoginButton from "./TelegramLoginButton";
 
 interface AuthModalProps {
@@ -43,9 +44,7 @@ export default function AuthModal({
       if (activeTab === "login") {
         await login({ email, password });
       } else {
-        if (password.length < 8) {
-          throw new Error("パスワードは8文字以上である必要があります");
-        }
+        validatePasswordComplexity(password);
         if (password !== confirmPassword) {
           throw new Error("パスワードが一致しません");
         }
