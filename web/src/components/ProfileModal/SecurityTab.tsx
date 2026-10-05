@@ -31,7 +31,9 @@ export default function SecurityTab() {
       validatePasswordComplexity(newPassword);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "パスワードの要件を確認してください",
+        err instanceof Error
+          ? err.message
+          : "パスワードの要件を確認してください",
       );
       return;
     }
