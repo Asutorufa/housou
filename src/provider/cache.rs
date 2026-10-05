@@ -8,6 +8,32 @@ use worker::{Cache, Context, D1Database, Env, Error, Response, Result, RouteCont
 
 const EDGE_CACHE_NAME: &str = "housou-metadata-v3";
 const EDGE_EXPIRY_HEADER: &str = "X-Housou-Metadata-Expires-At";
+const POSTER_CACHE_VERSION: u8 = 1;
+
+#[derive(serde_derive::Serialize, serde_derive::Deserialize)]
+struct CachedMetadata {
+    #[serde(default, rename = "_housouPosterVersion")]
+    poster_version: u8,
+    #[serde(flatten)]
+    metadata: UnifiedMetadata,
+}
+
+impl CachedMetadata {
+    fn new(metadata: &UnifiedMetadata) -> Self {
+        Self {
+            poster_version: POSTER_CACHE_VERSION,
+            metadata: metadata.clone(),
+        }
+    }
+
+    fn needs_poster_refresh(&self) -> bool {
+        has_invalid_tmdb_cover(&self.metadata)
+            || (self.poster_version < POSTER_CACHE_VERSION
+                && matches!(self.metadata.source, MetadataSource::Tmdb(_))
+                && self.metadata.cover_image.large.is_none()
+                && self.metadata.cover_image.extra_large.is_none())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RefreshReason {
@@ -71,6 +97,15 @@ fn source_name(metadata: &UnifiedMetadata) -> &'static str {
 }
 
 fn cached_metadata(entry: &MetadataCacheEntry) -> Option<UnifiedMetadata> {
+    entry
+        .metadata_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<CachedMetadata>(json).ok())
+        .filter(|cached| !cached.needs_poster_refresh())
+        .map(|cached| cached.metadata)
+}
+
+fn previous_metadata(entry: &MetadataCacheEntry) -> Option<UnifiedMetadata> {
     entry
         .metadata_json
         .as_deref()
@@ -170,7 +205,7 @@ fn schedule_edge_put(
     metadata: &UnifiedMetadata,
     expires_at: i64,
 ) -> Result<()> {
-    let mut response = Response::from_json(metadata)?;
+    let mut response = Response::from_json(&CachedMetadata::new(metadata))?;
     response
         .headers_mut()
         .set(EDGE_EXPIRY_HEADER, &expires_at.to_string())?;
@@ -202,7 +237,7 @@ async fn store_positive(
     outcome: &ProviderFetch,
     now: i64,
 ) -> Result<Option<MetadataCacheEntry>> {
-    let metadata_json = serde_json::to_string(&outcome.metadata)
+    let metadata_json = serde_json::to_string(&CachedMetadata::new(&outcome.metadata))
         .map_err(|error| Error::RustError(format!("Failed to serialize metadata: {error}")))?;
     let source = source_name(&outcome.metadata).to_string();
     let refresh_after = now + ttl_ms(config::CACHE_TTL_METADATA_D1);
@@ -301,6 +336,9 @@ async fn fetch_with_lease(
                 return Ok(metadata);
             }
             if entry.retry_after.is_some_and(|deadline| deadline > now) {
+                if let Some(metadata) = previous_metadata(&entry) {
+                    return Ok(metadata);
+                }
                 return Err(Error::RustError(
                     "Metadata lookup is temporarily cached as unavailable".into(),
                 ));
@@ -312,7 +350,9 @@ async fn fetch_with_lease(
     };
 
     let refresh_token = lease.token;
-    let previous_metadata = lease.entry.as_ref().and_then(cached_metadata);
+    // A legacy no-poster row still identifies the resolved TMDb season. Reuse
+    // that ID for repair, and keep its metadata if the provider is unavailable.
+    let previous_metadata = lease.entry.as_ref().and_then(previous_metadata);
     let refresh_req = previous_metadata
         .as_ref()
         .map(|metadata| request_for_refresh(req, metadata));
@@ -519,10 +559,10 @@ pub(super) async fn fetch_metadata(
             .flatten()
             .and_then(|value| value.parse::<i64>().ok())
             .is_some_and(|deadline| deadline > now_ms())
-        && let Ok(metadata) = response.json::<UnifiedMetadata>().await
-        && !has_invalid_tmdb_cover(&metadata)
+        && let Ok(cached) = response.json::<CachedMetadata>().await
+        && !cached.needs_poster_refresh()
     {
-        return Ok(metadata);
+        return Ok(cached.metadata);
     }
 
     if let Ok(d1) = ctx.env.d1("DB") {
@@ -638,6 +678,45 @@ mod tests {
 
         let refreshed = request_for_refresh(&request, &metadata);
         assert_eq!(refreshed.tmdb_id.as_deref(), Some("tv/123/season/2"));
+    }
+
+    #[test]
+    fn legacy_missing_tmdb_posters_need_a_single_refresh() {
+        let metadata = UnifiedMetadata {
+            source: MetadataSource::Tmdb("tv/123/season/2".into()),
+            ..Default::default()
+        };
+        let mut cached = entry(Some("tmdb"), Some(10_000), None);
+        cached.metadata_json = Some(serde_json::to_string(&metadata).unwrap());
+        assert!(cached_metadata(&cached).is_none());
+        assert_eq!(previous_metadata(&cached), Some(metadata.clone()));
+
+        // A provider-confirmed absence remains cacheable after migration.
+        cached.metadata_json =
+            Some(serde_json::to_string(&CachedMetadata::new(&metadata)).unwrap());
+        assert_eq!(cached_metadata(&cached), Some(metadata));
+    }
+
+    #[test]
+    fn legacy_posters_and_other_sources_remain_cacheable() {
+        for metadata in [
+            UnifiedMetadata {
+                source: MetadataSource::Tmdb("tv/123".into()),
+                cover_image: crate::model::UniversalCoverImage {
+                    large: Some("https://image.tmdb.org/t/p/w500/poster.jpg".into()),
+                    extra_large: None,
+                },
+                ..Default::default()
+            },
+            UnifiedMetadata {
+                source: MetadataSource::Anilist("123".into()),
+                ..Default::default()
+            },
+        ] {
+            let mut cached = entry(Some("tmdb"), Some(10_000), None);
+            cached.metadata_json = Some(serde_json::to_string(&metadata).unwrap());
+            assert_eq!(cached_metadata(&cached), Some(metadata));
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

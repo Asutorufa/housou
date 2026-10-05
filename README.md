@@ -131,6 +131,12 @@ in the order AniList, Jikan (MAL ID), then Bangumi before TMDb title searches.
 A successful direct lookup is cached without searching other providers.
 The fallback chain also prefers AniList, then Jikan, with Bangumi last.
 
+TMDb seasons without a poster use the parent show's poster. Old edge and D1
+records with null covers are repaired on access using their resolved TMDb ID.
+The cache records that the poster fallback has been checked, so a confirmed
+absence remains cacheable; failed repairs retain metadata and respect retry
+backoff. Existing records with valid posters keep their usual cache lifetime.
+
 ### Authentication
 
 | Endpoint | Method | Description |

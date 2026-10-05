@@ -18,6 +18,7 @@ const buildPath = (name) =>
   fileURLToPath(new URL(`../build/${name}`, import.meta.url));
 
 const calls = [];
+let failPosterRepair = true;
 let releaseSlowLookup;
 const slowLookup = new Promise((resolve) => {
   releaseSlowLookup = resolve;
@@ -91,6 +92,31 @@ const options = {
     const body = request.method === "POST" ? await request.json() : null;
     calls.push({ host: url.host, path: url.pathname, body });
     if (url.host === "api.themoviedb.org") {
+      if (url.pathname.startsWith("/3/tv/337336") && failPosterRepair)
+        return Response.json(
+          { error: "temporary unavailable" },
+          { status: 503 },
+        );
+      if (url.pathname === "/3/tv/337335")
+        return Response.json({
+          id: 337335,
+          name: "No poster",
+          poster_path: null,
+        });
+      if (url.pathname === "/3/tv/337335/season/1")
+        return Response.json({
+          season_number: 1,
+          poster_path: null,
+          episodes: [],
+        });
+      if (url.pathname === "/3/tv/337336")
+        return Response.json({ id: 337336, poster_path: "/recovered.jpg" });
+      if (url.pathname === "/3/tv/337336/season/1")
+        return Response.json({
+          season_number: 1,
+          poster_path: null,
+          episodes: [],
+        });
       if (url.pathname === "/3/tv/337334")
         return Response.json({
           id: 337334,
@@ -699,6 +725,159 @@ try {
   console.log(
     "PASS: null and empty season posters fall back to the show poster on the real request and cache path",
   );
+
+  // Replay the homepage's known-ID lookup: its old MAL-keyed row resolves to
+  // TMDb, but contains no poster even though a direct TMDb lookup has one.
+  const homepageRequest = {
+    title: "ブラッククローバー 2nd Season",
+    mal_id: "61967",
+    anilist_id: "195604",
+    bangumi_id: "567896",
+    year: 2026,
+    media_type: "tv",
+  };
+  const homepageKey =
+    "v2-" +
+    createHash("sha256")
+      .update(JSON.stringify(["mal", homepageRequest.mal_id]))
+      .digest("hex");
+  const legacy = {
+    ...(await lookup({ tmdb_id: "tv/337334/season/1" })),
+    coverImage: { large: null, extraLarge: null },
+  };
+  await db
+    .prepare(
+      "INSERT INTO metadata_cache (cache_key, metadata_json, source, fetched_at, refresh_after) VALUES (?, ?, 'tmdb', ?, ?)",
+    )
+    .bind(
+      homepageKey,
+      JSON.stringify(legacy),
+      Date.now(),
+      Date.now() + 259_200_000,
+    )
+    .run();
+  await edge.put(
+    `http://housou.test/__metadata_cache/${homepageKey}`,
+    new Response(JSON.stringify(legacy), {
+      headers: {
+        "Cache-Control": "public, max-age=3600",
+        "X-Housou-Metadata-Expires-At": String(Date.now() + 3_600_000),
+      },
+    }),
+  );
+  const beforeHomepageRepair = calls.length;
+  const homepage = await lookup(homepageRequest);
+  assert.equal(
+    homepage.coverImage.large,
+    "https://image.tmdb.org/t/p/w500/show-poster.jpg",
+    "legacy null covers must be repaired even when both cache layers are fresh",
+  );
+  assert.deepEqual(
+    calls
+      .slice(beforeHomepageRepair)
+      .map((call) => call.path)
+      .sort(),
+    ["/3/tv/337334", "/3/tv/337334/season/1"],
+    "repair reuses the resolved TMDb ID rather than searching or changing providers",
+  );
+  const afterHomepageRepair = calls.length;
+  assert.equal(
+    homepage._housouPosterVersion,
+    undefined,
+    "cache markers stay internal",
+  );
+  assert.deepEqual(
+    (await lookup(homepageRequest)).coverImage,
+    homepage.coverImage,
+  );
+  assert.equal(calls.length, afterHomepageRepair, "repair must run only once");
+  await edge.delete(`http://housou.test/__metadata_cache/${homepageKey}`);
+  assert.deepEqual(
+    (await lookup(homepageRequest)).coverImage,
+    homepage.coverImage,
+  );
+  assert.equal(
+    calls.length,
+    afterHomepageRepair,
+    "D1 retains the repaired row",
+  );
+  console.log(
+    "PASS: legacy homepage null posters repaired once using the cached TMDb ID",
+  );
+
+  async function seedLegacyPoster(id) {
+    const key =
+      "v2-" +
+      createHash("sha256")
+        .update(JSON.stringify(["tmdb", id]))
+        .digest("hex");
+    await db
+      .prepare(
+        "INSERT INTO metadata_cache (cache_key, metadata_json, source, fetched_at, refresh_after) VALUES (?, ?, 'tmdb', ?, ?)",
+      )
+      .bind(
+        key,
+        JSON.stringify({ ...legacy, id }),
+        Date.now(),
+        Date.now() + 259_200_000,
+      )
+      .run();
+    return key;
+  }
+  const noPosterRequest = { tmdb_id: "tv/337335/season/1" };
+  const noPosterKey = await seedLegacyPoster(noPosterRequest.tmdb_id);
+  const beforeMissingPoster = calls.length;
+  assert.deepEqual(
+    (await lookup(noPosterRequest)).coverImage,
+    legacy.coverImage,
+  );
+  assert.equal(calls.length - beforeMissingPoster, 2);
+  const afterMissingPoster = calls.length;
+  assert.deepEqual(
+    (await lookup(noPosterRequest)).coverImage,
+    legacy.coverImage,
+  );
+  assert.equal(calls.length, afterMissingPoster);
+  await edge.delete(`http://housou.test/__metadata_cache/${noPosterKey}`);
+  assert.deepEqual(
+    (await lookup(noPosterRequest)).coverImage,
+    legacy.coverImage,
+  );
+  assert.equal(
+    calls.length,
+    afterMissingPoster,
+    "confirmed absence stays cached in D1",
+  );
+  console.log(
+    "PASS: genuine poster absence is checked once and cached in both layers",
+  );
+
+  const failedRequest = { tmdb_id: "tv/337336/season/1" };
+  const failedKey = await seedLegacyPoster(failedRequest.tmdb_id);
+  assert.equal((await lookup(failedRequest)).id, failedRequest.tmdb_id);
+  const afterFailedRepair = calls.length;
+  assert.equal((await lookup(failedRequest)).id, failedRequest.tmdb_id);
+  assert.equal(
+    calls.length,
+    afterFailedRepair,
+    "failed repair respects retry backoff",
+  );
+  const failedRow = await db
+    .prepare("SELECT retry_after FROM metadata_cache WHERE cache_key = ?")
+    .bind(failedKey)
+    .first();
+  assert(failedRow.retry_after > Date.now());
+  failPosterRepair = false;
+  await db
+    .prepare("UPDATE metadata_cache SET retry_after = ? WHERE cache_key = ?")
+    .bind(Date.now() - 1, failedKey)
+    .run();
+  assert.equal(
+    (await lookup(failedRequest)).coverImage.large,
+    "https://image.tmdb.org/t/p/w500/recovered.jpg",
+    "legacy poster repair resumes after backoff even with a fresh metadata TTL",
+  );
+  console.log("PASS: repair failures preserve metadata, back off and recover");
 
   const { results } = await db
     .prepare(
