@@ -126,14 +126,24 @@ pub(crate) fn clear_oauth_action_cookie(secure: bool) -> String {
     build_cookie(OAUTH_ACTION_COOKIE_NAME, "", 0, 0, secure)
 }
 
-pub(crate) fn get_base_url(env: &Env) -> String {
-    env.var("BASE_URL")
-        .map(|s| s.to_string())
-        .unwrap_or_else(|_| "http://localhost:8787".to_string())
+pub(crate) fn get_base_url(env: &Env) -> Result<String> {
+    match env.var("BASE_URL") {
+        Ok(value) => Ok(value.to_string()),
+        Err(_) if cfg!(feature = "dev") => Ok("http://localhost:8787".to_string()),
+        Err(_) => Err(Error::RustError(
+            "BASE_URL must be configured outside development".to_string(),
+        )),
+    }
 }
 
 pub fn is_secure(env: &Env) -> bool {
-    get_base_url(env).starts_with("https")
+    if cfg!(feature = "dev") {
+        get_base_url(env)
+            .map(|url| url.starts_with("https://"))
+            .unwrap_or(false)
+    } else {
+        true
+    }
 }
 
 #[derive(Deserialize)]
@@ -147,6 +157,8 @@ struct RegisterRequest {
 struct LoginRequest {
     email: String,
     password: String,
+    #[serde(default)]
+    legacy_password_hash: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -158,6 +170,8 @@ struct UpdateProfileRequest {
 #[derive(Deserialize)]
 struct ChangePasswordRequest {
     old_password: Option<String>,
+    #[serde(default)]
+    legacy_old_password_hash: Option<String>,
     new_password: String,
 }
 #[derive(Deserialize)]
@@ -328,6 +342,31 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+fn verify_password_compat(password: &str, legacy_password_hash: Option<&str>, hash: &str) -> bool {
+    verify_password(password, hash)
+        || legacy_password_hash
+            .map(|legacy| verify_password(legacy, hash))
+            .unwrap_or(false)
+}
+
+fn validate_password_complexity(password: &str) -> std::result::Result<(), &'static str> {
+    if password.chars().count() < 8 {
+        return Err("Password must be at least 8 characters long");
+    }
+
+    let has_uppercase = password.bytes().any(|c| c.is_ascii_uppercase());
+    let has_lowercase = password.bytes().any(|c| c.is_ascii_lowercase());
+    let has_digit = password.bytes().any(|c| c.is_ascii_digit());
+
+    if !has_uppercase || !has_lowercase || !has_digit {
+        return Err(
+            "Password must contain at least one uppercase letter, one lowercase letter, and one digit",
+        );
+    }
+
+    Ok(())
+}
+
 pub async fn create_user_session<E: DatabaseExecutor>(
     db: &AppDatabase<E>,
     user_id: i32,
@@ -342,6 +381,10 @@ pub async fn create_user_session<E: DatabaseExecutor>(
 pub async fn handle_register(mut req: Request, env: Env) -> Result<Response> {
     let body: RegisterRequest = req.json().await?;
     let db = get_db(&env)?;
+
+    if let Err(message) = validate_password_complexity(&body.password) {
+        return Response::error(message, 400);
+    }
 
     if (db.get_user(UserUpdate::email(body.email.clone())).await?).is_some() {
         return Response::error(EMAIL_IN_USE_ERR, 400);
@@ -380,7 +423,11 @@ pub async fn handle_login(mut req: Request, env: Env) -> Result<Response> {
         .ok_or_else(|| Error::RustError("Invalid credentials".to_string()))?;
 
     let valid = if let Some(hash_str) = &user.password_hash {
-        verify_password(&body.password, hash_str)
+        verify_password_compat(
+            &body.password,
+            body.legacy_password_hash.as_deref(),
+            hash_str,
+        )
     } else {
         false
     };
@@ -465,14 +512,24 @@ pub async fn handle_change_password(mut req: Request, env: Env) -> Result<Respon
 
     let db = get_db(&env)?;
 
-    // If user has a password (not GitHub-only), verify the old one
+    // If user has a password (not GitHub-only), verify the old one.
+    // The legacy hash fallback keeps accounts created by older frontends usable.
     if let Some(hash_str) = &user.password_hash {
         let old_password = body
             .old_password
+            .as_deref()
             .ok_or_else(|| Error::RustError("Old password required".to_string()))?;
-        if !verify_password(&old_password, hash_str) {
+        if !verify_password_compat(
+            old_password,
+            body.legacy_old_password_hash.as_deref(),
+            hash_str,
+        ) {
             return Response::error("Invalid old password", 401);
         }
+    }
+
+    if let Err(message) = validate_password_complexity(&body.new_password) {
+        return Response::error(message, 400);
     }
 
     let new_password_hash = hash_password(&body.new_password)?;
@@ -634,6 +691,38 @@ pub(crate) fn verify_oauth_state(req: &Request, query_state: Option<&str>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_password_complexity() {
+        assert!(validate_password_complexity("Pass1234").is_ok());
+        assert!(validate_password_complexity("Strong!Pass0").is_ok());
+        assert!(validate_password_complexity("P1s").is_err());
+        assert!(validate_password_complexity("pass1234").is_err());
+        assert!(validate_password_complexity("PASS1234").is_err());
+        assert!(validate_password_complexity("Password").is_err());
+    }
+
+    #[test]
+    fn test_password_compatibility() {
+        let current_hash = hash_password("StrongPass1").expect("Hashing failed");
+        assert!(verify_password_compat(
+            "StrongPass1",
+            Some("legacy-value"),
+            &current_hash
+        ));
+
+        let legacy_hash = hash_password("legacy-value").expect("Hashing failed");
+        assert!(verify_password_compat(
+            "StrongPass1",
+            Some("legacy-value"),
+            &legacy_hash
+        ));
+        assert!(!verify_password_compat(
+            "StrongPass1",
+            Some("wrong-legacy-value"),
+            &legacy_hash
+        ));
+    }
 
     #[test]
     fn test_hash_and_verify() {
