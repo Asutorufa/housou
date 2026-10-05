@@ -16,18 +16,10 @@ impl ConfigHelper {
             .and_then(|u| u.host_str().map(|s| s.to_string()))
             .unwrap_or_else(|| "localhost".to_string());
 
-        let origin = req
-            .headers()
-            .get("Origin")
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| {
-                env.var("BASE_URL")
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| "http://localhost:8787".to_string())
-                    .trim_end_matches('/')
-                    .to_string()
-            });
+        let origin = match req.headers().get("Origin")? {
+            Some(origin) => origin,
+            None => auth::get_base_url(env)?.trim_end_matches('/').to_string(),
+        };
 
         PasskeyConfig {
             rp_id,
