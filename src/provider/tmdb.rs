@@ -458,8 +458,12 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
         native: native_title,
     };
 
-    let poster_path = season.poster_path.or(show.poster_path.clone());
-    let cover_image = format_cover_image(poster_path.as_deref());
+    let poster_path = season
+        .poster_path
+        .as_deref()
+        .filter(|path| !path.trim().is_empty())
+        .or(show.poster_path.as_deref());
+    let cover_image = format_cover_image(poster_path);
     let genres = extract_genres(show.genres);
     let studios = extract_studios(show.production_companies);
     let (characters, staff) = extract_credits(season.credits.or(show.credits));
@@ -540,6 +544,7 @@ fn tv_to_unified(show: models::TvDetails, season: models::SeasonDetails) -> mode
 }
 
 fn format_cover_image(path: Option<&str>) -> model::UniversalCoverImage {
+    let path = path.map(str::trim).filter(|path| !path.is_empty());
     model::UniversalCoverImage {
         large: path.map(|p| format!("https://image.tmdb.org/t/p/w500{p}")),
         extra_large: path.map(|p| format!("https://image.tmdb.org/t/p/original{p}")),
@@ -1261,12 +1266,45 @@ mod tests_tv_transformation {
         assert!(result.cover_image.large.unwrap().contains("/season.jpg"));
 
         // Case 2: Season has NO poster -> expect Show poster
-        let season_no_poster = models::SeasonDetails {
-            poster_path: None,
-            ..Default::default()
-        };
-        let result2 = tv_to_unified(show, season_no_poster);
-        assert!(result2.cover_image.large.unwrap().contains("/show.jpg"));
+        for missing in [None, Some(""), Some("   ")] {
+            let season_no_poster = models::SeasonDetails {
+                poster_path: missing.map(str::to_string),
+                ..Default::default()
+            };
+            let result = tv_to_unified(show.clone(), season_no_poster);
+            assert_eq!(
+                result.cover_image.large.as_deref(),
+                Some("https://image.tmdb.org/t/p/w500/show.jpg"),
+                "missing season poster {missing:?} must use the show poster"
+            );
+            assert_eq!(
+                result.cover_image.extra_large.as_deref(),
+                Some("https://image.tmdb.org/t/p/original/show.jpg")
+            );
+        }
+    }
+
+    #[test]
+    fn test_missing_posters_do_not_generate_image_urls() {
+        for missing in [None, Some(""), Some("   ")] {
+            let show = models::TvDetails {
+                poster_path: missing.map(str::to_string),
+                ..Default::default()
+            };
+            let season = models::SeasonDetails {
+                poster_path: missing.map(str::to_string),
+                ..Default::default()
+            };
+            let result = tv_to_unified(show, season);
+            assert!(result.cover_image.large.is_none());
+            assert!(result.cover_image.extra_large.is_none());
+            let movie = movie_to_unified(models::MovieDetails {
+                poster_path: missing.map(str::to_string),
+                ..Default::default()
+            });
+            assert!(movie.cover_image.large.is_none());
+            assert!(movie.cover_image.extra_large.is_none());
+        }
     }
 
     #[test]

@@ -22,6 +22,16 @@ let releaseSlowLookup;
 const slowLookup = new Promise((resolve) => {
   releaseSlowLookup = resolve;
 });
+let releaseUnrelatedProviders;
+const unrelatedProviders = new Promise((resolve) => {
+  releaseUnrelatedProviders = resolve;
+});
+const directLookupTitles = new Set([
+  "Known AniList Title",
+  "Known Bangumi Title",
+  "Known MAL and Bangumi Title",
+  "Known MAL and AniList Title",
+]);
 const subject = (id) => ({
   id,
   name: "原題",
@@ -81,6 +91,24 @@ const options = {
     const body = request.method === "POST" ? await request.json() : null;
     calls.push({ host: url.host, path: url.pathname, body });
     if (url.host === "api.themoviedb.org") {
+      if (url.pathname === "/3/tv/337334")
+        return Response.json({
+          id: 337334,
+          name: "ブラッククローバー",
+          poster_path: "/show-poster.jpg",
+        });
+      if (url.pathname.startsWith("/3/tv/337334/season/")) {
+        const season = Number(url.pathname.split("/").at(-1));
+        return Response.json({
+          id: season,
+          season_number: season,
+          name: `シーズン ${season}`,
+          poster_path: season === 1 ? null : "",
+          episodes: [],
+        });
+      }
+      if (directLookupTitles.has(url.searchParams.get("query")))
+        await unrelatedProviders;
       if (url.pathname === "/3/movie/42")
         return Response.json({
           id: 42,
@@ -100,9 +128,33 @@ const options = {
         });
       return Response.json({ results: [] });
     }
-    if (url.host === "api.jikan.moe")
+    if (url.host === "api.jikan.moe") {
+      const id = Number(url.pathname.split("/")[3]);
+      if ([999901, 999905].includes(id))
+        return Response.json({
+          data: {
+            mal_id: id,
+            url: `https://myanimelist.net/anime/${id}`,
+            title: "Jikan Title",
+            title_english: "Jikan Title",
+            title_japanese: "日本語タイトル",
+            images: {},
+            aired: { from: null, to: null },
+            studios: [],
+            genres: [],
+          },
+        });
       return Response.json({ error: "Not found" }, { status: 404 });
+    }
     if (url.host === "graphql.anilist.co") {
+      if ([1001, 1002].includes(body.variables.id))
+        return Response.json(
+          {
+            errors: [{ message: "Not Found.", status: 404 }],
+            data: { Media: null },
+          },
+          { status: 404 },
+        );
       if (body.variables.idMal)
         return Response.json(
           {
@@ -414,6 +466,240 @@ try {
     releaseSlowLookup();
   }
 
+  const directLookups = [
+    {
+      request: { title: "Known AniList Title", anilist_id: "999" },
+      source: "aniList",
+      id: "999",
+    },
+    {
+      request: { title: "Known Bangumi Title", bangumi_id: "303" },
+      source: "bangumi",
+      id: "303",
+    },
+    {
+      request: {
+        title: "Known MAL and Bangumi Title",
+        mal_id: "999901",
+        bangumi_id: "304",
+      },
+      source: "mal",
+      id: "999901",
+    },
+    {
+      request: {
+        title: "Known MAL and AniList Title",
+        mal_id: "999902",
+        anilist_id: "999",
+      },
+      source: "aniList",
+      id: "999",
+    },
+  ];
+  try {
+    for (const { request, source, id } of directLookups) {
+      let deadline;
+      const before = calls.length;
+      const start = performance.now();
+      let metadata;
+      try {
+        metadata = await Promise.race([
+          lookup(request),
+          new Promise((_, reject) => {
+            deadline = globalThis.setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    `${source} ID lookup blocked by an unrelated provider`,
+                  ),
+                ),
+              1_000,
+            );
+          }),
+        ]);
+      } finally {
+        globalThis.clearTimeout(deadline);
+      }
+      assert.equal(metadata.sourceSite, source);
+      assert.equal(metadata.id, id);
+      const directCalls = calls.slice(before);
+      assert.equal(
+        directCalls.length,
+        1,
+        "known ID should need one direct request",
+      );
+      assert.equal(
+        directCalls[0].host,
+        {
+          aniList: "graphql.anilist.co",
+          mal: "api.jikan.moe",
+          bangumi: "api.bgm.tv",
+        }[source],
+      );
+      console.log(
+        `PASS: ${source} known ID returned in ${(performance.now() - start).toFixed(1)}ms without unrelated title searches`,
+      );
+    }
+  } finally {
+    releaseUnrelatedProviders();
+  }
+
+  let beforeDirectFallback = calls.length;
+  const directFallback = await lookup({
+    title: "Known Bangumi Fallback Title",
+    anilist_id: "1001",
+    bangumi_id: "305",
+    mal_id: "999903",
+  });
+  assert.equal(directFallback.sourceSite, "bangumi");
+  assert.deepEqual(
+    calls.slice(beforeDirectFallback).map((call) => call.host),
+    ["graphql.anilist.co", "api.jikan.moe", "api.bgm.tv"],
+  );
+  assert.equal(calls[beforeDirectFallback].body.variables.id, 1001);
+
+  const beforeFailedTmdb = calls.length;
+  const failedTmdb = await lookup({
+    tmdb_id: "movie/invalid",
+    anilist_id: "1001",
+    mal_id: "999905",
+    bangumi_id: "307",
+  });
+  assert.equal(failedTmdb.sourceSite, "mal");
+  assert.deepEqual(
+    calls.slice(beforeFailedTmdb).map((call) => call.host),
+    ["graphql.anilist.co", "api.jikan.moe"],
+    "after TMDb failure, try AniList before Jikan and keep Bangumi last",
+  );
+  console.log(
+    "PASS: AniList → Jikan → Bangumi order for known IDs and failed TMDb lookups",
+  );
+
+  beforeDirectFallback = calls.length;
+  const searchedFallback = await lookup({
+    title: "Resolved TMDb Title",
+    anilist_id: "1002",
+    media_type: "movie",
+    year: 2026,
+  });
+  assert.equal(searchedFallback.sourceSite, "tmdb");
+  assert.equal(searchedFallback.id, "movie/42");
+  const searchedCalls = calls.slice(beforeDirectFallback);
+  const failedIdCalls = searchedCalls.filter(
+    (call) => call.host === "graphql.anilist.co",
+  );
+  assert.equal(
+    failedIdCalls.length,
+    1,
+    "failed known IDs must not be requested twice",
+  );
+  assert.equal(failedIdCalls[0].body.variables.id, 1002);
+  assert(searchedCalls.some((call) => call.host === "api.themoviedb.org"));
+
+  beforeDirectFallback = calls.length;
+  const preferred = await lookup({
+    tmdb_id: "movie/42",
+    anilist_id: "999",
+    bangumi_id: "306",
+  });
+  assert.equal(preferred.sourceSite, "tmdb");
+  assert.deepEqual(
+    calls.slice(beforeDirectFallback).map((call) => call.path),
+    ["/3/movie/42"],
+  );
+  console.log(
+    "PASS: failed known IDs retain direct-ID and title-search fallbacks; explicit TMDb ID remains preferred",
+  );
+
+  const directBangumi = await db
+    .prepare(
+      'SELECT cache_key FROM metadata_cache WHERE metadata_json LIKE \'%"id":"303"%\'',
+    )
+    .first();
+  const directRefresh = await refresh(
+    { title: "Known Bangumi Title", bangumi_id: "303" },
+    directBangumi.cache_key,
+  );
+  assert.deepEqual(
+    directRefresh.map((call) => call.path),
+    ["/v0/subjects/303"],
+  );
+  console.log(
+    "PASS: stale known-ID refresh avoids title searches and unrelated providers",
+  );
+
+  for (const season of [1, 2]) {
+    const request = { tmdb_id: `tv/337334/season/${season}` };
+    const before = calls.length;
+    const metadata = await lookup(request);
+    assert.equal(metadata.id, request.tmdb_id);
+    assert.equal(
+      metadata.coverImage.large,
+      "https://image.tmdb.org/t/p/w500/show-poster.jpg",
+    );
+    assert.equal(
+      metadata.coverImage.extraLarge,
+      "https://image.tmdb.org/t/p/original/show-poster.jpg",
+    );
+    assert.equal(
+      calls.length - before,
+      2,
+      "fallback uses the already-fetched show details",
+    );
+    assert.deepEqual((await lookup(request)).coverImage, metadata.coverImage);
+    assert.equal(
+      calls.length - before,
+      2,
+      "cache retains the show poster fallback",
+    );
+    if (season === 2) {
+      // Old versions cached a CDN base URL for an empty season poster.
+      const key =
+        "v2-" +
+        createHash("sha256")
+          .update(JSON.stringify(["tmdb", request.tmdb_id]))
+          .digest("hex");
+      const broken = {
+        ...metadata,
+        coverImage: {
+          large: "https://image.tmdb.org/t/p/w500",
+          extraLarge: "https://image.tmdb.org/t/p/original",
+        },
+      };
+      await db
+        .prepare(
+          "UPDATE metadata_cache SET metadata_json = ? WHERE cache_key = ?",
+        )
+        .bind(JSON.stringify(broken), key)
+        .run();
+      await edge.put(
+        `http://housou.test/__metadata_cache/${key}`,
+        new Response(JSON.stringify(broken), {
+          headers: {
+            "Cache-Control": "public, max-age=3600",
+            "X-Housou-Metadata-Expires-At": String(Date.now() + 3_600_000),
+          },
+        }),
+      );
+      const repaired = await lookup(request);
+      assert.deepEqual(
+        repaired.coverImage,
+        metadata.coverImage,
+        "old malformed edge and D1 covers must be repaired before being returned",
+      );
+      const afterRepair = calls.length;
+      assert.deepEqual((await lookup(request)).coverImage, metadata.coverImage);
+      assert.equal(
+        calls.length,
+        afterRepair,
+        "repaired covers remain reusable",
+      );
+    }
+  }
+  console.log(
+    "PASS: null and empty season posters fall back to the show poster on the real request and cache path",
+  );
+
   const { results } = await db
     .prepare(
       "SELECT source, refresh_after, retry_after FROM metadata_cache WHERE source IS NOT NULL",
@@ -425,5 +711,6 @@ try {
   );
 } finally {
   releaseSlowLookup();
+  releaseUnrelatedProviders();
   await mf.dispose();
 }

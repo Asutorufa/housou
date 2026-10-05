@@ -126,6 +126,11 @@ record as soon as it completes, in completion order. Requests without this
 header receive the usual JSON array. The frontend displays streamed results
 immediately and loads at most two list batches concurrently.
 
+Metadata lookups use an explicit TMDb ID first. Without one, known IDs are tried
+in the order AniList, Jikan (MAL ID), then Bangumi before TMDb title searches.
+A successful direct lookup is cached without searching other providers.
+The fallback chain also prefers AniList, then Jikan, with Bangumi last.
+
 ### Authentication
 
 | Endpoint | Method | Description |

@@ -113,13 +113,64 @@ fn provider_retry_after_seconds(error: &Error) -> i32 {
 }
 
 pub(super) async fn fetch_metadata_from_providers(
-    args: MetadataArgs<'_>,
+    mut args: MetadataArgs<'_>,
     env: &Env,
 ) -> std::result::Result<ProviderFetch, ProviderChainError> {
     let mut tmdb_retry_after = None;
     let mut chain_retry_after = crate::config::CACHE_TTL_METADATA_MISS;
+    let mut jikan_attempted = false;
 
-    // TMDb is the preferred source because it provides the richest metadata.
+    // Known IDs avoid title searches on the loading path, ordered AniList,
+    // Jikan, then Bangumi. Keep track of failures to avoid duplicate ID requests.
+    if args.tmdb_id.is_none() {
+        if let Some(id) = args.anilist_id.take() {
+            match anilist::AnilistProvider.fetch(LookupQuery::ById(id)).await {
+                Ok(metadata) => {
+                    return Ok(ProviderFetch {
+                        metadata,
+                        tmdb_retry_after_seconds: None,
+                    });
+                }
+                Err(error) => {
+                    chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                    console_log!("AniList ID fetch failed {:?}", error);
+                }
+            }
+        }
+
+        if let Some(id) = args.mal_id {
+            jikan_attempted = true;
+            match jikan::JikanProvider.fetch(LookupQuery::ById(id)).await {
+                Ok(metadata) => {
+                    return Ok(ProviderFetch {
+                        metadata,
+                        tmdb_retry_after_seconds: None,
+                    });
+                }
+                Err(error) => {
+                    chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                    console_log!("Jikan ID fetch failed {:?}", error);
+                }
+            }
+        }
+
+        if let Some(id) = args.bangumi_id.take() {
+            match bangumi::BangumiProvider.fetch(LookupQuery::ById(id)).await {
+                Ok(metadata) => {
+                    return Ok(ProviderFetch {
+                        metadata,
+                        tmdb_retry_after_seconds: None,
+                    });
+                }
+                Err(error) => {
+                    chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                    console_log!("Bangumi ID fetch failed {:?}", error);
+                }
+            }
+        }
+    }
+
+    // Prefer an explicit TMDb ID; use title matching if known IDs were unavailable.
     if let Some(result) = fetch_tmdb_metadata(args, env).await {
         match result {
             Ok(metadata) => {
@@ -133,23 +184,6 @@ pub(super) async fn fetch_metadata_from_providers(
                 tmdb_retry_after = Some(retry_after);
                 chain_retry_after = chain_retry_after.min(retry_after);
                 console_log!("TMDb fetch failed {:?}", error);
-            }
-        }
-    }
-
-    // Jikan is deterministic when a MAL ID is available.
-    if let Some(id) = args.mal_id {
-        let jikan = jikan::JikanProvider;
-        match jikan.fetch(LookupQuery::ById(id)).await {
-            Ok(metadata) => {
-                return Ok(ProviderFetch {
-                    metadata,
-                    tmdb_retry_after_seconds: tmdb_retry_after,
-                });
-            }
-            Err(error) => {
-                chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
-                console_log!("Jikan fetch failed {:?}", error);
             }
         }
     }
@@ -188,6 +222,22 @@ pub(super) async fn fetch_metadata_from_providers(
             Err(error) => {
                 chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
                 console_log!("AniList fetch failed {:?}", error);
+            }
+        }
+    }
+
+    // Jikan follows AniList and precedes Bangumi, including after TMDb failure.
+    if !jikan_attempted && let Some(id) = args.mal_id {
+        match jikan::JikanProvider.fetch(LookupQuery::ById(id)).await {
+            Ok(metadata) => {
+                return Ok(ProviderFetch {
+                    metadata,
+                    tmdb_retry_after_seconds: tmdb_retry_after,
+                });
+            }
+            Err(error) => {
+                chain_retry_after = chain_retry_after.min(provider_retry_after_seconds(&error));
+                console_log!("Jikan fetch failed {:?}", error);
             }
         }
     }

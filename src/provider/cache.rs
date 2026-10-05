@@ -75,6 +75,24 @@ fn cached_metadata(entry: &MetadataCacheEntry) -> Option<UnifiedMetadata> {
         .metadata_json
         .as_deref()
         .and_then(|json| serde_json::from_str(json).ok())
+        .filter(|metadata| !has_invalid_tmdb_cover(metadata))
+}
+
+fn has_invalid_tmdb_cover(metadata: &UnifiedMetadata) -> bool {
+    // Older versions turned empty poster paths into bare CDN URLs. Treat those
+    // rows as misses so the fixed season/show fallback can repair them.
+    matches!(metadata.source, MetadataSource::Tmdb(_))
+        && metadata
+            .cover_image
+            .large
+            .iter()
+            .chain(metadata.cover_image.extra_large.iter())
+            .any(|url| {
+                matches!(
+                    url.trim(),
+                    "" | "https://image.tmdb.org/t/p/w500" | "https://image.tmdb.org/t/p/original"
+                )
+            })
 }
 
 fn refresh_reason(entry: &MetadataCacheEntry, now: i64) -> Option<RefreshReason> {
@@ -502,6 +520,7 @@ pub(super) async fn fetch_metadata(
             .and_then(|value| value.parse::<i64>().ok())
             .is_some_and(|deadline| deadline > now_ms())
         && let Ok(metadata) = response.json::<UnifiedMetadata>().await
+        && !has_invalid_tmdb_cover(&metadata)
     {
         return Ok(metadata);
     }
