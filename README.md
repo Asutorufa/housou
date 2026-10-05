@@ -36,14 +36,14 @@ Create `.dev.vars` for local development. For production, use `npx wrangler secr
 | Variable | Description | Required |
 | :--- | :--- | :--- |
 | `TMDB_TOKEN` | TMDb API Read Access Token (v4). | Yes |
-| `BASE_URL` | The base URL of your application (e.g., `https://housou.pages.dev`). | No* |
+| `BASE_URL` | The base URL of your application (e.g., `https://housou.pages.dev`). Required for OAuth/passkey URL fallback outside the `dev` feature. | For Auth |
 | `GITHUB_CLIENT_ID` | GitHub OAuth App Client ID. | For Auth |
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth App Client Secret. | For Auth |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token. | For Telegram Auth |
 | `TELEGRAM_BOT_NAME` | Telegram Bot Name (username without @). | For Telegram Auth |
 | `CORS_ALLOWED_ORIGIN` | Allowed origin for CORS (default: `*`). | No |
 
-*\* Defaults to `http://localhost:8787` if not set.*
+*`BASE_URL` falls back to `http://localhost:8787` only when the Rust `dev` feature is enabled. Production session cookies are always marked `Secure`.*
 
 ## Local Development
 
