@@ -9,7 +9,7 @@ use worker::*;
 struct ConfigHelper;
 
 impl ConfigHelper {
-    fn from_req(req: &Request, env: &Env) -> PasskeyConfig {
+    fn try_from_req(req: &Request, env: &Env) -> Result<PasskeyConfig> {
         let rp_id = req
             .url()
             .ok()
@@ -21,12 +21,12 @@ impl ConfigHelper {
             None => auth::get_base_url(env)?.trim_end_matches('/').to_string(),
         };
 
-        PasskeyConfig {
+        Ok(PasskeyConfig {
             rp_id,
             rp_name: "Housou".to_string(),
             origin,
             state_ttl: 300,
-        }
+        })
     }
 }
 
@@ -38,7 +38,7 @@ pub async fn handle_register_start(req: Request, env: Env) -> Result<Response> {
         None => return Response::error("Unauthorized", 401),
     };
     let db = auth::get_db(&env)?;
-    let config = ConfigHelper::from_req(&req, &env);
+    let config = ConfigHelper::try_from_req(&req, &env)?;
     let now = crate::utils::now_utc_ms();
 
     let options = passkey_server::start_registration(
@@ -60,7 +60,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
         Some(u) => u,
         None => return Response::error("Unauthorized", 401),
     };
-    let config = ConfigHelper::from_req(&req, &env);
+    let config = ConfigHelper::try_from_req(&req, &env)?;
     let body: RegistrationResponse = req.json().await?;
     let db = auth::get_db(&env)?;
     let now = crate::utils::now_utc_ms();
@@ -74,7 +74,7 @@ pub async fn handle_register_finish(mut req: Request, env: Env) -> Result<Respon
 
 pub async fn handle_login_start(req: Request, env: Env) -> Result<Response> {
     let db = auth::get_db(&env)?;
-    let config = ConfigHelper::from_req(&req, &env);
+    let config = ConfigHelper::try_from_req(&req, &env)?;
     let now = crate::utils::now_utc_ms();
 
     let options = passkey_server::start_login(&db, &config, now)
@@ -85,7 +85,7 @@ pub async fn handle_login_start(req: Request, env: Env) -> Result<Response> {
 }
 
 pub async fn handle_login_finish(mut req: Request, env: Env) -> Result<Response> {
-    let config = ConfigHelper::from_req(&req, &env);
+    let config = ConfigHelper::try_from_req(&req, &env)?;
     let response: LoginResponse = req.json().await?;
     let db = auth::get_db(&env)?;
     let now = crate::utils::now_utc_ms();
