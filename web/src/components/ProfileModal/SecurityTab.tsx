@@ -2,6 +2,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { formInputClassName } from "../../styles/uiClasses";
+import { validatePasswordComplexity } from "../../utils/password";
 
 export default function SecurityTab() {
   const { user, changePassword } = useAuth();
@@ -26,8 +27,12 @@ export default function SecurityTab() {
     setError(null);
     setSuccess(false);
 
-    if (newPassword.length < 8) {
-      setError("新しいパスワードは8文字以上である必要があります");
+    try {
+      validatePasswordComplexity(newPassword);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "パスワードの要件を確認してください",
+      );
       return;
     }
 
