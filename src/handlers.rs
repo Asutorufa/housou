@@ -1,4 +1,6 @@
+use futures::StreamExt;
 use serde_derive::Serialize;
+use std::rc::Rc;
 use worker::*;
 
 use crate::db::Database;
@@ -253,17 +255,37 @@ pub async fn handle_metadata(mut req: Request, ctx: RouteContext<Context>) -> Re
             return Response::error("Bad Request: Batch size exceeds limit of 10", 400);
         }
 
+        let streaming = req
+            .headers()
+            .get("Accept")?
+            .is_some_and(|accept| accept == "application/x-ndjson");
+        // The stream owns the request context so cache refreshes and writes
+        // remain tied to this request while individual lookups finish.
+        let ctx = Rc::new(ctx);
         let futures = requests.into_iter().map(|r| {
-            let ctx = &ctx;
+            let ctx = Rc::clone(&ctx);
             let cache_origin = cache_origin.clone();
             async move {
-                let metadata = provider::fetch_metadata(&r, ctx, &cache_origin).await.ok();
+                let metadata = provider::fetch_metadata(&r, &ctx, &cache_origin).await.ok();
                 provider::MetadataResponse {
                     request_id: r.request_id,
                     metadata,
                 }
             }
         });
+
+        if streaming {
+            let results: futures::stream::FuturesUnordered<_> = futures.collect();
+            let stream = results.map(|result| {
+                let mut line = serde_json::to_vec(&result)
+                    .map_err(|error| Error::RustError(error.to_string()))?;
+                line.push(b'\n');
+                Ok::<_, Error>(line)
+            });
+            return Response::from_stream(stream)?
+                .add_header("Content-Type", "application/x-ndjson; charset=utf-8")?
+                .add_header("Cache-Control", "no-store");
+        }
 
         let results: Vec<provider::MetadataResponse> = futures::future::join_all(futures).await;
         return Response::from_json(&results);

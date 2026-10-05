@@ -18,6 +18,10 @@ const buildPath = (name) =>
   fileURLToPath(new URL(`../build/${name}`, import.meta.url));
 
 const calls = [];
+let releaseSlowLookup;
+const slowLookup = new Promise((resolve) => {
+  releaseSlowLookup = resolve;
+});
 const subject = (id) => ({
   id,
   name: "原題",
@@ -122,6 +126,7 @@ const options = {
       return Response.json({ data: { Page: { media: [] } } });
     }
     if (url.host === "api.bgm.tv") {
+      if (url.pathname === "/v0/subjects/202") await slowLookup;
       if (url.pathname === "/v0/subjects/101")
         return Response.json(
           { error: "temporary unavailable" },
@@ -340,6 +345,75 @@ try {
   );
   console.log("PASS: absolute edge expiry checked on the real cache read path");
 
+  // A distinct origin guarantees an edge miss, while the D1 row is already
+  // populated. The uncached lookup stays blocked until the cached row arrives.
+  const start = performance.now();
+  const streamed = mf.dispatchFetch("http://stream.housou.test/api/metadata", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/x-ndjson",
+    },
+    body: JSON.stringify([
+      { bangumi_id: "202", request_id: "slow" },
+      { bangumi_id: "100", request_id: "cached" },
+    ]),
+  });
+  let deadline;
+  try {
+    const cached = await Promise.race([
+      (async () => {
+        const response = await streamed;
+        assert.equal(response.status, 200);
+        assert.match(
+          response.headers.get("Content-Type"),
+          /application\/x-ndjson/,
+        );
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let text = "";
+        while (!text.includes("\n")) {
+          const { value, done } = await reader.read();
+          assert(!done, "stream ended before the cached result arrived");
+          text += decoder.decode(value, { stream: true });
+        }
+        const first = JSON.parse(text.slice(0, text.indexOf("\n")));
+        assert.equal(first.request_id, "cached");
+        assert.equal(first.metadata.id, "100");
+        return { reader, decoder, rest: text.slice(text.indexOf("\n") + 1) };
+      })(),
+      new Promise((_, reject) => {
+        deadline = globalThis.setTimeout(
+          () =>
+            reject(
+              new Error(
+                "cached D1 result blocked by unrelated upstream lookup",
+              ),
+            ),
+          1_000,
+        );
+      }),
+    ]);
+    console.log(
+      `PASS: cached D1 result streamed in ${(performance.now() - start).toFixed(1)}ms while another lookup is blocked`,
+    );
+    releaseSlowLookup();
+    let remaining = cached.rest;
+    while (true) {
+      const { value, done } = await cached.reader.read();
+      if (done) break;
+      remaining += cached.decoder.decode(value, { stream: true });
+    }
+    remaining += cached.decoder.decode();
+    const slow = JSON.parse(remaining.trim());
+    assert.equal(slow.request_id, "slow");
+    assert.equal(slow.metadata.id, "202");
+    cached.reader.releaseLock();
+  } finally {
+    globalThis.clearTimeout(deadline);
+    releaseSlowLookup();
+  }
+
   const { results } = await db
     .prepare(
       "SELECT source, refresh_after, retry_after FROM metadata_cache WHERE source IS NOT NULL",
@@ -350,5 +424,6 @@ try {
     `PASS: ${results.length} positive D1 rows; ${calls.length} mocked upstream calls`,
   );
 } finally {
+  releaseSlowLookup();
   await mf.dispose();
 }

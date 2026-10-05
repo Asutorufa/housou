@@ -20,11 +20,48 @@ interface CacheEntry {
   expiresAt: number;
 }
 const BATCH_SIZE = 10;
-const NORMAL_CONCURRENCY = 1;
+const NORMAL_CONCURRENCY = 2;
 const DETAIL_CONCURRENCY = 1;
 const REQUEST_TIMEOUT_MS = 30_000;
 const CACHE_TTL_MS = 30 * 60_000;
 const CACHE_SIZE = 500;
+
+async function readResults(
+  response: Response,
+  onResult: (result: BatchResult) => void,
+) {
+  if (
+    response.headers?.get("Content-Type")?.split(";")[0].trim() !==
+    "application/x-ndjson"
+  ) {
+    // Allow the frontend and Worker to be deployed in either order.
+    const results: BatchResult[] = await response.json();
+    results.forEach(onResult);
+    return;
+  }
+  if (!response.body) throw new Error("Missing metadata response body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffered += decoder.decode(value, { stream: !done });
+      let end: number;
+      while ((end = buffered.indexOf("\n")) !== -1) {
+        const line = buffered.slice(0, end).trim();
+        buffered = buffered.slice(end + 1);
+        if (line) onResult(JSON.parse(line) as BatchResult);
+      }
+      if (done) break;
+    }
+    if (buffered.trim()) onResult(JSON.parse(buffered) as BatchResult);
+  } finally {
+    // Cancel on parse errors as well as completion, releasing the connection.
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
 
 // Owns batching and caching independently of React. In-flight requests are
 // deduplicated; failed/empty responses are never retained as successful data.
@@ -79,9 +116,8 @@ export function createMetadataClient() {
     clearTimeout(timer);
     timer = undefined;
 
-    // Keep ordinary card loading serialized, matching the pre-refactor behavior.
-    // A detail request gets its own lane so opening a card is never stuck behind
-    // a large list batch, while we still avoid firing two heavy list batches at once.
+    // Reserve a lane for details and bound list work. A second list batch can
+    // make progress while the first still has slow uncached provider lookups.
     if (activeDetail < DETAIL_CONCURRENCY) {
       const batch = takeBatch("detail");
       if (batch.length > 0) {
@@ -90,16 +126,16 @@ export function createMetadataClient() {
       }
     }
 
-    if (activeNormal < NORMAL_CONCURRENCY) {
+    while (activeNormal < NORMAL_CONCURRENCY) {
       const batch = takeBatch("normal");
-      if (batch.length > 0) {
-        activeNormal++;
-        void send(batch, "normal");
-      }
+      if (batch.length === 0) break;
+      activeNormal++;
+      void send(batch, "normal");
     }
   }
 
   async function send(batch: Pending[], priority: Priority) {
+    const pending = new Map(batch.map((item) => [item.id, item]));
     const controller = new AbortController();
     controllers.add(controller);
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -107,31 +143,32 @@ export function createMetadataClient() {
       const response = await checkResponse(
         await fetch("/api/metadata", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/x-ndjson",
+          },
           body: JSON.stringify(
             batch.map((item) => ({ ...item.request, request_id: item.id })),
           ),
           signal: controller.signal,
         }),
       );
-      const results: BatchResult[] = await response.json();
-      const byId = new Map(
-        results.map((item) => [item.request_id, item.metadata]),
-      );
-      for (const item of batch) {
-        if (!byId.has(item.id)) throw new Error("Incomplete metadata response");
-      }
-      for (const item of batch) {
-        const metadata = byId.get(item.id) ?? null;
+      await readResults(response, (result) => {
+        const item = pending.get(result.request_id);
+        if (!item) throw new Error("Unexpected metadata response");
+        const metadata = result.metadata ?? null;
         const entry = cache.get(item.key);
         if (metadata && entry?.id === item.id)
           entry.expiresAt = Date.now() + CACHE_TTL_MS;
         else if (entry?.id === item.id) cache.delete(item.key);
         item.resolve(metadata);
-      }
+        pending.delete(item.id);
+      });
+      if (pending.size > 0) throw new Error("Incomplete metadata response");
       trimCache();
     } catch (error) {
-      for (const item of batch) {
+      // Already delivered results stay usable if the rest of the stream fails.
+      for (const item of pending.values()) {
         if (cache.get(item.key)?.id === item.id) cache.delete(item.key);
         item.reject(error);
       }

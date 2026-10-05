@@ -120,6 +120,12 @@ Once logged in via GitHub, users can register Passkeys (TouchID, FaceID, Yubikey
 | `/api/items` | `GET` | List anime for a specific year/season (Bangumi-data / Jikan). |
 | `/api/metadata` | `GET/POST` | Detailed metadata for a specific title (TMDB/AniList/MAL). |
 
+`POST /api/metadata` accepts up to 10 lookups. Set `Accept: application/x-ndjson`
+to receive each `{ request_id, metadata }` result as a newline-delimited JSON
+record as soon as it completes, in completion order. Requests without this
+header receive the usual JSON array. The frontend displays streamed results
+immediately and loads at most two list batches concurrently.
+
 ### Authentication
 
 | Endpoint | Method | Description |
