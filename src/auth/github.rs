@@ -24,7 +24,7 @@ struct GithubTokenResponse {
 
 pub async fn handle_github_authorize(_req: Request, env: Env) -> Result<Response> {
     let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
-    let base_url = get_base_url(&env);
+    let base_url = get_base_url(&env)?;
     let redirect_uri = format!("{base_url}/api/auth/github/callback");
 
     // CSRF Protection: Generate State
@@ -51,7 +51,7 @@ pub async fn handle_github_bind_authorize(req: Request, env: Env) -> Result<Resp
     }
 
     let client_id = env.var("GITHUB_CLIENT_ID")?.to_string();
-    let base_url = get_base_url(&env);
+    let base_url = get_base_url(&env)?;
     let redirect_uri = format!("{base_url}/api/auth/github/callback");
 
     let state = Uuid::new_v4().to_string();
@@ -226,7 +226,7 @@ pub async fn handle_github_callback(req: Request, env: Env) -> Result<Response> 
         let gh_user = fetch_github_user(&access_token).await?;
 
         let db = get_db(&env)?;
-        let base_url = get_base_url(&env);
+        let base_url = get_base_url(&env)?;
         let secure = base_url.starts_with("https");
 
         if action == "bind" {
