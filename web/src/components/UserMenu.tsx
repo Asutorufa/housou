@@ -51,7 +51,7 @@ export default function UserMenu({
 
   return (
     <div className="relative">
-      <motion.button
+      <button
         aria-label="ユーザーメニュー"
         aria-expanded={isOpen}
         onClick={() => onOpenChange(!isOpen)}
@@ -71,7 +71,7 @@ export default function UserMenu({
             {user?.username?.[0]?.toUpperCase() || <UserIcon size={16} />}
           </span>
         )}
-      </motion.button>
+      </button>
 
       <AnimatePresence>
         {isOpen && (
@@ -85,7 +85,7 @@ export default function UserMenu({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               transition={{ duration: 0.1 }}
-              className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-gray-200/50 bg-white/95 p-1 shadow-xl backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95"
+              className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-gray-200/50 bg-white/95 p-1 shadow-xl dark:border-gray-700/50 dark:bg-gray-800/95"
             >
               <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700/50 mb-1">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400">

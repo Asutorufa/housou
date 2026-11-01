@@ -314,3 +314,16 @@ describe("metadata batching", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+it("exposes resolved metadata synchronously through peekMetadata", async () => {
+  fetchMock.mockImplementation(async (_url, init) => response(init));
+  const api = client();
+  const request = { title: "Peek" };
+
+  const pending = api.fetchMetadata(request);
+  expect(api.peekMetadata(request)).toBeUndefined();
+
+  await vi.advanceTimersByTimeAsync(120);
+  await pending;
+  expect(api.peekMetadata(request)).toEqual(metadata);
+});

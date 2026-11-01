@@ -13,6 +13,9 @@ import UserMenu from "./UserMenu";
 const AuthModal = lazy(() => import("./AuthModal"));
 const ProfileModal = lazy(() => import("./ProfileModal"));
 
+const SEARCH_OPEN_CLIP_PATH = "inset(0% 0% 0% 0% round 9999px)";
+const SEARCH_CLOSED_CLIP_PATH = "inset(0% 0% 0% 90% round 9999px)";
+
 const filterSelectTriggerClassName =
   "min-w-[80px] sm:min-w-[90px] max-w-[120px]";
 
@@ -76,15 +79,16 @@ export default function Header({
   return (
     <header className="group/header pointer-events-none sticky top-2 z-50 w-full px-2 md:px-4">
       <div className="relative mx-auto flex h-14 max-w-7xl items-center justify-between gap-3">
-        <AnimatePresence mode="wait">
+        {/* Mount the input during the click so mobile browsers open the keyboard. */}
+        <AnimatePresence>
           {isSearchFocused ? (
             <motion.div
               key="search-bar"
-              initial={{ width: 40, opacity: 0 }}
-              animate={{ width: "100%", opacity: 1 }}
-              exit={{ width: 40, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 350, damping: 30 }}
-              className="pointer-events-auto absolute right-2 top-1/2 z-30 flex h-10 -translate-y-1/2 items-center md:right-4"
+              initial={{ clipPath: SEARCH_CLOSED_CLIP_PATH, opacity: 0 }}
+              animate={{ clipPath: SEARCH_OPEN_CLIP_PATH, opacity: 1 }}
+              exit={{ clipPath: SEARCH_CLOSED_CLIP_PATH, opacity: 0 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="pointer-events-auto absolute inset-x-2 top-1/2 z-30 flex h-10 -translate-y-1/2 items-center md:inset-x-4"
             >
               <div className="search-container relative h-full w-full overflow-hidden rounded-full border border-blue-500 bg-white/80 shadow-md backdrop-blur-md ring-2 ring-blue-500/20 dark:border-gray-700/50 dark:bg-gray-800/80">
                 <Search

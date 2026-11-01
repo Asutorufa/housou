@@ -17,6 +17,7 @@ interface Pending {
 interface CacheEntry {
   id: string;
   promise: Promise<UnifiedMetadata | null>;
+  metadata?: UnifiedMetadata;
   expiresAt: number;
 }
 const BATCH_SIZE = 10;
@@ -158,9 +159,10 @@ export function createMetadataClient() {
         if (!item) throw new Error("Unexpected metadata response");
         const metadata = result.metadata ?? null;
         const entry = cache.get(item.key);
-        if (metadata && entry?.id === item.id)
+        if (metadata && entry?.id === item.id) {
+          entry.metadata = metadata;
           entry.expiresAt = Date.now() + CACHE_TTL_MS;
-        else if (entry?.id === item.id) cache.delete(item.key);
+        } else if (entry?.id === item.id) cache.delete(item.key);
         item.resolve(metadata);
         pending.delete(item.id);
       });
@@ -182,11 +184,8 @@ export function createMetadataClient() {
     }
   }
 
-  function fetchMetadata(
-    request: MetadataRequest,
-    priority: Priority = "normal",
-  ): Promise<UnifiedMetadata | null> {
-    const key = JSON.stringify([
+  function cacheKey(request: MetadataRequest) {
+    return JSON.stringify([
       request.title ?? "",
       request.tmdb_id ?? "",
       request.mal_id ?? "",
@@ -196,6 +195,19 @@ export function createMetadataClient() {
       request.media_type ?? "",
       request.aliases ?? [],
     ]);
+  }
+
+  // Synchronous read so remounted cards can render cached data on first paint.
+  function peekMetadata(request: MetadataRequest) {
+    const entry = cache.get(cacheKey(request));
+    return entry && entry.expiresAt > Date.now() ? entry.metadata : undefined;
+  }
+
+  function fetchMetadata(
+    request: MetadataRequest,
+    priority: Priority = "normal",
+  ): Promise<UnifiedMetadata | null> {
+    const key = cacheKey(request);
     const existing = cache.get(key);
     if (existing && existing.expiresAt > Date.now()) {
       if (priority === "detail") {
@@ -228,5 +240,5 @@ export function createMetadataClient() {
     for (const controller of controllers) controller.abort();
     cache.clear();
   }
-  return { fetchMetadata, dispose };
+  return { fetchMetadata, peekMetadata, dispose };
 }

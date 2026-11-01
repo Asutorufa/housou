@@ -9,7 +9,7 @@ import { createMetadataClient } from "../api/metadata";
 
 const MetadataContext = createContext<Pick<
   ReturnType<typeof createMetadataClient>,
-  "fetchMetadata"
+  "fetchMetadata" | "peekMetadata"
 > | null>(null);
 
 // eslint-disable-next-line react-refresh/only-export-components

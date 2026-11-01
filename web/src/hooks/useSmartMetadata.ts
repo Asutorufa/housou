@@ -12,7 +12,7 @@ export function useSmartMetadata(
   enabled: boolean = true,
   priority: "normal" | "detail" = "normal",
 ) {
-  const { fetchMetadata } = useMetadata();
+  const { fetchMetadata, peekMetadata } = useMetadata();
   const [attempt, setAttempt] = useState(0);
   const tmdbSite = item.sites?.find((s) => s.site === "tmdb");
   const malSite = item.sites?.find((s) => s.site === "mal");
@@ -62,19 +62,33 @@ export function useSmartMetadata(
     }
   }
 
+  const request = useMemo(
+    () => ({
+      title: item.title,
+      tmdb_id: tmdbSite?.id,
+      mal_id: malSite?.id,
+      anilist_id: anilistSite?.id,
+      bangumi_id: bangumiSite?.id,
+      aliases,
+      year,
+      media_type: item.type,
+    }),
+    [
+      item.title,
+      tmdbSite?.id,
+      malSite?.id,
+      anilistSite?.id,
+      bangumiSite?.id,
+      aliases,
+      year,
+      item.type,
+    ],
+  );
+
+  const cachedMetadata = initialMetadata ? undefined : peekMetadata(request);
+  const hasCachedMetadata = !!cachedMetadata;
   const requestKey =
-    enabled && !initialMetadata
-      ? JSON.stringify({
-          title: item.title,
-          tmdb_id: tmdbSite?.id,
-          mal_id: malSite?.id,
-          anilist_id: anilistSite?.id,
-          bangumi_id: bangumiSite?.id,
-          aliases,
-          year,
-          media_type: item.type,
-        })
-      : null;
+    enabled && !initialMetadata ? JSON.stringify(request) : null;
 
   const [fetchedResult, setFetchedResult] = useState<{
     key: string;
@@ -85,16 +99,19 @@ export function useSmartMetadata(
 
   const metadata =
     initialMetadata ||
+    cachedMetadata ||
     (fetchedResult?.key === requestKey && fetchedResult.attempt === attempt
       ? fetchedResult.metadata
       : null);
   const loading =
     requestKey !== null &&
+    !hasCachedMetadata &&
     (fetchedResult?.key !== requestKey || fetchedResult.attempt !== attempt);
 
   useEffect(() => {
     if (
       !requestKey ||
+      hasCachedMetadata ||
       (fetchedResult?.key === requestKey && fetchedResult.attempt === attempt)
     ) {
       return;
@@ -105,19 +122,7 @@ export function useSmartMetadata(
 
     async function load() {
       try {
-        const data = await fetchMetadata(
-          {
-            title: item.title,
-            tmdb_id: tmdbSite?.id,
-            mal_id: malSite?.id,
-            anilist_id: anilistSite?.id,
-            bangumi_id: bangumiSite?.id,
-            aliases,
-            year,
-            media_type: item.type,
-          },
-          priority,
-        );
+        const data = await fetchMetadata(request, priority);
 
         if (isMounted) {
           setFetchedResult({
@@ -151,16 +156,11 @@ export function useSmartMetadata(
     };
   }, [
     requestKey,
+    hasCachedMetadata,
     fetchedResult?.key,
     fetchMetadata,
     item.title,
-    tmdbSite?.id,
-    malSite?.id,
-    anilistSite?.id,
-    bangumiSite?.id,
-    aliases,
-    year,
-    item.type,
+    request,
     attempt,
     fetchedResult?.attempt,
     priority,

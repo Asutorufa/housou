@@ -46,7 +46,7 @@ export default function SiteLink({
       rel="noopener noreferrer"
       onClick={handleClick}
       className={cn(
-        "flex items-center gap-1.5 rounded-md transition-all active:scale-95",
+        "flex items-center gap-1.5 rounded-md transition-[color,background-color,scale] active:scale-95",
         focusRingClassName,
         className,
       )}

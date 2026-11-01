@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import DOMPurify from "../../utils/domPurifyConfig";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
@@ -30,6 +31,31 @@ interface DetailsModalProps {
   siteMeta?: SiteMeta;
   authEnabled: boolean;
   onUpdate?: () => void;
+}
+
+const DESCRIPTION_SANITIZE_CONFIG = {
+  ALLOWED_TAGS: ["b", "i", "em", "strong", "a", "br", "p", "ul", "ol", "li"],
+  ALLOWED_ATTR: ["href", "target", "rel"],
+};
+
+function sanitizeDescription(rawDescription: string) {
+  // Sanitize and get a DOM fragment to avoid global hooks
+  const fragment = DOMPurify.sanitize(rawDescription, {
+    ...DESCRIPTION_SANITIZE_CONFIG,
+    RETURN_DOM_FRAGMENT: true,
+  });
+
+  // Replace <br> with newlines in the fragment
+  fragment.querySelectorAll("br").forEach((br) => {
+    br.replaceWith("\n");
+  });
+
+  // Serialize back to string
+  const container = document.createElement("div");
+  container.appendChild(fragment);
+
+  // Collapse multiple newlines into max 2
+  return container.innerHTML.replace(/\n{2,}/g, "\n").trim();
 }
 
 export default function DetailsModal(props: DetailsModalProps) {
@@ -139,6 +165,12 @@ function DetailsModalContent({
 
   const sites = sortSites(displaySites, siteMeta);
 
+  const description = info?.description;
+  const descriptionHtml = useMemo(
+    () => (description ? sanitizeDescription(description) : ""),
+    [description],
+  );
+
   return (
     <div
       {...radixProps}
@@ -151,7 +183,9 @@ function DetailsModalContent({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-        className="relative flex max-h-[85vh] w-full max-w-4xl cursor-auto flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none dark:bg-gray-800"
+        // Motion only corrects border radius during layout animations via style.
+        style={{ borderRadius: 24 }}
+        className="relative flex max-h-[85dvh] w-full max-w-4xl cursor-auto flex-col overflow-hidden bg-white shadow-2xl outline-none dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
         <Dialog.Close asChild>
@@ -175,18 +209,12 @@ function DetailsModalContent({
           )}
 
           {/* Content Section */}
-          <motion.div
-            layoutId={`content-${title}`}
-            className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 md:p-8"
-          >
+          <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 md:p-8">
             <div>
               <Dialog.Title asChild>
-                <motion.h1
-                  layoutId={`title-${title}`}
-                  className="mb-3 text-2xl leading-tight font-black text-gray-900 md:text-3xl dark:text-white"
-                >
+                <h1 className="mb-3 text-2xl leading-tight font-black text-gray-900 md:text-3xl dark:text-white">
                   {title}
-                </motion.h1>
+                </h1>
               </Dialog.Title>
               <Dialog.Description asChild>
                 <p className="sr-only">
@@ -302,55 +330,10 @@ function DetailsModalContent({
                     <h4 className="mb-2 text-sm font-black tracking-wider text-gray-400 uppercase dark:text-gray-500">
                       あらすじ
                     </h4>
-                    <div className="prose prose-sm dark:prose-invert text-sm leading-relaxed text-gray-600 md:text-base dark:text-gray-300">
-                      {(() => {
-                        const cleanConfig = {
-                          ALLOWED_TAGS: [
-                            "b",
-                            "i",
-                            "em",
-                            "strong",
-                            "a",
-                            "br",
-                            "p",
-                            "ul",
-                            "ol",
-                            "li",
-                          ],
-                          ALLOWED_ATTR: ["href", "target", "rel"],
-                        };
-
-                        const rawDescription = info.description || "";
-
-                        // Sanitize and get a DOM fragment to avoid global hooks
-                        const fragment = DOMPurify.sanitize(rawDescription, {
-                          ...cleanConfig,
-                          RETURN_DOM_FRAGMENT: true,
-                        });
-
-                        // Replace <br> with newlines in the fragment
-                        fragment.querySelectorAll("br").forEach((br) => {
-                          br.replaceWith("\n");
-                        });
-
-                        // Serialize back to string
-                        const container = document.createElement("div");
-                        container.appendChild(fragment);
-                        const sanitized = container.innerHTML;
-
-                        // Collapse multiple newlines into max 2
-                        const collapsed = sanitized
-                          .replace(/\n{2,}/g, "\n") // Max 2 newlines
-                          .trim();
-
-                        return (
-                          <div
-                            className="whitespace-pre-wrap"
-                            dangerouslySetInnerHTML={{ __html: collapsed }}
-                          />
-                        );
-                      })()}
-                    </div>
+                    <div
+                      className="rich-text text-sm leading-relaxed whitespace-pre-wrap text-gray-600 md:text-base dark:text-gray-300"
+                      dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+                    />
                   </div>
                 )}
 
@@ -372,7 +355,7 @@ function DetailsModalContent({
                 )}
               </>
             )}
-          </motion.div>
+          </div>
         </div>
       </motion.div>
     </div>

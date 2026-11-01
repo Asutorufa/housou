@@ -27,6 +27,7 @@ vi.mock("wouter", () => ({
 vi.mock("../contexts/MetadataContext", () => ({
   useMetadata: () => ({
     fetchMetadata: vi.fn().mockResolvedValue(null),
+    peekMetadata: () => undefined,
   }),
 }));
 

@@ -1,3 +1,4 @@
+import { MotionConfig } from "motion/react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
@@ -17,11 +18,13 @@ async function enableMocking() {
 enableMocking().then(() => {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <AuthProvider enabled={true}>
-        <MetadataProvider>
-          <App />
-        </MetadataProvider>
-      </AuthProvider>
+      <MotionConfig reducedMotion="user">
+        <AuthProvider enabled={true}>
+          <MetadataProvider>
+            <App />
+          </MetadataProvider>
+        </AuthProvider>
+      </MotionConfig>
     </StrictMode>,
   );
 });

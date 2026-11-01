@@ -15,6 +15,7 @@ vi.mock("../../contexts/AuthContext", () => ({
 vi.mock("../../contexts/MetadataContext", () => ({
   useMetadata: () => ({
     fetchMetadata: vi.fn(),
+    peekMetadata: () => undefined,
   }),
 }));
 

@@ -226,3 +226,27 @@ describe("AnimeCard fetchMetadata", () => {
     consoleSpy.mockRestore();
   });
 });
+
+describe("AnimeCard cover states", () => {
+  it("shows a placeholder instead of 'No image' before metadata is requested", () => {
+    render(
+      <MetadataProvider>
+        <AnimeCard item={mockItemFetch} onOpenModal={() => {}} />
+      </MetadataProvider>,
+    );
+
+    expect(screen.queryByText("No image")).toBeNull();
+  });
+
+  it("does not let the hover overlay intercept clicks on the cover", () => {
+    const { container } = render(
+      <MetadataProvider>
+        <AnimeCard item={mockItemFetch} onOpenModal={() => {}} />
+      </MetadataProvider>,
+    );
+
+    expect(container.querySelector(".group-hover\\:opacity-100")).toHaveClass(
+      "pointer-events-none",
+    );
+  });
+});
