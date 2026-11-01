@@ -53,7 +53,7 @@ export function useAnimeData() {
     data: fetchedItems,
     error: itemsError,
     isLoading: itemsLoading,
-  } = useSWR<AnimeItem[]>(itemsUrl, fetcher);
+  } = useSWR<AnimeItem[]>(itemsUrl, fetcher, { revalidateOnFocus: false });
 
   // Fetch user statuses separately
   const { data: userStatuses, mutate: mutateStatuses } = useSWR<

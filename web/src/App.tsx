@@ -1,5 +1,6 @@
-import { lazy, useCallback, useEffect, useState } from "react";
+import { lazy, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
+import CardGridSkeleton from "./components/CardGridSkeleton";
 import Footer from "./components/Footer";
 import DeferredDialog from "./components/DeferredDialog";
 import Header from "./components/Header";
@@ -53,17 +54,23 @@ export default function App() {
     }
   }, [loading]);
 
+  // Read the URL through a ref so a URL change does not re-render every card.
+  const urlRef = useRef({ location, search });
+  useEffect(() => {
+    urlRef.current = { location, search };
+  }, [location, search]);
+
   const handleOpenModal = useCallback(
     (title: string, info: UnifiedMetadata | null) => {
       // Cache info for immediate presentation in the modal
       setCachedInfo({ title, info });
 
       // Update URL
-      const params = new URLSearchParams(search);
+      const params = new URLSearchParams(urlRef.current.search);
       params.set("anime", title);
-      setLocation(`${location}?${params.toString()}`);
+      setLocation(`${urlRef.current.location}?${params.toString()}`);
     },
-    [location, search, setLocation],
+    [setLocation],
   );
 
   const handleCloseModal = () => {
@@ -93,7 +100,7 @@ export default function App() {
     setSelections((prev) => ({ ...prev, status }));
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
+    <div className="min-h-dvh bg-gray-100 text-gray-900 transition-colors dark:bg-gray-900 dark:text-gray-100">
       <Header
         config={config}
         selectedYear={selectedYear}
@@ -110,11 +117,9 @@ export default function App() {
 
       <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-blue-500"></div>
-          </div>
+          <CardGridSkeleton />
         ) : error && items.length === 0 ? (
-          <div className="flex min-h-[50vh] items-center justify-center p-4 text-red-500">
+          <div className="flex min-h-[50dvh] items-center justify-center p-4 text-red-500">
             <div className="text-center">
               <h2 className="mb-2 text-xl font-bold">
                 Unable to load anime list

@@ -1,6 +1,5 @@
 import * as Select from "@radix-ui/react-select";
 import { ChevronDown } from "lucide-react";
-import { motion } from "motion/react";
 import { focusRingClassName } from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
@@ -40,9 +39,9 @@ export default function CustomSelect({
       onOpenChange={onOpenChange}
     >
       <Select.Trigger asChild>
-        <motion.button
+        <button
           className={cn(
-            "inline-flex cursor-pointer items-center justify-between rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-700 transition-colors duration-200 sm:text-sm dark:text-gray-200",
+            "group inline-flex cursor-pointer items-center justify-between rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap text-gray-700 transition-colors duration-200 sm:text-sm dark:text-gray-200",
             "ring-0 outline-none",
             focusRingClassName,
             "hover:bg-gray-100 dark:hover:bg-gray-700/50",
@@ -57,14 +56,12 @@ export default function CustomSelect({
             </span>
           </div>
           <Select.Icon className="ml-1 text-gray-400">
-            <motion.div
-              animate={{ rotate: isOpen ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChevronDown size={14} />
-            </motion.div>
+            <ChevronDown
+              size={14}
+              className="transition-transform duration-200 group-data-[state=open]:rotate-180"
+            />
           </Select.Icon>
-        </motion.button>
+        </button>
       </Select.Trigger>
 
       <Select.Portal>
@@ -73,7 +70,7 @@ export default function CustomSelect({
           position="popper"
           align={align}
           className={cn(
-            "select-content z-[200] min-w-[120px] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-xl shadow-black/10 backdrop-blur-xl dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30",
+            "select-content z-[200] min-w-[120px] overflow-hidden rounded-2xl border border-gray-200/50 bg-white/95 shadow-xl shadow-black/10 dark:border-gray-700/50 dark:bg-gray-800/95 dark:shadow-black/30",
             contentClassName,
           )}
         >

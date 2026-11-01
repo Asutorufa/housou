@@ -162,7 +162,7 @@ export default function RatingEditor({
   };
   return (
     <section
-      className={`overflow-hidden rounded-2xl border p-4 transition-all duration-300 ${scoreTone.card} ${scoreTone.glow}`}
+      className={`overflow-hidden rounded-2xl border p-4 transition-[background-color,border-color,box-shadow] duration-300 ${scoreTone.card} ${scoreTone.glow}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -187,7 +187,7 @@ export default function RatingEditor({
           onClick={startRatingEdit}
           disabled={pending}
           aria-expanded={isRatingEditing}
-          className={`rounded-full border px-3 py-1 text-xs font-black transition-all hover:-translate-y-0.5 hover:shadow-sm ${scoreTone.badge} ${focusRingClassName}`}
+          className={`rounded-full border px-3 py-1 text-xs font-black transition-[color,background-color,border-color,box-shadow,translate] hover:-translate-y-0.5 hover:shadow-sm ${scoreTone.badge} ${focusRingClassName}`}
         >
           {savedScoreLabel}
         </button>
@@ -195,8 +195,8 @@ export default function RatingEditor({
 
       <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/80 ring-1 ring-black/5 dark:bg-gray-950/40 dark:ring-white/10">
         <div
-          className={`h-full rounded-full transition-all duration-500 ease-out ${scoreTone.progress}`}
-          style={{ width: `${currentScore ?? 0}%` }}
+          className={`h-full w-full origin-left rounded-full transition-transform duration-500 ease-out ${scoreTone.progress}`}
+          style={{ transform: `scaleX(${(currentScore ?? 0) / 100})` }}
         />
       </div>
 
@@ -213,7 +213,7 @@ export default function RatingEditor({
               value={ratingInputValue}
               onChange={(e) => handleRatingChange(e.target.value)}
               placeholder="1-100"
-              className={`w-full rounded-xl border border-white/80 bg-white/80 px-3 py-2 pr-14 text-sm font-bold text-gray-900 shadow-sm outline-none transition-all placeholder:text-gray-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-500/15 dark:border-gray-700/80 dark:bg-gray-900/70 dark:text-gray-100 dark:focus:border-blue-500/70 dark:focus:bg-gray-900 ${focusRingClassName}`}
+              className={`w-full rounded-xl border border-white/80 bg-white/80 px-3 py-2 pr-14 text-sm font-bold text-gray-900 shadow-sm outline-none transition-[border-color,box-shadow] placeholder:text-gray-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-500/15 dark:border-gray-700/80 dark:bg-gray-900/70 dark:text-gray-100 dark:focus:border-blue-500/70 dark:focus:bg-gray-900 ${focusRingClassName}`}
               autoFocus
             />
             <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs font-black text-gray-400">
@@ -230,7 +230,7 @@ export default function RatingEditor({
                 !ratingInputValue.trim() ||
                 ratingInputValue === (currentScore?.toString() ?? "")
               }
-              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-black transition-all hover:-translate-y-0.5 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-45 ${scoreTone.button} ${focusRingClassName}`}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2 text-sm font-black transition-[color,background-color,border-color,box-shadow,opacity,translate] hover:-translate-y-0.5 disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-45 ${scoreTone.button} ${focusRingClassName}`}
             >
               <Check size={15} />
               {currentScore !== null ? "更新" : "保存"}
@@ -239,7 +239,7 @@ export default function RatingEditor({
               type="button"
               onClick={handleClearRating}
               disabled={pending || currentScore === null}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border border-transparent px-3 py-2 text-sm font-bold text-gray-500 transition-all hover:bg-white/70 hover:text-gray-700 disabled:pointer-events-none disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200 ${focusRingClassName}`}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-xl border border-transparent px-3 py-2 text-sm font-bold text-gray-500 transition-colors hover:bg-white/70 hover:text-gray-700 disabled:pointer-events-none disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-800/70 dark:hover:text-gray-200 ${focusRingClassName}`}
             >
               <Eraser size={15} />
               クリア

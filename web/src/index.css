@@ -18,7 +18,17 @@
 }
 
 :root {
+  color-scheme: light dark;
   scrollbar-gutter: stable;
+  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  background-color: var(--color-gray-100);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    scrollbar-color: rgba(107, 114, 128, 0.5) transparent;
+    background-color: var(--color-gray-900);
+  }
 }
 
 /* Visible server-rendered detail page; React replaces it when the app mounts. */
@@ -77,58 +87,48 @@
   outline-offset: 3px;
 }
 
-/* Global Scrollbar */
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+@media (prefers-color-scheme: dark) {
+  #anime-article {
+    color: #f3f4f6;
+    background: #1f2937;
+  }
+
+  #anime-article a {
+    color: #93c5fd;
+  }
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5);
-  border-radius: 20px;
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(107, 114, 128, 0.8);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background-color: rgba(107, 114, 128, 0.5);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.8);
-}
-
-/* For Firefox */
+/* Scrollbars: scrollbar-color is inherited from :root. Browsers that support the
+   standard properties ignore ::-webkit-scrollbar once they are set. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
 }
 
-.dark * {
-  scrollbar-color: rgba(107, 114, 128, 0.5) transparent;
-}
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
 
-/* Custom Scrollbar overrides for specific areas */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 10px;
-}
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 20px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
 
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(107, 114, 128, 0.8);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -176,6 +176,52 @@
   );
 }
 
+/* Hover shadow fades on the compositor instead of repainting box-shadow. */
+.anime-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  box-shadow:
+    0 20px 25px -5px rgb(0 0 0 / 0.1),
+    0 8px 10px -6px rgb(0 0 0 / 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease-out;
+}
+
+@media (hover: hover) {
+  .anime-card:hover::after {
+    opacity: 1;
+  }
+}
+
+/* Sanitized synopsis HTML; Tailwind's preflight removes list and link styles. */
+.rich-text a {
+  color: var(--color-blue-600);
+  text-decoration: underline;
+}
+
+.rich-text ul,
+.rich-text ol {
+  padding-left: 1.5rem;
+}
+
+.rich-text ul {
+  list-style: disc;
+}
+
+.rich-text ol {
+  list-style: decimal;
+}
+
+@media (prefers-color-scheme: dark) {
+  .rich-text a {
+    color: var(--color-blue-300);
+  }
+}
+
 /* Radix Select dropdown animation */
 @keyframes selectContentShow {
   0% {
@@ -207,7 +253,7 @@
 }
 
 .select-content {
-  transform-origin: top center;
+  transform-origin: var(--radix-select-content-transform-origin);
   will-change: transform, opacity;
 }
 

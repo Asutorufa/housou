@@ -5,13 +5,14 @@ import type { DisplayAnimeItem, UnifiedMetadata } from "../types";
 import { isDev } from "../utils/envUtils";
 
 // Mock MetadataContext
-const { mockFetchMetadata } = vi.hoisted(() => {
-  return { mockFetchMetadata: vi.fn() };
+const { mockFetchMetadata, mockPeekMetadata } = vi.hoisted(() => {
+  return { mockFetchMetadata: vi.fn(), mockPeekMetadata: vi.fn() };
 });
 
 vi.mock("../contexts/MetadataContext", () => ({
   useMetadata: () => ({
     fetchMetadata: mockFetchMetadata,
+    peekMetadata: mockPeekMetadata,
   }),
 }));
 
@@ -65,6 +66,17 @@ describe("useSmartMetadata", () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.metadata).toEqual(mockMetadata);
     expect(mockFetchMetadata).not.toHaveBeenCalled();
+  });
+
+  it("returns cached metadata synchronously without fetching", () => {
+    mockPeekMetadata.mockReturnValue(mockMetadata);
+
+    const { result } = renderHook(() => useSmartMetadata(mockItem));
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.metadata).toEqual(mockMetadata);
+    expect(mockFetchMetadata).not.toHaveBeenCalled();
+    mockPeekMetadata.mockReset();
   });
 
   it("should fetch metadata if no initial metadata is provided", async () => {

@@ -1,5 +1,6 @@
 import { motion } from "motion/react";
 import type { UnifiedMetadata } from "../../types";
+import { getCardCoverUrl } from "../../utils/coverImage";
 
 interface AnimeCoverProps {
   info: UnifiedMetadata | null;
@@ -15,7 +16,7 @@ export default function AnimeCover({ info, title }: AnimeCoverProps) {
       {info?.coverImage?.extraLarge || info?.coverImage?.large ? (
         <>
           <img
-            src={info.coverImage.extraLarge || info.coverImage.large}
+            src={getCardCoverUrl(info.coverImage)}
             className="absolute inset-0 h-full w-full object-cover opacity-20 blur-2xl saturate-150 dark:opacity-40"
             aria-hidden="true"
             alt=""

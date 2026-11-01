@@ -44,7 +44,7 @@ export default function CommentEditor({
         value={newComment}
         onChange={(e) => updateDraftComment(e.target.value)}
         placeholder="感想や評価を共有しましょう..."
-        className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900/50 dark:text-white dark:focus:border-blue-400"
+        className="w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm outline-none transition-[border-color,box-shadow] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-gray-700 dark:bg-gray-900/50 dark:text-white dark:focus:border-blue-400"
         rows={3}
       />
       <div className="flex justify-end">
@@ -55,7 +55,7 @@ export default function CommentEditor({
             !newComment.trim() ||
             (hasComment && newComment === savedContent)
           }
-          className={`flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2 text-sm font-bold text-white transition-all hover:bg-blue-700 disabled:opacity-50 ${focusRingClassName}`}
+          className={`flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50 ${focusRingClassName}`}
         >
           <Send size={16} />
           {pending ? "送信中..." : hasComment ? "更新する" : "投稿する"}

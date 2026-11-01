@@ -1,8 +1,11 @@
 import { AnimatePresence, motion } from "motion/react";
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useResponsiveColumns } from "../hooks/useResponsiveColumns";
-import { glassPillClassName } from "../styles/uiClasses";
+import {
+  cardGridClassName,
+  focusRingClassName,
+  glassPillClassName,
+} from "../styles/uiClasses";
 import { cn } from "../utils/cn";
 
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
@@ -26,28 +29,22 @@ interface TabbedGridProps {
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
 }
 
+const pageTransition = {
+  x: { type: "tween" as const, ease: "easeOut" as const, duration: 0.28 },
+};
+
 const containerVariants = {
   hidden: (direction: number) => ({
     x: direction > 0 ? "100%" : "-100%",
   }),
   show: {
     x: 0,
-    transition: {
-      x: { type: "tween" as const, ease: "easeInOut" as const, duration: 0.5 },
-    },
+    transition: pageTransition,
   },
   pageExit: (direction: number) => ({
     x: direction > 0 ? "-100%" : "100%",
-    transition: {
-      x: { type: "tween" as const, ease: "easeInOut" as const, duration: 0.5 },
-    },
+    transition: pageTransition,
   }),
-};
-
-const COLUMNS_BREAKPOINTS = {
-  1280: 4, // xl
-  768: 3, // md
-  0: 2, // default
 };
 
 function TabbedGrid({
@@ -67,6 +64,17 @@ function TabbedGrid({
   }, [search, currentDay]);
 
   const [direction, setDirection] = useState(0);
+  const tabStripRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
+
+  // On narrow screens the active day can start outside the scrollable strip.
+  useEffect(() => {
+    const strip = tabStripRef.current;
+    const tab = activeTabRef.current;
+    if (!strip || !tab) return;
+    strip.scrollLeft =
+      tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2;
+  }, [activeTab]);
 
   // Sync initial day to URL if missing, or ensure standard consistency
   useEffect(() => {
@@ -96,8 +104,6 @@ function TabbedGrid({
 
   const dayIndex = parseInt(activeTab);
 
-  const columns = useResponsiveColumns(COLUMNS_BREAKPOINTS, 2);
-
   const groupedItems = useMemo(() => {
     const groups: { item: DisplayAnimeItem; time: number }[][] = Array.from(
       { length: 8 },
@@ -124,34 +130,26 @@ function TabbedGrid({
 
   const dayItems = groupedItems[dayIndex];
 
-  const columnItems = useMemo(() => {
-    const result: (typeof dayItems)[] = Array.from(
-      { length: columns },
-      () => [],
-    );
-    dayItems.forEach((item, index) => {
-      result[index % columns].push(item);
-    });
-    return result;
-  }, [dayItems, columns]);
-
   return (
     <div className="flex flex-col gap-6">
       <div className=" flex justify-center px-6 pb-2">
         <div
-          className={`${glassPillClassName} no-scrollbar flex max-w-full gap-1 overflow-x-auto p-1`}
+          ref={tabStripRef}
+          className={`${glassPillClassName} no-scrollbar relative flex max-w-full scroll-smooth gap-1 overflow-x-auto p-1`}
         >
           {WEEKDAY_DATA.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
+                ref={isActive ? activeTabRef : undefined}
                 onClick={() => handleTabChange(tab.id)}
                 className={cn(
-                  "relative z-10 flex flex-shrink-0 cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold outline-none transition-colors",
+                  "relative z-10 flex flex-shrink-0 cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors",
+                  focusRingClassName,
                   isActive
                     ? "text-white"
-                    : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200",
+                    : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200",
                 )}
               >
                 {isActive && (
@@ -193,23 +191,15 @@ function TabbedGrid({
             style={{ gridArea: "1 / 1" }}
           >
             {dayItems.length > 0 ? (
-              <div className="flex gap-3 sm:gap-4 lg:gap-6">
-                {columnItems.map((itemsInColumn, colIndex) => (
-                  <div
-                    key={colIndex}
-                    className="flex flex-1 flex-col gap-3 sm:gap-4 lg:gap-6"
-                  >
-                    {itemsInColumn.map((item) => (
-                      <div key={item.title} className="w-full">
-                        <AnimeCard
-                          item={item}
-                          siteMeta={siteMeta}
-                          selectedSite={selectedSite}
-                          onOpenModal={onOpenModal}
-                        />
-                      </div>
-                    ))}
-                  </div>
+              <div className={cardGridClassName}>
+                {dayItems.map((item) => (
+                  <AnimeCard
+                    key={item.title}
+                    item={item}
+                    siteMeta={siteMeta}
+                    selectedSite={selectedSite}
+                    onOpenModal={onOpenModal}
+                  />
                 ))}
               </div>
             ) : (

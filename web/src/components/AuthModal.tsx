@@ -99,13 +99,13 @@ export default function AuthModal({
                   <Tabs.List className="mb-6 grid w-full grid-cols-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
                     <Tabs.Trigger
                       value="login"
-                      className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-all data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
+                      className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-[color,background-color,box-shadow] data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
                     >
                       ログイン
                     </Tabs.Trigger>
                     <Tabs.Trigger
                       value="register"
-                      className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-all data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
+                      className="rounded-md py-1.5 text-sm font-medium text-gray-600 transition-[color,background-color,box-shadow] data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm dark:text-gray-400 dark:data-[state=active]:bg-gray-700 dark:data-[state=active]:text-gray-100"
                     >
                       登録
                     </Tabs.Trigger>
