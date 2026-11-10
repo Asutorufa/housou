@@ -60,6 +60,18 @@ export default function App() {
     urlRef.current = { location, search };
   }, [location, search]);
 
+  // The modal's cover flies out of (and back into) the card, so the card's own cover is hidden
+  // meanwhile. It comes back just before the closing panel fades out on top of it.
+  const [hiddenCoverTitle, setHiddenCoverTitle] = useState<string | null>(null);
+  if (animeTitle && hiddenCoverTitle !== animeTitle) {
+    setHiddenCoverTitle(animeTitle);
+  }
+  useEffect(() => {
+    if (animeTitle || !hiddenCoverTitle) return;
+    const timer = setTimeout(() => setHiddenCoverTitle(null), 240);
+    return () => clearTimeout(timer);
+  }, [animeTitle, hiddenCoverTitle]);
+
   const handleOpenModal = useCallback(
     (title: string, info: UnifiedMetadata | null) => {
       // Cache info for immediate presentation in the modal
@@ -140,6 +152,7 @@ export default function App() {
               siteMeta={config?.site_meta}
               selectedSite={selectedSite}
               onOpenModal={handleOpenModal}
+              hiddenCoverTitle={hiddenCoverTitle}
             />
           </>
         )}
@@ -151,6 +164,7 @@ export default function App() {
           isOpen={!!selectedAnime && isGridReady}
           onClose={handleCloseModal}
           anime={selectedAnime}
+          fromCard={!!animeTitle && cachedInfo?.title === animeTitle}
           items={items}
           siteMeta={config?.site_meta}
           authEnabled={!!config?.auth_enabled}

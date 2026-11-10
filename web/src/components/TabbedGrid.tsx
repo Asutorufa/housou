@@ -27,6 +27,8 @@ interface TabbedGridProps {
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
+  /** Card whose cover is currently shown by the details modal instead. */
+  hiddenCoverTitle?: string | null;
 }
 
 const pageTransition = {
@@ -52,6 +54,7 @@ function TabbedGrid({
   siteMeta,
   selectedSite,
   onOpenModal,
+  hiddenCoverTitle,
 }: TabbedGridProps) {
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -199,6 +202,7 @@ function TabbedGrid({
                     siteMeta={siteMeta}
                     selectedSite={selectedSite}
                     onOpenModal={onOpenModal}
+                    coverHidden={item.title === hiddenCoverTitle}
                   />
                 ))}
               </div>
