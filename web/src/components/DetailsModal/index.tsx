@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
+import { MORPH_TRANSITION } from "../../styles/motion";
 import { focusRingClassName } from "../../styles/uiClasses";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
@@ -27,6 +28,8 @@ interface DetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   anime: { title: string; info: UnifiedMetadata | null } | null;
+  /** Opened by clicking a card, so the panel can grow out of it. */
+  fromCard?: boolean;
   items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
   authEnabled: boolean;
@@ -60,7 +63,7 @@ function sanitizeDescription(rawDescription: string) {
 
 export default function DetailsModal(props: DetailsModalProps) {
   const { isOpen, onClose, anime } = props;
-  const { items, siteMeta, authEnabled, onUpdate } = props;
+  const { items, siteMeta, authEnabled, onUpdate, fromCard } = props;
   const { title } = anime || { title: "" };
 
   return (
@@ -73,6 +76,7 @@ export default function DetailsModal(props: DetailsModalProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
                 className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
               />
             </Dialog.Overlay>
@@ -97,6 +101,7 @@ export default function DetailsModal(props: DetailsModalProps) {
                 key={title}
                 onClose={onClose}
                 anime={anime}
+                fromCard={fromCard}
                 items={items}
                 siteMeta={siteMeta}
                 authEnabled={authEnabled}
@@ -113,6 +118,7 @@ export default function DetailsModal(props: DetailsModalProps) {
 function DetailsModalContent({
   onClose,
   anime,
+  fromCard,
   items,
   siteMeta,
   authEnabled,
@@ -179,40 +185,66 @@ function DetailsModalContent({
     >
       <motion.div
         layoutId={`card-${title}`}
-        initial={false}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+        // The hand-over to the card is timed explicitly below; Motion's automatic cross-fade
+        // would keep the whole panel see-through for the entire morph.
+        layoutCrossfade={false}
+        // Without a card to grow from (deep link), fall back to a plain fade + scale.
+        initial={fromCard ? false : { opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        // Fade only once the panel is (almost) back on the card, handing over to it.
+        exit={{
+          opacity: 0,
+          transition: { duration: 0.14, delay: 0.24, ease: "linear" },
+        }}
+        transition={MORPH_TRANSITION}
         // Motion only corrects border radius during layout animations via style.
         style={{ borderRadius: 24 }}
-        className="relative flex max-h-[85dvh] w-full max-w-4xl cursor-auto flex-col overflow-hidden bg-white shadow-2xl outline-none dark:bg-gray-800"
+        className="relative flex max-h-[85dvh] w-full max-w-4xl cursor-auto flex-col overflow-hidden shadow-2xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <Dialog.Close asChild>
-          <button
-            aria-label="作品詳細を閉じる"
-            className={`absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 ${focusRingClassName}`}
-          >
-            <X size={24} />
-          </button>
-        </Dialog.Close>
+        {/* Surface fades in over the card so its text cross-fades instead of popping. */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.1, ease: "linear" }}
+          className="absolute inset-0 bg-white dark:bg-gray-800"
+        />
+        {/*
+          Only the panel box and the cover morph from the card. This wrapper opts into layout
+          projection so everything inside keeps its real size (no stretched text) and is simply
+          revealed as the panel grows. It must not clip: the cover leaves it on the way back to
+          the card (the panel above does the clipping).
+        */}
+        <motion.div
+          layout
+          transition={MORPH_TRANSITION}
+          className="relative flex min-h-0 flex-1 flex-col md:flex-row"
+        >
+          <Dialog.Close asChild>
+            <motion.button
+              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              aria-label="作品詳細を閉じる"
+              className={`absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 ${focusRingClassName}`}
+            >
+              <X size={24} />
+            </motion.button>
+          </Dialog.Close>
 
-        <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-          {/* Image Section - Show Skeleton if loading */}
-          {loading && !info ? (
-            <Skeleton
-              className="h-64 md:h-full md:w-1/3"
-              variant="rectangular"
-            />
-          ) : (
-            <AnimeCover info={info} title={title} />
-          )}
+          <AnimeCover info={info} title={title} loading={loading} />
 
           {/* Content Section */}
-          <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 md:p-8">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: 1,
+              transition: { duration: 0.25, delay: 0.12, ease: "easeOut" },
+            }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 md:p-8"
+          >
             <div>
               <Dialog.Title asChild>
-                <h1 className="mb-3 text-2xl leading-tight font-black text-gray-900 md:text-3xl dark:text-white">
+                <h1 className="mb-3 pr-12 text-2xl leading-tight font-black text-gray-900 md:text-3xl dark:text-white">
                   {title}
                 </h1>
               </Dialog.Title>
@@ -355,8 +387,8 @@ function DetailsModalContent({
                 )}
               </>
             )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </motion.div>
     </div>
   );
