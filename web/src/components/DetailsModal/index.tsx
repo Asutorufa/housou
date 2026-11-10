@@ -2,11 +2,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import DOMPurify from "../../utils/domPurifyConfig";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
-import { MORPH_TRANSITION } from "../../styles/motion";
+import { MORPH_SETTLE_MS, MORPH_TRANSITION } from "../../styles/motion";
 import { focusRingClassName } from "../../styles/uiClasses";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
@@ -77,7 +77,9 @@ export default function DetailsModal(props: DetailsModalProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
-                className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm"
+                // No backdrop blur: it re-blurs the whole viewport on every frame of the morph,
+                // which is what weak GPUs choke on.
+                className="fixed inset-0 z-[100] bg-black/65"
               />
             </Dialog.Overlay>
             <Dialog.Content
@@ -171,7 +173,19 @@ function DetailsModalContent({
 
   const sites = sortSites(displaySites, siteMeta);
 
-  const description = info?.description;
+  // Rendering the whole body in the click that opens the modal delays the first frame of the
+  // morph, and it is not visible until the panel has grown anyway. It is mounted once the morph
+  // is over, as a transition so it never blocks a frame for long.
+  const [bodyReady, setBodyReady] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => startTransition(() => setBodyReady(true)),
+      MORPH_SETTLE_MS,
+    );
+    return () => clearTimeout(timer);
+  }, []);
+
+  const description = bodyReady ? info?.description : undefined;
   const descriptionHtml = useMemo(
     () => (description ? sanitizeDescription(description) : ""),
     [description],
@@ -224,7 +238,7 @@ function DetailsModalContent({
             <motion.button
               exit={{ opacity: 0, transition: { duration: 0.12 } }}
               aria-label="作品詳細を閉じる"
-              className={`absolute top-4 right-4 z-50 rounded-full bg-black/10 p-3 text-gray-800 backdrop-blur-sm transition-colors hover:bg-black/20 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20 ${focusRingClassName}`}
+              className={`absolute top-4 right-4 z-50 rounded-full bg-black/15 p-3 text-gray-800 transition-colors hover:bg-black/25 dark:bg-white/15 dark:text-gray-200 dark:hover:bg-white/25 ${focusRingClassName}`}
             >
               <X size={24} />
             </motion.button>
@@ -344,8 +358,13 @@ function DetailsModalContent({
                   </div>
                 </div>
               </div>
-            ) : (
-              <>
+            ) : !bodyReady ? null : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="space-y-6"
+              >
                 {/* Multilingual Titles */}
                 <MultilingualTitles info={info} originalItem={originalItem} />
 
@@ -385,7 +404,7 @@ function DetailsModalContent({
                 {authEnabled && (
                   <CommentSection title={title} viewerStatus={currentStatus} />
                 )}
-              </>
+              </motion.div>
             )}
           </motion.div>
         </motion.div>

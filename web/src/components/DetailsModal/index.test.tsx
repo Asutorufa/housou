@@ -71,7 +71,7 @@ const mockSiteMeta: SiteMeta = {
 };
 
 describe("DetailsModal XSS Prevention", () => {
-  it("renders description safely", () => {
+  it("renders description safely", async () => {
     render(
       <DetailsModal
         isOpen={true}
@@ -84,7 +84,7 @@ describe("DetailsModal XSS Prevention", () => {
     );
 
     // Find the description element
-    const titleElement = screen.getByText("あらすじ");
+    const titleElement = await screen.findByText("あらすじ");
     expect(titleElement).toBeTruthy();
 
     const descriptionContainer = titleElement.nextElementSibling;
@@ -96,7 +96,7 @@ describe("DetailsModal XSS Prevention", () => {
     );
   });
 
-  it("does not render malicious official site links", () => {
+  it("does not render malicious official site links", async () => {
     render(
       <DetailsModal
         isOpen={true}
@@ -110,6 +110,8 @@ describe("DetailsModal XSS Prevention", () => {
 
     // The "公式サイト" (Official Site) link should NOT be present because it's malicious
     // Note: The text might be rendered inside the h4, but the <a> tag should be missing
+    // The body is mounted once the opening animation is over.
+    await screen.findByText("あらすじ");
     const links = screen.queryAllByRole("link");
     const maliciousLink = links.find((link) =>
       link.getAttribute("href")?.startsWith("javascript:"),
@@ -117,7 +119,7 @@ describe("DetailsModal XSS Prevention", () => {
     expect(maliciousLink).toBeUndefined();
   });
 
-  it("does not render malicious site links in list", () => {
+  it("does not render malicious site links in list", async () => {
     render(
       <DetailsModal
         isOpen={true}
@@ -130,14 +132,14 @@ describe("DetailsModal XSS Prevention", () => {
     );
 
     // "Valid Site" should be present
-    expect(screen.getByText("Valid Site")).toBeTruthy();
+    expect(await screen.findByText("Valid Site")).toBeTruthy();
 
     // "Malicious Site" should NOT be present as link
     // It might be present as text if rendered differently, but here the loop filters it out completely if url is invalid.
     expect(screen.queryByText("Malicious Site")).toBeNull();
   });
 
-  it("converts <br> tags to newlines", () => {
+  it("converts <br> tags to newlines", async () => {
     const mockAnimeWithBr = {
       ...mockAnime,
       info: {
@@ -157,8 +159,8 @@ describe("DetailsModal XSS Prevention", () => {
       />,
     );
 
-    const descriptionContainer =
-      screen.getByText("あらすじ").nextElementSibling;
+    const descriptionContainer = (await screen.findByText("あらすじ"))
+      .nextElementSibling;
     expect(descriptionContainer).toBeTruthy();
     // Check if innerHTML has newlines (which will be rendered due to whitespace-pre-wrap)
     // The current implementation replaces <br> with \n.
@@ -166,7 +168,7 @@ describe("DetailsModal XSS Prevention", () => {
     expect(descriptionContainer?.innerHTML).toContain("Line 1\nLine 2\nLine 3");
   });
 
-  it("adds rel='noopener noreferrer' to links with target='_blank'", () => {
+  it("adds rel='noopener noreferrer' to links with target='_blank'", async () => {
     const mockAnimeWithLink = {
       ...mockAnime,
       info: {
@@ -187,8 +189,8 @@ describe("DetailsModal XSS Prevention", () => {
       />,
     );
 
-    const descriptionContainer =
-      screen.getByText("あらすじ").nextElementSibling;
+    const descriptionContainer = (await screen.findByText("あらすじ"))
+      .nextElementSibling;
     expect(descriptionContainer).toBeTruthy();
 
     const link = descriptionContainer?.querySelector("a");
@@ -198,7 +200,7 @@ describe("DetailsModal XSS Prevention", () => {
     expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  it("adds rel='noopener noreferrer' to links with case-insensitive target='_BLANK'", () => {
+  it("adds rel='noopener noreferrer' to links with case-insensitive target='_BLANK'", async () => {
     const mockAnimeWithLink = {
       ...mockAnime,
       info: {
@@ -219,8 +221,8 @@ describe("DetailsModal XSS Prevention", () => {
       />,
     );
 
-    const descriptionContainer =
-      screen.getByText("あらすじ").nextElementSibling;
+    const descriptionContainer = (await screen.findByText("あらすじ"))
+      .nextElementSibling;
     expect(descriptionContainer).toBeTruthy();
 
     const link = descriptionContainer?.querySelector("a");
@@ -229,7 +231,7 @@ describe("DetailsModal XSS Prevention", () => {
     expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
-  it("handles existing rel attributes and prevents partial matches", () => {
+  it("handles existing rel attributes and prevents partial matches", async () => {
     const mockAnimeWithLink = {
       ...mockAnime,
       info: {
@@ -250,8 +252,8 @@ describe("DetailsModal XSS Prevention", () => {
       />,
     );
 
-    const descriptionContainer =
-      screen.getByText("あらすじ").nextElementSibling;
+    const descriptionContainer = (await screen.findByText("あらすじ"))
+      .nextElementSibling;
     expect(descriptionContainer).toBeTruthy();
 
     const link = descriptionContainer?.querySelector("a");

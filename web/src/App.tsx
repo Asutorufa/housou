@@ -9,7 +9,8 @@ import { useAnimeData } from "./hooks/useAnimeData";
 import type { UnifiedMetadata } from "./types";
 
 const AttributionModal = lazy(() => import("./components/AttributionModal"));
-const DetailsModal = lazy(() => import("./components/DetailsModal"));
+const loadDetailsModal = () => import("./components/DetailsModal");
+const DetailsModal = lazy(loadDetailsModal);
 
 export default function App() {
   const {
@@ -53,6 +54,14 @@ export default function App() {
       return () => cancelAnimationFrame(timer);
     }
   }, [loading]);
+
+  // Fetch the modal's code while idle, so the first card click opens it straight away instead
+  // of waiting on the network before the animation can start.
+  useEffect(() => {
+    if (!isGridReady) return;
+    const timer = setTimeout(() => void loadDetailsModal(), 1500);
+    return () => clearTimeout(timer);
+  }, [isGridReady]);
 
   // Read the URL through a ref so a URL change does not re-render every card.
   const urlRef = useRef({ location, search });
