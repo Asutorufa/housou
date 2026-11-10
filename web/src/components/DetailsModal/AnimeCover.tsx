@@ -56,7 +56,9 @@ export default function AnimeCover({ info, title, loading }: AnimeCoverProps) {
   return (
     <div
       className={cn(
-        "relative flex aspect-[3/4] w-full shrink-0 items-center justify-center md:aspect-auto md:w-2/5",
+        // Stacked (narrow) layout: the cover is capped so the body below always keeps most of
+        // the panel. Uncapped, a 3:4 box as wide as the panel can be taller than the panel.
+        "relative flex aspect-[3/4] max-h-[40dvh] w-full shrink-0 items-center justify-center md:aspect-auto md:max-h-none md:w-2/5",
         !src && loading && "animate-pulse",
       )}
     >
@@ -112,7 +114,7 @@ export default function AnimeCover({ info, title, loading }: AnimeCoverProps) {
       )}
       <motion.div
         exit={quickExit}
-        className="absolute inset-x-0 bottom-0 z-20 h-32 bg-gradient-to-t from-white to-transparent md:hidden dark:from-gray-800"
+        className="absolute inset-x-0 bottom-0 z-20 h-20 bg-gradient-to-t from-white to-transparent md:hidden dark:from-gray-800"
       />
     </div>
   );
