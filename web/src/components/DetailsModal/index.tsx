@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import DOMPurify from "../../utils/domPurifyConfig";
 import { Bookmark, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
@@ -185,6 +185,16 @@ function DetailsModalContent({
     return () => clearTimeout(timer);
   }, []);
 
+  // Stacked (narrow) layout: scrolling the body collapses the cover above it. The offset goes
+  // straight into a CSS variable, so scrolling never re-renders the modal.
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const handleBodyScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    layoutRef.current?.style.setProperty(
+      "--cover-shrink",
+      `${event.currentTarget.scrollTop}px`,
+    );
+  };
+
   const description = bodyReady ? info?.description : undefined;
   const descriptionHtml = useMemo(
     () => (description ? sanitizeDescription(description) : ""),
@@ -230,6 +240,7 @@ function DetailsModalContent({
           the card (the panel above does the clipping).
         */}
         <motion.div
+          ref={layoutRef}
           layout
           transition={MORPH_TRANSITION}
           className="relative flex min-h-0 flex-1 flex-col md:flex-row"
@@ -254,7 +265,10 @@ function DetailsModalContent({
               transition: { duration: 0.25, delay: 0.12, ease: "easeOut" },
             }}
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
-            className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 md:p-8"
+            onScroll={handleBodyScroll}
+            // The extra top padding equals what the cover has given up, so the text moves
+            // exactly with the scroll while the cover collapses instead of at twice the speed.
+            className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-6 pt-[calc(1.5rem+min(var(--cover-shrink,0px),calc(40dvh-6rem)))] md:p-8"
           >
             <div>
               <Dialog.Title asChild>
