@@ -235,17 +235,18 @@ function DetailsModalContent({
   // changes the panel's size or triggers a secondary layout jump.
   const [bodyReady, setBodyReady] = useState(!canMorphOnOpen);
   useEffect(() => {
-    if (bodyReady) return;
+    if (bodyReady || !isPresent) return;
     const timer = setTimeout(
       () => startTransition(() => setBodyReady(true)),
       MORPH_SETTLE_MS,
     );
     return () => clearTimeout(timer);
-  }, [bodyReady]);
+  }, [bodyReady, isPresent]);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const coverImgRef = useRef<HTMLImageElement>(null);
-  const openControlsRef = useRef<ReturnType<typeof animate>[]>([]);
+  const openCancelRef = useRef<(() => void) | null>(null);
+  const morphProgressRef = useRef(1);
   const morphEndedRef = useRef(false);
   const exitStartedRef = useRef(false);
   const safeToRemoveRef = useRef(safeToRemove);
@@ -257,7 +258,7 @@ function DetailsModalContent({
 
   // Hide the source card once the modal has mounted, and always restore it on unmount.
   useLayoutEffect(() => {
-    if (!title || !fromCard) return;
+    if (!title || !initialSnapshot) return;
     morphEndedRef.current = false;
     onMorphStart?.(title);
     return () => {
@@ -266,7 +267,7 @@ function DetailsModalContent({
         onMorphEnd?.(title);
       }
     };
-  }, [title, fromCard, onMorphStart, onMorphEnd]);
+  }, [title, initialSnapshot, onMorphStart, onMorphEnd]);
 
   // Open morph: pure GPU transform + rounded clip-path from the card's exact rect to the modal.
   useLayoutEffect(() => {
@@ -284,6 +285,7 @@ function DetailsModalContent({
     };
 
     resetStyles();
+    morphProgressRef.current = 1;
 
     if (reducedMotion) return;
 
@@ -298,6 +300,7 @@ function DetailsModalContent({
     if (!canRunCardMorph) {
       // Deep link or jsdom fallback: subtle fade + scale.
       if (modalRect.width <= 0) return;
+      let cancelled = false;
       const fallback = animate(
         panel,
         {
@@ -306,13 +309,19 @@ function DetailsModalContent({
         },
         { duration: 0.24, ease: MORPH_EASE },
       );
-      openControlsRef.current = [fallback];
+      const cancel = () => {
+        cancelled = true;
+        fallback.stop();
+      };
+      openCancelRef.current = cancel;
       void fallback.then(() => {
+        if (cancelled) return;
         panel.style.opacity = "";
         panel.style.transform = "";
       });
       return () => {
-        fallback.stop();
+        cancel();
+        openCancelRef.current = null;
         resetStyles();
       };
     }
@@ -347,6 +356,7 @@ function DetailsModalContent({
 
     // Paint frame 0 synchronously before first browser paint, then drive panel & cover
     // from one scalar progress so transform and clip-path never skew by a frame.
+    morphProgressRef.current = 0;
     applyPanelMorphAt(panel, panelFrame, 0);
     if (coverImg && coverFrame) applyCoverMorphAt(coverImg, coverFrame, 0);
 
@@ -355,16 +365,22 @@ function DetailsModalContent({
       duration: MORPH_OPEN_DURATION,
       ease: MORPH_EASE,
       onUpdate: (progress) => {
+        morphProgressRef.current = progress;
         applyPanelMorphAt(panel, panelFrame, progress);
         if (coverImg && coverFrame) {
           applyCoverMorphAt(coverImg, coverFrame, progress);
         }
       },
     });
-    openControlsRef.current = [control];
+    const cancel = () => {
+      cancelled = true;
+      control.stop();
+    };
+    openCancelRef.current = cancel;
 
     void control.then(() => {
       if (cancelled) return;
+      morphProgressRef.current = 1;
       // Clear clip-path once settled so box-shadow renders unclipped at rest.
       panel.style.transform = "";
       panel.style.clipPath = "";
@@ -375,9 +391,8 @@ function DetailsModalContent({
     });
 
     return () => {
-      cancelled = true;
-      control.stop();
-      openControlsRef.current = [];
+      cancel();
+      openCancelRef.current = null;
       resetStyles();
     };
   }, [initialSnapshot, reducedMotion]);
@@ -401,9 +416,12 @@ function DetailsModalContent({
       return;
     }
 
-    // Stop any open animation that was still in flight.
-    openControlsRef.current.forEach((c) => c.stop());
-    openControlsRef.current = [];
+    // Stop any open animation still in flight and remember its current progress so closing
+    // mid-open reverses smoothly from where the panel is instead of snapping to full size.
+    const startProgress = Math.min(1, Math.max(0, morphProgressRef.current));
+    openCancelRef.current?.();
+    openCancelRef.current = null;
+
     panel.style.transform = "";
     panel.style.clipPath = "";
     if (coverImgRef.current) {
@@ -417,7 +435,9 @@ function DetailsModalContent({
       return;
     }
 
-    const liveCard = captureCardMorphSnapshot(title, false);
+    const liveCard = initialSnapshot
+      ? captureCardMorphSnapshot(title, false)
+      : null;
     const canMorphBack = !!liveCard && isRectInViewport(liveCard.cardRect);
 
     let cancelled = false;
@@ -445,6 +465,11 @@ function DetailsModalContent({
       };
     }
 
+    if (startProgress <= 0.01) {
+      finishExit();
+      return;
+    }
+
     const panelFrame = computePanelMorphFrame(liveCard.cardRect, modalRect);
     const coverImg = coverImgRef.current;
     const currentCoverRect =
@@ -467,22 +492,30 @@ function DetailsModalContent({
           )
         : null;
 
-    // Drive the reverse morph from 1 -> 0 in a single synchronized tick, revealing the stationary
-    // card as the panel dissolves over the final stretch of the close.
-    const control = animate(1, 0, {
-      duration: MORPH_CLOSE_DURATION,
+    // Immediately restore the interrupted progress before paint, then reverse smoothly to 0.
+    applyPanelMorphAt(panel, panelFrame, startProgress);
+    if (coverImg && coverFrame) {
+      applyCoverMorphAt(coverImg, coverFrame, startProgress);
+    }
+
+    const dissolveThreshold = Math.min(0.03, startProgress);
+    const control = animate(startProgress, 0, {
+      duration: Math.max(0.12, MORPH_CLOSE_DURATION * startProgress),
       ease: MORPH_EASE,
       onUpdate: (t) => {
+        morphProgressRef.current = t;
         applyPanelMorphAt(panel, panelFrame, t);
         if (coverImg && coverFrame) {
           applyCoverMorphAt(coverImg, coverFrame, t);
         }
-        if (t <= 0.03) {
+        if (t <= dissolveThreshold) {
           if (!morphEndedRef.current) {
             morphEndedRef.current = true;
             onMorphEndRef.current?.(title);
           }
-          panel.style.opacity = String(Math.max(0, t / 0.03));
+          panel.style.opacity = String(
+            Math.max(0, t / Math.max(0.001, dissolveThreshold)),
+          );
         }
       },
     });
@@ -495,7 +528,7 @@ function DetailsModalContent({
       cancelled = true;
       control.stop();
     };
-  }, [isPresent, reducedMotion, title]);
+  }, [isPresent, reducedMotion, title, initialSnapshot]);
 
   // Stacked (narrow) layout: scrolling the body collapses the cover above it. The offset goes
   // straight into a CSS variable, so scrolling never re-renders the modal.
