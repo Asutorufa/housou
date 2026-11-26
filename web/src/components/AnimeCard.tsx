@@ -1,16 +1,10 @@
-import { motion } from "motion/react";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { useSmartMetadata } from "../hooks/useSmartMetadata";
-import { MORPH_TRANSITION } from "../styles/motion";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../types";
 import { USER_STATUS_LABELS } from "../types";
 import { cn } from "../utils/cn";
-import {
-  cardCoverBox,
-  getCoverAspect,
-  rememberCoverAspect,
-} from "../utils/coverCrop";
+import { registerCardMorph, rememberCoverAspect } from "../utils/coverCrop";
 import { getCardCoverUrl } from "../utils/coverImage";
 import { observeLazy, unobserveLazy } from "../utils/lazyObserver";
 import { sortSites } from "../utils/siteUtils";
@@ -23,8 +17,8 @@ interface AnimeCardProps {
   siteMeta?: SiteMeta;
   selectedSite?: string;
   onOpenModal: (title: string, info: UnifiedMetadata | null) => void;
-  /** The details modal is showing this cover; hide ours so it isn't seen twice. */
-  coverHidden?: boolean;
+  /** The details modal is currently morphing from/to this card; hide ours and hold its spot. */
+  isMorphed?: boolean;
 }
 
 function AnimeCard({
@@ -32,7 +26,7 @@ function AnimeCard({
   siteMeta,
   selectedSite,
   onOpenModal,
-  coverHidden,
+  isMorphed,
 }: AnimeCardProps) {
   const [isEnabled, setIsEnabled] = useState(false);
   const { metadata, loading, error, retry } = useSmartMetadata(
@@ -41,6 +35,9 @@ function AnimeCard({
     isEnabled,
   );
   const cardRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  const coverWindowRef = useRef<HTMLDivElement>(null);
+  const coverImgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     if (isEnabled || !cardRef.current) return;
@@ -55,6 +52,18 @@ function AnimeCard({
     };
   }, [item.title, isEnabled]);
 
+  const coverUrl = getCardCoverUrl(metadata?.coverImage);
+
+  useEffect(() => {
+    const surface = surfaceRef.current;
+    if (!surface) return;
+    return registerCardMorph(item.title, {
+      card: surface,
+      coverWindow: coverWindowRef.current,
+      coverImg: coverImgRef.current,
+    });
+  }, [item.title, coverUrl]);
+
   const sitesToShow = useMemo(() => {
     let sites = item.sites || [];
     if (selectedSite && selectedSite !== "all") {
@@ -67,18 +76,11 @@ function AnimeCard({
     return sortSites(sites, siteMeta);
   }, [item.sites, selectedSite, siteMeta]);
 
-  const coverUrl = getCardCoverUrl(metadata?.coverImage);
-  const [loadedCover, setLoadedCover] = useState<string | null>(null);
-  // Known once the image has loaded (here or on an earlier visit to this card).
-  const coverAspect =
-    loadedCover === coverUrl || getCoverAspect(coverUrl)
-      ? getCoverAspect(coverUrl)
-      : undefined;
   const handleCoverLoaded = (img: HTMLImageElement | null) => {
     if (!img?.complete || !coverUrl) return;
     rememberCoverAspect(coverUrl, img);
-    setLoadedCover(coverUrl);
   };
+
   // Cards outside the lazy-load margin have not asked for metadata yet.
   const isPending = loading || (!isEnabled && !metadata);
   const beginDate = useMemo(() => {
@@ -89,58 +91,44 @@ function AnimeCard({
   }, [item.begin]);
 
   return (
-    // The hover lift is a CSS transform transition, so it lives on this plain wrapper: on the
-    // Motion element below it would smooth (and so lag behind) every frame of the layout morph.
     <div
       ref={cardRef}
-      className="anime-card relative isolate h-full cursor-pointer rounded-2xl transition-transform duration-300 ease-out hover:-translate-y-1.5"
+      className={cn(
+        "anime-card relative isolate h-full rounded-2xl transition-transform duration-300 ease-out",
+        isMorphed
+          ? "pointer-events-none"
+          : "cursor-pointer hover:-translate-y-1.5",
+      )}
       onClick={() => onOpenModal(item.title, metadata)}
     >
-      <motion.div
-        layoutId={`card-${item.title}`}
-        // Motion only corrects border radius during layout animations via style.
-        style={{ borderRadius: 16 }}
-        transition={{ layout: MORPH_TRANSITION }}
-        className="h-full bg-white shadow-md ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/5"
+      <div
+        ref={surfaceRef}
+        className={cn(
+          "h-full rounded-2xl bg-white shadow-md ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/5",
+          isMorphed && "opacity-0",
+        )}
       >
         <div className="flex h-full flex-col overflow-hidden rounded-[inherit]">
           {/* Cover Image */}
           <div
+            ref={coverWindowRef}
             className={cn(
               "group relative aspect-[3/4] overflow-hidden bg-gray-200 dark:bg-gray-700",
               !coverUrl && isPending && "animate-pulse",
             )}
           >
-            {coverUrl && !coverAspect ? (
-              // Loads the poster to learn its shape before the real cover below is mounted.
+            {coverUrl ? (
               <img
-                ref={handleCoverLoaded}
+                ref={(img) => {
+                  coverImgRef.current = img;
+                  handleCoverLoaded(img);
+                }}
                 onLoad={(event) => handleCoverLoaded(event.currentTarget)}
                 src={coverUrl}
-                alt=""
-                aria-hidden="true"
+                alt={item.title}
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 decoding="async"
-                className="invisible absolute h-px w-px"
               />
-            ) : coverUrl ? (
-              // Shared with the details modal. The box has the poster's own shape (cropped by the
-              // 3:4 window above), so the morph into the uncropped modal cover never stretches it.
-              <motion.div
-                layoutId={`image-${item.title}`}
-                transition={{ layout: MORPH_TRANSITION }}
-                className="absolute"
-                style={cardCoverBox(coverAspect)}
-              >
-                <img
-                  src={coverUrl}
-                  alt={item.title}
-                  className={cn(
-                    "h-full w-full object-cover transition-transform duration-500 group-hover:scale-105",
-                    coverHidden && "invisible",
-                  )}
-                  decoding="async"
-                />
-              </motion.div>
             ) : (
               !isPending && (
                 <div className="flex h-full w-full items-center justify-center text-sm text-gray-400 italic">
@@ -273,7 +261,7 @@ function AnimeCard({
             )}
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

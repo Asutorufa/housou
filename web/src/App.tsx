@@ -1,12 +1,16 @@
 import { lazy, useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import CardGridSkeleton from "./components/CardGridSkeleton";
-import Footer from "./components/Footer";
 import DeferredDialog from "./components/DeferredDialog";
+import Footer from "./components/Footer";
 import Header from "./components/Header";
 import TabbedGrid from "./components/TabbedGrid";
 import { useAnimeData } from "./hooks/useAnimeData";
 import type { UnifiedMetadata } from "./types";
+import {
+  captureCardMorphSnapshot,
+  type CardMorphSnapshot,
+} from "./utils/coverCrop";
 
 const AttributionModal = lazy(() => import("./components/AttributionModal"));
 const loadDetailsModal = () => import("./components/DetailsModal");
@@ -32,6 +36,7 @@ export default function App() {
   const [cachedInfo, setCachedInfo] = useState<{
     title: string;
     info: UnifiedMetadata | null;
+    cardSnapshot: CardMorphSnapshot | null;
   } | null>(null);
   const [isAttributionOpen, setIsAttributionOpen] = useState(false);
 
@@ -45,8 +50,7 @@ export default function App() {
       }
     : null;
 
-  // We delay opening the modal on initial deep-link load until the grid is mounted.
-  // This ensures Framer Motion's `layoutId` animation originates from the card rather than conflicting.
+  // Delay deep-link modal opening by a frame until the grid has mounted.
   const [isGridReady, setIsGridReady] = useState(false);
   useEffect(() => {
     if (!loading) {
@@ -69,22 +73,22 @@ export default function App() {
     urlRef.current = { location, search };
   }, [location, search]);
 
-  // The modal's cover flies out of (and back into) the card, so the card's own cover is hidden
-  // meanwhile. It comes back just before the closing panel fades out on top of it.
-  const [hiddenCoverTitle, setHiddenCoverTitle] = useState<string | null>(null);
-  if (animeTitle && hiddenCoverTitle !== animeTitle) {
-    setHiddenCoverTitle(animeTitle);
-  }
-  useEffect(() => {
-    if (animeTitle || !hiddenCoverTitle) return;
-    const timer = setTimeout(() => setHiddenCoverTitle(null), 240);
-    return () => clearTimeout(timer);
-  }, [animeTitle, hiddenCoverTitle]);
+  // Driven by the modal's own mount/exit hand-off so the card never hides while the modal
+  // chunk is still loading, and always reappears in lockstep with the closing animation.
+  const [morphedTitle, setMorphedTitle] = useState<string | null>(null);
+  const handleMorphStart = useCallback((title: string) => {
+    setMorphedTitle(title);
+  }, []);
+  const handleMorphEnd = useCallback((title: string) => {
+    setMorphedTitle((prev) => (prev === title ? null : prev));
+  }, []);
 
   const handleOpenModal = useCallback(
     (title: string, info: UnifiedMetadata | null) => {
-      // Cache info for immediate presentation in the modal
-      setCachedInfo({ title, info });
+      // Snapshot the clicked card's exact visual rect (including hover lift/scale) before
+      // any state update hides it.
+      const cardSnapshot = captureCardMorphSnapshot(title, true);
+      setCachedInfo({ title, info, cardSnapshot });
 
       // Update URL
       const params = new URLSearchParams(urlRef.current.search);
@@ -161,7 +165,7 @@ export default function App() {
               siteMeta={config?.site_meta}
               selectedSite={selectedSite}
               onOpenModal={handleOpenModal}
-              hiddenCoverTitle={hiddenCoverTitle}
+              morphedTitle={morphedTitle}
             />
           </>
         )}
@@ -174,6 +178,13 @@ export default function App() {
           onClose={handleCloseModal}
           anime={selectedAnime}
           fromCard={!!animeTitle && cachedInfo?.title === animeTitle}
+          cardSnapshot={
+            animeTitle && cachedInfo?.title === animeTitle
+              ? cachedInfo.cardSnapshot
+              : null
+          }
+          onMorphStart={handleMorphStart}
+          onMorphEnd={handleMorphEnd}
           items={items}
           siteMeta={config?.site_meta}
           authEnabled={!!config?.auth_enabled}

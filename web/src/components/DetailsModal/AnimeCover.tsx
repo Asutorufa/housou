@@ -1,21 +1,28 @@
 import { motion } from "motion/react";
-import { useEffect, useState } from "react";
-import { MORPH_SETTLE_MS, MORPH_TRANSITION } from "../../styles/motion";
+import { type CSSProperties, type RefObject, useEffect, useState } from "react";
+import { MORPH_SETTLE_MS } from "../../styles/motion";
 import type { UnifiedMetadata } from "../../types";
 import { cn } from "../../utils/cn";
-import { cardCropClipPath, getCoverAspect } from "../../utils/coverCrop";
+import { getCoverAspect, rememberCoverAspect } from "../../utils/coverCrop";
 import { getCardCoverUrl, getDetailCoverUrl } from "../../utils/coverImage";
-
-// Wider than the image so its shadow isn't clipped once the cover is fully revealed.
-const UNCLIPPED = "inset(-20% -20% -20% -20%)";
 
 interface AnimeCoverProps {
   info: UnifiedMetadata | null;
   title: string;
   loading?: boolean;
+  fromCard?: boolean;
+  initialAspect?: number | null;
+  imgRef?: RefObject<HTMLImageElement | null>;
 }
 
-export default function AnimeCover({ info, title, loading }: AnimeCoverProps) {
+export default function AnimeCover({
+  info,
+  title,
+  loading,
+  fromCard,
+  initialAspect,
+  imgRef,
+}: AnimeCoverProps) {
   const detailSrc = getDetailCoverUrl(info?.coverImage);
   const cardSrc = getCardCoverUrl(info?.coverImage);
   // The morph runs on the card's rendition: it is already downloaded and decoded, so the cover
@@ -38,40 +45,55 @@ export default function AnimeCover({ info, title, loading }: AnimeCoverProps) {
       cancelled = true;
     };
   }, [detailSrc, cardSrc]);
+
   const src = (sharpSrc === detailSrc && sharpSrc) || cardSrc || detailSrc;
-  // Morph from the card's cover only when the image is there as the modal opens. A cover that
-  // arrives later (deep link, slow metadata) fades in instead of flying out of the grid.
-  const [morphFromCard] = useState(() => !!src);
-  // The card shows a 3:4 crop of the poster; start from (and return to) that same crop.
-  const [cardCrop] = useState(() => {
-    // The card may load a smaller rendition of the same poster; it is the one that was measured.
-    const aspect = getCoverAspect(cardSrc);
-    return aspect ? cardCropClipPath(aspect) : null;
-  });
+
+  // Keep a stable box aspect ratio so swapping cardSrc -> sharpSrc never changes the cover size.
+  const [measuredAspect, setMeasuredAspect] = useState<number | null>(
+    () => initialAspect ?? getCoverAspect(cardSrc) ?? null,
+  );
+  const aspect = measuredAspect ?? getCoverAspect(cardSrc) ?? null;
+
+  // Morph from the card's cover only when the image is already available on mount.
+  const [hadInitialSrc] = useState(() => !!src);
+
+  const coverSizeStyle: CSSProperties | undefined = aspect
+    ? {
+        width: `min(100cqw, calc(100cqh * ${aspect}))`,
+        height: `min(100cqh, calc(100cqw / ${aspect}))`,
+      }
+    : undefined;
 
   const quickExit = { opacity: 0, transition: { duration: 0.12 } };
 
-  // Nothing here may clip the cover: while closing it flies back to the card, outside this
-  // column. The surface and the blurred backdrop are clipped on their own layer instead.
   return (
     <div
       className={cn(
-        // Stacked (narrow) layout: the cover takes 40dvh so the body below keeps most of the
-        // panel, and collapses to a strip as the body is scrolled (--cover-shrink is the body's
-        // scroll offset, set by the modal).
-        "relative flex h-[max(6rem,calc(40dvh-var(--cover-shrink,0px)))] w-full shrink-0 items-center justify-center md:h-auto md:w-2/5",
+        // Stacked (narrow) layout: the cover takes 40dvh and collapses down to a 6rem strip as
+        // the body scrolls (--cover-shrink is the body's scroll offset, set by the modal).
+        // `container-type: size` lets the cover image fill the available box at its exact
+        // natural aspect ratio regardless of whether cardSrc or sharpSrc is displayed.
+        "relative flex h-[max(6rem,calc(40dvh-var(--cover-shrink,0px)))] w-full shrink-0 items-center justify-center [container-type:size] md:h-full md:w-2/5",
         !src && loading && "animate-pulse",
       )}
     >
+      {/* Cover column backdrop fades in as the panel widens so frame 0 matches the card surface. */}
       <motion.div
+        initial={{ opacity: fromCard ? 0 : 1 }}
+        animate={{ opacity: 1 }}
         exit={quickExit}
+        transition={{
+          duration: 0.26,
+          delay: fromCard ? 0.08 : 0,
+          ease: "easeOut",
+        }}
         className="absolute inset-0 overflow-hidden bg-gray-100 dark:bg-gray-900"
       >
         {src ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
+            transition={{ duration: 0.32, delay: 0.1, ease: "easeOut" }}
             className="h-full w-full"
             aria-hidden="true"
           >
@@ -92,30 +114,35 @@ export default function AnimeCover({ info, title, loading }: AnimeCoverProps) {
       </motion.div>
       {src && (
         <motion.img
-          layoutId={morphFromCard ? `image-${title}` : undefined}
-          layoutCrossfade={false}
-          initial={
-            morphFromCard
-              ? cardCrop
-                ? { clipPath: cardCrop }
-                : false
-              : { opacity: 0 }
-          }
-          animate={
-            cardCrop ? { opacity: 1, clipPath: UNCLIPPED } : { opacity: 1 }
-          }
-          exit={cardCrop ? { clipPath: cardCrop } : undefined}
-          transition={{ ...MORPH_TRANSITION, opacity: { duration: 0.3 } }}
+          ref={imgRef}
+          initial={hadInitialSrc && fromCard ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.26, ease: "easeOut" }}
+          onLoad={(event) => {
+            const img = event.currentTarget;
+            if (cardSrc) rememberCoverAspect(cardSrc, img);
+            if (!aspect && img.naturalWidth > 0 && img.naturalHeight > 0) {
+              setMeasuredAspect(img.naturalWidth / img.naturalHeight);
+            }
+          }}
           src={src}
           alt={title}
+          style={coverSizeStyle}
           // box-shadow, not a drop-shadow filter: a filter is re-rendered for every frame of
           // the morph, and for an opaque poster the two look the same.
           className="relative z-10 max-h-full max-w-full object-contain shadow-xl"
         />
       )}
       <motion.div
+        initial={{ opacity: fromCard ? 0 : 1 }}
+        animate={{ opacity: 1 }}
         exit={quickExit}
-        className="absolute inset-x-0 bottom-0 z-20 h-1/4 bg-gradient-to-t from-white to-transparent md:hidden dark:from-gray-800"
+        transition={{
+          duration: 0.24,
+          delay: fromCard ? 0.1 : 0,
+          ease: "easeOut",
+        }}
+        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-1/4 bg-gradient-to-t from-white to-transparent md:hidden dark:from-gray-800"
       />
     </div>
   );

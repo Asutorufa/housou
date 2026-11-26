@@ -1,15 +1,42 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import DOMPurify from "../../utils/domPurifyConfig";
 import { Bookmark, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import {
+  animate,
+  AnimatePresence,
+  motion,
+  usePresence,
+  useReducedMotion,
+} from "motion/react";
+import {
+  startTransition,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useAnimeStatus } from "../../hooks/useAnimeStatus";
 import { useSmartMetadata } from "../../hooks/useSmartMetadata";
-import { MORPH_SETTLE_MS, MORPH_TRANSITION } from "../../styles/motion";
+import {
+  MORPH_CLOSE_DURATION,
+  MORPH_EASE,
+  MORPH_OPEN_DURATION,
+  MORPH_SETTLE_MS,
+} from "../../styles/motion";
 import { focusRingClassName } from "../../styles/uiClasses";
 import type { DisplayAnimeItem, SiteMeta, UnifiedMetadata } from "../../types";
 import { USER_STATUS_LABELS } from "../../types";
+import {
+  applyCoverMorphAt,
+  applyPanelMorphAt,
+  captureCardMorphSnapshot,
+  computeCoverMorphFrame,
+  computePanelMorphFrame,
+  isRectInViewport,
+  type CardMorphSnapshot,
+} from "../../utils/coverCrop";
 import { sortSites } from "../../utils/siteUtils";
 import CustomSelect from "../CustomSelect";
 import Skeleton from "../Skeleton";
@@ -30,6 +57,12 @@ interface DetailsModalProps {
   anime: { title: string; info: UnifiedMetadata | null } | null;
   /** Opened by clicking a card, so the panel can grow out of it. */
   fromCard?: boolean;
+  /** Live geometry captured from the clicked card before state updates hide it. */
+  cardSnapshot?: CardMorphSnapshot | null;
+  /** Called once the modal is painted over the card so the card can hide cleanly. */
+  onMorphStart?: (title: string) => void;
+  /** Called right before the closing modal hands back to the card. */
+  onMorphEnd?: (title: string) => void;
   items: DisplayAnimeItem[];
   siteMeta?: SiteMeta;
   authEnabled: boolean;
@@ -63,7 +96,16 @@ function sanitizeDescription(rawDescription: string) {
 
 export default function DetailsModal(props: DetailsModalProps) {
   const { isOpen, onClose, anime } = props;
-  const { items, siteMeta, authEnabled, onUpdate, fromCard } = props;
+  const {
+    items,
+    siteMeta,
+    authEnabled,
+    onUpdate,
+    fromCard,
+    cardSnapshot,
+    onMorphStart,
+    onMorphEnd,
+  } = props;
   const { title } = anime || { title: "" };
 
   return (
@@ -76,7 +118,7 @@ export default function DetailsModal(props: DetailsModalProps) {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
                 // No backdrop blur: it re-blurs the whole viewport on every frame of the morph,
                 // which is what weak GPUs choke on.
                 className="fixed inset-0 z-[100] bg-black/65"
@@ -104,6 +146,9 @@ export default function DetailsModal(props: DetailsModalProps) {
                 onClose={onClose}
                 anime={anime}
                 fromCard={fromCard}
+                cardSnapshot={cardSnapshot}
+                onMorphStart={onMorphStart}
+                onMorphEnd={onMorphEnd}
                 items={items}
                 siteMeta={siteMeta}
                 authEnabled={authEnabled}
@@ -121,6 +166,9 @@ function DetailsModalContent({
   onClose,
   anime,
   fromCard,
+  cardSnapshot,
+  onMorphStart,
+  onMorphEnd,
   items,
   siteMeta,
   authEnabled,
@@ -128,6 +176,8 @@ function DetailsModalContent({
   ...radixProps
 }: Omit<DetailsModalProps, "isOpen"> & Record<string, unknown>) {
   const { loggedIn } = useAuth();
+  const [isPresent, safeToRemove] = usePresence();
+  const reducedMotion = useReducedMotion();
 
   // Find the original item to get site links and user status
   const title = anime?.title || "";
@@ -173,17 +223,312 @@ function DetailsModalContent({
 
   const sites = sortSites(displaySites, siteMeta);
 
+  // Capture initial card geometry once on mount so re-renders never restart the open morph.
+  const [initialSnapshot] = useState<CardMorphSnapshot | null>(() => {
+    if (!fromCard) return null;
+    return cardSnapshot ?? captureCardMorphSnapshot(title, true);
+  });
+  const canMorphOnOpen = !!initialSnapshot && !reducedMotion;
+
   // Rendering the whole body in the click that opens the modal delays the first frame of the
-  // morph, and it is not visible until the panel has grown anyway. It is mounted once the morph
-  // is over, as a transition so it never blocks a frame for long.
-  const [bodyReady, setBodyReady] = useState(false);
+  // morph. With the panel locked to a fixed height, mounting the body after the morph never
+  // changes the panel's size or triggers a secondary layout jump.
+  const [bodyReady, setBodyReady] = useState(!canMorphOnOpen);
   useEffect(() => {
+    if (bodyReady || !isPresent) return;
     const timer = setTimeout(
       () => startTransition(() => setBodyReady(true)),
       MORPH_SETTLE_MS,
     );
     return () => clearTimeout(timer);
-  }, []);
+  }, [bodyReady, isPresent]);
+
+  const panelRef = useRef<HTMLDivElement>(null);
+  const coverImgRef = useRef<HTMLImageElement>(null);
+  const openCancelRef = useRef<(() => void) | null>(null);
+  const morphProgressRef = useRef(1);
+  const morphEndedRef = useRef(false);
+  const exitStartedRef = useRef(false);
+  const safeToRemoveRef = useRef(safeToRemove);
+  const onMorphEndRef = useRef(onMorphEnd);
+  useEffect(() => {
+    safeToRemoveRef.current = safeToRemove;
+    onMorphEndRef.current = onMorphEnd;
+  });
+
+  // Hide the source card once the modal has mounted, and always restore it on unmount.
+  useLayoutEffect(() => {
+    if (!title || !initialSnapshot) return;
+    morphEndedRef.current = false;
+    onMorphStart?.(title);
+    return () => {
+      if (!morphEndedRef.current) {
+        morphEndedRef.current = true;
+        onMorphEnd?.(title);
+      }
+    };
+  }, [title, initialSnapshot, onMorphStart, onMorphEnd]);
+
+  // Open morph: pure GPU transform + rounded clip-path from the card's exact rect to the modal.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const resetStyles = () => {
+      panel.style.transform = "";
+      panel.style.clipPath = "";
+      panel.style.opacity = "";
+      if (coverImgRef.current) {
+        coverImgRef.current.style.transform = "";
+        coverImgRef.current.style.clipPath = "";
+      }
+    };
+
+    resetStyles();
+    morphProgressRef.current = 1;
+
+    if (reducedMotion) return;
+
+    const modalRect = panel.getBoundingClientRect();
+    const canRunCardMorph =
+      !!initialSnapshot &&
+      modalRect.width > 0 &&
+      modalRect.height > 0 &&
+      initialSnapshot.cardRect.width > 0 &&
+      initialSnapshot.cardRect.height > 0;
+
+    if (!canRunCardMorph) {
+      // Deep link or jsdom fallback: subtle fade + scale.
+      if (modalRect.width <= 0) return;
+      let cancelled = false;
+      const fallback = animate(
+        panel,
+        {
+          opacity: [0, 1],
+          transform: ["scale(0.96)", "scale(1)"],
+        },
+        { duration: 0.24, ease: MORPH_EASE },
+      );
+      const cancel = () => {
+        cancelled = true;
+        fallback.stop();
+      };
+      openCancelRef.current = cancel;
+      void fallback.then(() => {
+        if (cancelled) return;
+        panel.style.opacity = "";
+        panel.style.transform = "";
+      });
+      return () => {
+        cancel();
+        openCancelRef.current = null;
+        resetStyles();
+      };
+    }
+
+    const panelFrame = computePanelMorphFrame(
+      initialSnapshot.cardRect,
+      modalRect,
+    );
+
+    const coverImg = coverImgRef.current;
+    const targetCoverRect =
+      coverImg &&
+      initialSnapshot.coverPosterRect &&
+      initialSnapshot.coverWindowRect
+        ? coverImg.getBoundingClientRect()
+        : null;
+    const coverFrame =
+      coverImg &&
+      targetCoverRect &&
+      targetCoverRect.width > 0 &&
+      targetCoverRect.height > 0 &&
+      initialSnapshot.coverPosterRect &&
+      initialSnapshot.coverWindowRect
+        ? computeCoverMorphFrame(
+            initialSnapshot.coverPosterRect,
+            initialSnapshot.coverWindowRect,
+            targetCoverRect,
+            modalRect,
+            panelFrame,
+          )
+        : null;
+
+    // Paint frame 0 synchronously before first browser paint, then drive panel & cover
+    // from one scalar progress so transform and clip-path never skew by a frame.
+    morphProgressRef.current = 0;
+    applyPanelMorphAt(panel, panelFrame, 0);
+    if (coverImg && coverFrame) applyCoverMorphAt(coverImg, coverFrame, 0);
+
+    let cancelled = false;
+    const control = animate(0, 1, {
+      duration: MORPH_OPEN_DURATION,
+      ease: MORPH_EASE,
+      onUpdate: (progress) => {
+        morphProgressRef.current = progress;
+        applyPanelMorphAt(panel, panelFrame, progress);
+        if (coverImg && coverFrame) {
+          applyCoverMorphAt(coverImg, coverFrame, progress);
+        }
+      },
+    });
+    const cancel = () => {
+      cancelled = true;
+      control.stop();
+    };
+    openCancelRef.current = cancel;
+
+    void control.then(() => {
+      if (cancelled) return;
+      morphProgressRef.current = 1;
+      // Clear clip-path once settled so box-shadow renders unclipped at rest.
+      panel.style.transform = "";
+      panel.style.clipPath = "";
+      if (coverImg && coverFrame) {
+        coverImg.style.transform = "";
+        coverImg.style.clipPath = "";
+      }
+    });
+
+    return () => {
+      cancel();
+      openCancelRef.current = null;
+      resetStyles();
+    };
+  }, [initialSnapshot, reducedMotion]);
+
+  // Close morph: reverse back to the card's live resting rect on top of the overlay, then hand off.
+  useLayoutEffect(() => {
+    if (isPresent || exitStartedRef.current) return;
+    exitStartedRef.current = true;
+
+    const panel = panelRef.current;
+    const finishExit = () => {
+      if (!morphEndedRef.current) {
+        morphEndedRef.current = true;
+        onMorphEndRef.current?.(title);
+      }
+      safeToRemoveRef.current?.();
+    };
+
+    if (!panel || reducedMotion) {
+      finishExit();
+      return;
+    }
+
+    // Stop any open animation still in flight and remember its current progress so closing
+    // mid-open reverses smoothly from where the panel is instead of snapping to full size.
+    const startProgress = Math.min(1, Math.max(0, morphProgressRef.current));
+    openCancelRef.current?.();
+    openCancelRef.current = null;
+
+    panel.style.transform = "";
+    panel.style.clipPath = "";
+    if (coverImgRef.current) {
+      coverImgRef.current.style.transform = "";
+      coverImgRef.current.style.clipPath = "";
+    }
+
+    const modalRect = panel.getBoundingClientRect();
+    if (modalRect.width <= 0 || modalRect.height <= 0) {
+      finishExit();
+      return;
+    }
+
+    const liveCard = initialSnapshot
+      ? captureCardMorphSnapshot(title, false)
+      : null;
+    const canMorphBack = !!liveCard && isRectInViewport(liveCard.cardRect);
+
+    let cancelled = false;
+
+    if (!canMorphBack) {
+      // Card scrolled out of view or opened from a deep link: clean fade + scale out.
+      if (!morphEndedRef.current) {
+        morphEndedRef.current = true;
+        onMorphEndRef.current?.(title);
+      }
+      const fadeOut = animate(
+        panel,
+        {
+          opacity: [1, 0],
+          transform: ["scale(1)", "scale(0.96)"],
+        },
+        { duration: 0.2, ease: "easeOut" },
+      );
+      void fadeOut.then(() => {
+        if (!cancelled) safeToRemoveRef.current?.();
+      });
+      return () => {
+        cancelled = true;
+        fadeOut.stop();
+      };
+    }
+
+    if (startProgress <= 0.01) {
+      finishExit();
+      return;
+    }
+
+    const panelFrame = computePanelMorphFrame(liveCard.cardRect, modalRect);
+    const coverImg = coverImgRef.current;
+    const currentCoverRect =
+      coverImg && liveCard.coverPosterRect && liveCard.coverWindowRect
+        ? coverImg.getBoundingClientRect()
+        : null;
+    const coverFrame =
+      coverImg &&
+      currentCoverRect &&
+      currentCoverRect.width > 0 &&
+      currentCoverRect.height > 0 &&
+      liveCard.coverPosterRect &&
+      liveCard.coverWindowRect
+        ? computeCoverMorphFrame(
+            liveCard.coverPosterRect,
+            liveCard.coverWindowRect,
+            currentCoverRect,
+            modalRect,
+            panelFrame,
+          )
+        : null;
+
+    // Immediately restore the interrupted progress before paint, then reverse smoothly to 0.
+    applyPanelMorphAt(panel, panelFrame, startProgress);
+    if (coverImg && coverFrame) {
+      applyCoverMorphAt(coverImg, coverFrame, startProgress);
+    }
+
+    const dissolveThreshold = Math.min(0.03, startProgress);
+    const control = animate(startProgress, 0, {
+      duration: Math.max(0.12, MORPH_CLOSE_DURATION * startProgress),
+      ease: MORPH_EASE,
+      onUpdate: (t) => {
+        morphProgressRef.current = t;
+        applyPanelMorphAt(panel, panelFrame, t);
+        if (coverImg && coverFrame) {
+          applyCoverMorphAt(coverImg, coverFrame, t);
+        }
+        if (t <= dissolveThreshold) {
+          if (!morphEndedRef.current) {
+            morphEndedRef.current = true;
+            onMorphEndRef.current?.(title);
+          }
+          panel.style.opacity = String(
+            Math.max(0, t / Math.max(0.001, dissolveThreshold)),
+          );
+        }
+      },
+    });
+
+    void control.then(() => {
+      if (!cancelled) finishExit();
+    });
+
+    return () => {
+      cancelled = true;
+      control.stop();
+    };
+  }, [isPresent, reducedMotion, title, initialSnapshot]);
 
   // Stacked (narrow) layout: scrolling the body collapses the cover above it. The offset goes
   // straight into a CSS variable, so scrolling never re-renders the modal.
@@ -207,47 +552,25 @@ function DetailsModalContent({
       className="fixed inset-0 z-[110] flex cursor-pointer items-center justify-center overflow-y-auto p-4 sm:p-6"
       onClick={onClose}
     >
-      <motion.div
-        layoutId={`card-${title}`}
-        // The hand-over to the card is timed explicitly below; Motion's automatic cross-fade
-        // would keep the whole panel see-through for the entire morph.
-        layoutCrossfade={false}
-        // Without a card to grow from (deep link), fall back to a plain fade + scale.
-        initial={fromCard ? false : { opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        // Fade only once the panel is (almost) back on the card, handing over to it.
-        exit={{
-          opacity: 0,
-          transition: { duration: 0.14, delay: 0.24, ease: "linear" },
-        }}
-        transition={MORPH_TRANSITION}
-        // Motion only corrects border radius during layout animations via style.
-        style={{ borderRadius: 24 }}
-        className="relative flex max-h-[85dvh] w-full max-w-4xl cursor-auto flex-col overflow-hidden shadow-2xl outline-none"
+      <div
+        ref={panelRef}
+        className="relative flex h-[85dvh] w-full max-w-4xl cursor-auto flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none md:h-[min(85dvh,48rem)] dark:bg-gray-800"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Surface fades in over the card so its text cross-fades instead of popping. */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.1, ease: "linear" }}
-          className="absolute inset-0 bg-white dark:bg-gray-800"
-        />
-        {/*
-          Only the panel box and the cover morph from the card. This wrapper opts into layout
-          projection so everything inside keeps its real size (no stretched text) and is simply
-          revealed as the panel grows. It must not clip: the cover leaves it on the way back to
-          the card (the panel above does the clipping).
-        */}
-        <motion.div
+        <div
           ref={layoutRef}
-          layout
-          transition={MORPH_TRANSITION}
           className="relative flex min-h-0 flex-1 flex-col md:flex-row"
         >
           <Dialog.Close asChild>
             <motion.button
-              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              initial={{ opacity: fromCard ? 0 : 1 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0.1 } }}
+              transition={{
+                duration: 0.18,
+                delay: fromCard ? 0.16 : 0,
+                ease: "easeOut",
+              }}
               aria-label="作品詳細を閉じる"
               className={`absolute top-4 right-4 z-50 rounded-full bg-black/15 p-3 text-gray-800 transition-colors hover:bg-black/25 dark:bg-white/15 dark:text-gray-200 dark:hover:bg-white/25 ${focusRingClassName}`}
             >
@@ -255,16 +578,28 @@ function DetailsModalContent({
             </motion.button>
           </Dialog.Close>
 
-          <AnimeCover info={info} title={title} loading={loading} />
+          <AnimeCover
+            info={info}
+            title={title}
+            loading={loading}
+            fromCard={fromCard}
+            initialAspect={initialSnapshot?.coverAspect}
+            imgRef={coverImgRef}
+          />
 
           {/* Content Section */}
           <motion.div
-            initial={{ opacity: 0 }}
+            initial={{ opacity: 0, y: fromCard ? 10 : 0 }}
             animate={{
               opacity: 1,
-              transition: { duration: 0.25, delay: 0.12, ease: "easeOut" },
+              y: 0,
+              transition: {
+                duration: 0.24,
+                delay: fromCard ? 0.1 : 0,
+                ease: "easeOut",
+              },
             }}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            exit={{ opacity: 0, transition: { duration: 0.11 } }}
             onScroll={handleBodyScroll}
             // The extra top padding equals what the cover has given up, so the text moves
             // exactly with the scroll while the cover collapses instead of at twice the speed.
@@ -421,8 +756,8 @@ function DetailsModalContent({
               </motion.div>
             )}
           </motion.div>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }
